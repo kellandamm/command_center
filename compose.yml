@@ -1,0 +1,27 @@
+# Self-hosted AI Homepage. Copy .env.selfhost.example to .env, fill it in, then:  docker compose up -d
+services:
+  homepage:
+    image: ${IMAGE:-ghcr.io/OWNER/ai-homepage:latest}
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: ${TZ:-UTC}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}
+      CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      NOTIFY_WEBHOOK_URL: ${NOTIFY_WEBHOOK_URL:-}
+    ports:
+      # Loopback only: put a tunnel or reverse proxy in front. Never publish this port to the internet unauthenticated.
+      - "127.0.0.1:${HOST_PORT:-8088}:8080"
+    volumes:
+      - homepage-data:/data
+    shm_size: 512m          # Chromium needs more than Docker's 64 MB default
+    mem_limit: 1536m
+    pids_limit: 512
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+volumes:
+  homepage-data:
