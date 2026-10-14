@@ -1,6 +1,9 @@
 import { activityPanel } from "./activity";
+import { aiSecurityPanel } from "./ai-security-panel";
 import { briefingPanel } from "./briefing";
+import { dailyBriefingPanel } from "./daily-briefing-panel";
 import { hobiePanel } from "./hobie";
+import { taggedNewsPanel } from "./tagged-news";
 import { calendarPanel } from "./calendar";
 import { feedsPanel } from "./feeds";
 import { githubPanel } from "./github";
@@ -15,6 +18,9 @@ import type { PanelModule } from "./types";
 export const panels: PanelModule[] = [
   activityPanel,
   hobiePanel,
+  taggedNewsPanel,
+  dailyBriefingPanel,
+  aiSecurityPanel,
   weatherPanel,
   calendarPanel,
   notesPanel,

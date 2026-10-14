@@ -1,6 +1,8 @@
 import { panels } from "../panels/registry";
 import { activityDashboardScript } from "../panels/activity";
+import { aiSecurityDashboardScript } from "../panels/ai-security-panel";
 import { briefingDashboardScript } from "../panels/briefing";
+import { dailyBriefingDashboardScript } from "../panels/daily-briefing-panel";
 import { hobieDashboardScript } from "../panels/hobie";
 import { calendarDashboardScript } from "../panels/calendar";
 import { feedsDashboardScript } from "../panels/feeds";
@@ -8,25 +10,43 @@ import { githubDashboardScript } from "../panels/github";
 import { hostHealthDashboardScript } from "../panels/host-health";
 import { notesDashboardScript } from "../panels/notes";
 import { recallioDashboardScript } from "../panels/recallio";
+import { taggedNewsDashboardScript } from "../panels/tagged-news";
 import { todoistDashboardScript } from "../panels/todoist";
 import { weatherDashboardScript } from "../panels/weather";
+import { defaultDashboardLayout } from "../dashboard-layout/defaults";
+import type { PanelLayoutEntry } from "../dashboard-layout/types";
 import { dashboardGridScript } from "./dashboard-grid";
 import { page } from "./layout";
 
+function panelGridStyle(entry: PanelLayoutEntry): string {
+  const span = entry.collapsed ? 1 : entry.h;
+  return `--gc-start:${entry.x + 1};--gc-span:${entry.w};--gr-start:${entry.y + 1};--gr-span:${span}`;
+}
+
+function panelItemAttrs(entry: PanelLayoutEntry): string {
+  const collapsed = entry.collapsed ? " is-collapsed" : "";
+  return `class="dashboard-item${collapsed}" data-full-h="${entry.h}"`;
+}
+
 export function dashboardPage(): string {
+  const layout = defaultDashboardLayout(panels.map((p) => p.id));
+  const byId = new Map(layout.panels.map((p) => [p.id, p]));
   const sections = panels
-    .map((p) => `<div class="dashboard-item" data-panel-id="${p.id}">${p.dashboardHtml}</div>`)
+    .map((p) => {
+      const entry = byId.get(p.id)!;
+      return `<div ${panelItemAttrs(entry)} data-panel-id="${p.id}" style="${panelGridStyle(entry)}">${p.dashboardHtml}</div>`;
+    })
     .join("\n");
   return page({
     title: "Command center",
     active: "/",
-    body: `<header class="page-header"><h1>Dashboard</h1><p class="dim">Daily tools in one place. Drag panel headers to rearrange; resize from the corner handle.</p></header>
+    body: `<div class="dashboard-page"><header class="page-header"><h1>Dashboard</h1><p class="dim">Daily tools in one place. Drag panel headers to rearrange; resize from the corner handle.</p></header>
 <div class="dashboard-toolbar">
   <button type="button" class="ghost" id="dashboard-reset-layout">Reset layout</button>
   <p class="dim">Layout is saved on this server.</p>
 </div>
-<div class="dashboard-grid" id="dashboard-grid">${sections}</div>`,
-    script: `${dashboardGridScript()}${activityDashboardScript()}${hobieDashboardScript()}${weatherDashboardScript()}${calendarDashboardScript()}${notesDashboardScript()}${feedsDashboardScript()}${briefingDashboardScript()}${todoistDashboardScript()}${hostHealthDashboardScript()}${githubDashboardScript()}${recallioDashboardScript()}`,
+<div class="dashboard-grid" id="dashboard-grid">${sections}</div></div>`,
+    script: `${dashboardGridScript()}${activityDashboardScript()}${hobieDashboardScript()}${taggedNewsDashboardScript()}${dailyBriefingDashboardScript()}${aiSecurityDashboardScript()}${weatherDashboardScript()}${calendarDashboardScript()}${notesDashboardScript()}${feedsDashboardScript()}${briefingDashboardScript()}${todoistDashboardScript()}${hostHealthDashboardScript()}${githubDashboardScript()}${recallioDashboardScript()}`,
   });
 }
 

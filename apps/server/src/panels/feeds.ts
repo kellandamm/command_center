@@ -10,7 +10,7 @@ export const feedsPanel: PanelModule = {
   <div class="row"><h2 style="margin:0">News feeds</h2>
   <button type="button" class="ghost" id="feeds-refresh" style="margin-left:auto">Refresh now</button></div>
   <p class="dim" id="feeds-status">Loading…</p>
-  <div id="feeds-list" class="feeds-panel-scroll"></div>
+  <div id="feeds-list" class="feeds-panel-scroll panel-scroll-region"></div>
   <p class="feeds-full-link dim"><a href="/news">Open full tagged news view</a></p>
   <div class="row" style="margin-top:10px">
     <button type="button" class="ghost" id="feeds-mark-all">Mark all read</button>
@@ -60,17 +60,18 @@ function renderFeeds(data){
   var unread=data.unread||0;
   st.textContent=unread?unread+" unread":"All caught up";
   var html="";
-  (data.items||[]).forEach(function(it){
+  (data.items||[]).slice(0,40).forEach(function(it){
     var cls=it.read?"dim":"";
-    html+='<div class="feed-item '+cls+'" data-id="'+esc(it.id)+'">';
-    html+='<div class="row"><strong>'+(it.link?'<a href="'+esc(it.link)+'" target="_blank" rel="noopener">'+esc(it.title)+'</a>':esc(it.title))+'</strong>';
+    html+='<details class="feed-item '+cls+'" data-id="'+esc(it.id)+'">';
+    html+='<summary class="feed-headline"><span>'+(it.link?'<a href="'+esc(it.link)+'" target="_blank" rel="noopener">'+esc(it.title)+'</a>':esc(it.title))+'</span>';
     if(!it.read)html+='<button type="button" class="ghost mark-read" data-id="'+esc(it.id)+'">Mark read</button>';
-    html+='</div>';
-    if(it.summary)html+='<p class="dim" style="margin:.3em 0">'+esc(it.summary)+'</p>';
-    html+='<p class="dim" style="margin:0;font-size:.85rem">'+esc(it.feedId)+' · '+esc(it.firstSeenAt)+'</p></div>';
+    html+='</summary>';
+    if(it.summary)html+='<p class="feed-summary dim">'+esc(it.summary)+'</p>';
+    html+='<p class="feed-meta dim">'+esc(it.feedId)+' · '+esc(it.firstSeenAt)+'</p></details>';
   });
   document.getElementById("feeds-list").innerHTML=html||'<p class="dim">No items yet. Feeds refresh on a schedule, or click Refresh now.</p>';
-  document.querySelectorAll(".mark-read").forEach(function(b){b.onclick=function(){
+  document.querySelectorAll(".mark-read").forEach(function(b){b.onclick=function(e){
+    e.preventDefault();e.stopPropagation();
     api("/api/feeds/read","POST",{ids:[b.dataset.id]}).then(loadFeeds);
   }});
 }
