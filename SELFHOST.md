@@ -27,6 +27,8 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 | `DOCKER_SOCKET` | Optional. Unix path to the Docker Engine API socket (e.g. `/var/run/docker.sock`). When set and readable, the **Server health** panel lists containers (read-only). When unset, host CPU/memory/disk still work; the container section explains that Docker is not configured. |
 | `RECALLIO_URL` | Optional. Base URL for the **Recallio search** panel (e.g. `https://recall.gobison.io`). Without it the panel shows a disabled message; the rest of the dashboard is unchanged. |
 | `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | Optional **outbound** Cloudflare Access service token. Sent as `CF-Access-Client-Id` / `CF-Access-Client-Secret` when the server calls Recallio behind Access. Set both if Recallio requires them; omit if Recallio is reachable without a service token. |
+| `WEATHER_LAT`, `WEATHER_LON` | Optional. Open-Meteo coordinates for the **Weather** panel (no API key). Default **Chicago** (`41.8781`, `-87.6298`) when unset. |
+| `ICS_URLS` | Optional. Comma-separated **https** iCal feed URLs for the **Calendar** panel. When unset, the panel explains how to enable it. Feeds are fetched server-side with the same SSRF rules as RSS. |
 
 `/healthz` is unauthenticated and returns `{ ok, version }` only.
 
@@ -97,6 +99,7 @@ and accepts JSON either as an array of hits or as `{ results | items | memories 
 - `feeds.json` — cached items and per-feed fetch status
 - `briefing.json` — latest briefing and short history
 - `state.json` — scheduler timestamps
+- `notes.md` — dashboard **Notes** panel (plain markdown)
 
 Back up the volume to keep feeds, read state, and briefings.
 

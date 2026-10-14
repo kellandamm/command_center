@@ -9,6 +9,7 @@ import { loadConfig, assertAuthConfigured, llmConfigured } from "../src/config";
 import { makeAuthenticator } from "../src/auth";
 import { FeedsStore } from "../src/feeds/store";
 import { createApp } from "../src/http";
+import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
 
 const TOKEN = "t".repeat(32);
@@ -28,7 +29,8 @@ async function harness(env: Record<string, string> = {}) {
   await settings.load();
   const feeds = await FeedsStore.open(dir);
   const briefing = await BriefingService.open(dir, cfg.tz);
-  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, feeds, briefing });
+  const notes = await NotesStore.open(dir);
+  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, feeds, briefing, notes });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const close = async () => {
@@ -114,6 +116,37 @@ test("http: github activity API returns JSON without crashing", async () => {
     assert.ok(Array.isArray(j.activity.pulls));
     assert.ok(Array.isArray(j.activity.issues));
     assert.ok(Array.isArray(j.activity.events));
+  } finally {
+    await h.close();
+  }
+});
+
+test("calendar API without ICS_URLS is disabled", async () => {
+  const h = await harness();
+  try {
+    const r = await fetch(`${h.base}/api/calendar`, { headers: authz });
+    assert.equal(r.status, 200);
+    const j: any = await r.json();
+    assert.equal(j.configured, false);
+    assert.deepEqual(j.events, []);
+  } finally {
+    await h.close();
+  }
+});
+
+test("notes API round-trip", async () => {
+  const h = await harness();
+  try {
+    const get = await fetch(`${h.base}/api/notes`, { headers: authz });
+    assert.equal((await get.json()).content, "");
+    const put = await fetch(`${h.base}/api/notes`, {
+      method: "PUT",
+      headers: { ...authz, "x-ah": "1", "content-type": "application/json" },
+      body: JSON.stringify({ content: "line one" }),
+    });
+    assert.equal(put.status, 200);
+    const again = await fetch(`${h.base}/api/notes`, { headers: authz });
+    assert.equal((await again.json()).content, "line one");
   } finally {
     await h.close();
   }
