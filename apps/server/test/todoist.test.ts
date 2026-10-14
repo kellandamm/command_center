@@ -42,7 +42,7 @@ test("todoist: partition overdue and today by configured zone", () => {
   assert.deepEqual(today.map((t) => t.id), ["2"]);
 });
 
-test("todoist: API returns unconfigured state without token", async () => {
+test("todoist: dashboard API removed; MCP client helpers still work", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-"));
   const cfg = loadConfig({ DATA_DIR: dir, ADMIN_TOKEN: TOKEN, ALLOW_INSECURE_NO_AUTH: "1" });
   assert.equal(todoistConfigured(cfg), false);
@@ -60,11 +60,7 @@ test("todoist: API returns unconfigured state without token", async () => {
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   try {
     const r = await fetch(`${base}/api/todoist`, { headers: { authorization: `Bearer ${TOKEN}` } });
-    assert.equal(r.status, 200);
-    const j: any = await r.json();
-    assert.equal(j.configured, false);
-    assert.deepEqual(j.overdue, []);
-    assert.deepEqual(j.today, []);
+    assert.equal(r.status, 404);
   } finally {
     server.close();
     await rm(dir, { recursive: true, force: true });

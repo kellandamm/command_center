@@ -4,6 +4,7 @@ import type { PanelModule } from "./types";
 export const calendarPanel: PanelModule = {
   id: "calendar",
   title: "Calendar",
+  pageHref: "/calendar",
   dashboardHtml: `
 <section class="card" id="panel-calendar">
   <h2 style="margin:0 0 8px">Calendar</h2>
@@ -16,7 +17,9 @@ export const calendarPanel: PanelModule = {
       res.end(JSON.stringify(data));
     };
     if (path === "/api/calendar" && req.method === "GET") {
-      const snap = await fetchCalendarEvents(ctx.cfg.icsUrls, ctx.cfg.tz);
+      const url = new URL(req.url ?? "/", "http://local");
+      const horizonDays = Math.min(60, Math.max(7, Number(url.searchParams.get("horizonDays") ?? 14)));
+      const snap = await fetchCalendarEvents(ctx.cfg.icsUrls, ctx.cfg.tz, { horizonDays });
       json(200, snap);
       return true;
     }

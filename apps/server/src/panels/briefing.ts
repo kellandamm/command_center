@@ -1,3 +1,4 @@
+import { feedIdsInScope } from "../feed-scope";
 import type { PanelModule } from "./types";
 import { llmConfig } from "../config";
 
@@ -28,6 +29,7 @@ export const briefingPanel: PanelModule = {
         feeds: ctx.feeds,
         sinceIso: since,
         trigger: "manual",
+        feedIds: feedIdsInScope(ctx.feeds, ctx.settings.get().feedScope),
       });
       json(200, { briefing: rec, llmEnabled: Boolean(llmConfig(ctx.cfg)) });
       return true;

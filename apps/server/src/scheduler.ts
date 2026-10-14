@@ -1,9 +1,8 @@
 import type { DailyBriefingService } from "./daily-briefing/service";
 import type { BriefingService } from "./briefing/service";
 import { llmConfig, type Config } from "./config";
-import { parseFeedList } from "./feeds/parse";
+import { feedIdsInScope } from "./feed-scope";
 import { pollDueFeeds } from "./feeds/poller";
-import { fetchAllFeeds } from "./feeds/service";
 import type { FeedsStore } from "./feeds/store";
 import type { NewsPrefsStore } from "./feeds/news-prefs";
 import type { SummaryService } from "./feeds/summary-service";
@@ -120,15 +119,13 @@ export class Scheduler {
       const fetchDue =
         !state.lastFeedFetchAt || now.getTime() - new Date(state.lastFeedFetchAt).getTime() >= s.fetchIntervalMinutes * 60_000;
       if (fetchDue) {
-        const parsed = parseFeedList(s.feeds);
         if (this.d.feeds.feedCount() > 0) {
           const prefs = this.d.newsPrefs.get();
+          const scopeIds = feedIdsInScope(this.d.feeds, s.feedScope);
           await pollDueFeeds(this.d.feeds, now, undefined, async (ids) => {
             for (const id of ids) await this.d.summaryService.maybeAutoSummarize(id, prefs, now);
-          });
+          }, scopeIds);
           await this.d.feeds.save();
-        } else {
-          await fetchAllFeeds(this.d.feeds, parsed.feeds, now);
         }
         state = { ...state, lastFeedFetchAt: now.toISOString() };
         await this.d.kv.set(KEY, state);
@@ -139,6 +136,7 @@ export class Scheduler {
         const rec = await this.d.dailyBriefing.generate({
           cfg: this.d.cfg,
           feeds: this.d.feeds,
+          feedScope: s.feedScope,
           trigger: "schedule",
           now,
         });
@@ -152,6 +150,7 @@ export class Scheduler {
             sinceIso: since,
             trigger: "schedule",
             now,
+            feedIds: feedIdsInScope(this.d.feeds, s.feedScope),
           });
           failed ||= Boolean(briefing.error);
         }

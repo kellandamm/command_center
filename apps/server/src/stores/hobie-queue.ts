@@ -77,6 +77,31 @@ export class HobieQueueStore {
     return task;
   }
 
+  async markDone(id: string): Promise<boolean> {
+    const task = this.tasks.find((t) => t.id === id);
+    if (!task) return false;
+    task.status = "done";
+    await this.flush();
+    return true;
+  }
+
+  async remove(id: string): Promise<boolean> {
+    const before = this.tasks.length;
+    this.tasks = this.tasks.filter((t) => t.id !== id);
+    if (this.tasks.length === before) return false;
+    await this.flush();
+    return true;
+  }
+
+  async clear(opts: { status?: HobieTaskStatus } = {}): Promise<number> {
+    const before = this.tasks.length;
+    if (opts.status) this.tasks = this.tasks.filter((t) => t.status !== opts.status);
+    else this.tasks = [];
+    const removed = before - this.tasks.length;
+    if (removed) await this.flush();
+    return removed;
+  }
+
   private flush(): Promise<void> {
     const run = this.queue.then(() => writeFileAtomic(this.path, JSON.stringify(this.tasks, null, 2)));
     this.queue = run.catch(() => {});

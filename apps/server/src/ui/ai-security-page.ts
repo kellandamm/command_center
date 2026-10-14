@@ -1,9 +1,11 @@
+import type { NavLink } from "./layout";
 import { page } from "./layout";
 
-export function aiSecurityPage(): string {
+export function aiSecurityPage(nav?: NavLink[]): string {
   return page({
     title: "AI Security — Command center",
     active: "/ai-security",
+    nav,
     body: `<header class="page-header">
   <h1>AI Security</h1>
   <p class="dim">Weekly roundup published by your external security agent — latest edition and archive.</p>

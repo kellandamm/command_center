@@ -159,8 +159,8 @@ export function dashboardGridScript(): string {
     var map={
       activity:"Activity",hobie:"Hobie queue","tagged-news":"Tagged news","daily-briefing":"Daily briefing",
       "ai-security":"AI Security",weather:"Weather",calendar:"Calendar",notes:"Notes",
-      feeds:"News feeds",briefing:"AI briefing",todoist:"Todoist","host-health":"Host health",
-      github:"GitHub",recallio:"Recallio"
+      feeds:"News feeds",briefing:"AI briefing","host-health":"Host health",
+      recallio:"Recallio"
     };
     return map[id]||id;
   }
@@ -265,8 +265,10 @@ export function dashboardGridScript(): string {
       var id=item.getAttribute("data-panel-id")||"";
       var chrome=document.createElement("div");
       chrome.className="dashboard-panel-chrome";
+      var pageLink=(typeof PANEL_PAGE_LINKS!=="undefined"&&PANEL_PAGE_LINKS)?PANEL_PAGE_LINKS[id]:null;
+      var titleHtml=pageLink?'<a href="'+esc(pageLink)+'">'+esc(titleFor(id))+'</a>':esc(titleFor(id));
       chrome.innerHTML='<button type="button" class="dashboard-drag-handle" tabindex="0" aria-label="Drag '+esc(titleFor(id))+' panel">⠿</button>'
-        +'<h2>'+esc(titleFor(id))+'</h2>'
+        +'<h2>'+titleHtml+'</h2>'
         +'<button type="button" class="dashboard-collapse" aria-expanded="true" aria-label="Collapse panel">−</button>';
       var body=document.createElement("div");
       body.className="dashboard-panel-body";

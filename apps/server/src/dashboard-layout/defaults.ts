@@ -4,7 +4,6 @@ import { GRID_COLS, GRID_ROW_HEIGHT_PX, LAYOUT_VERSION } from "./types";
 /** Panels that start collapsed in the default layout to save vertical space. */
 export const DEFAULT_COLLAPSED_PANEL_IDS = new Set<string>([
   "calendar",
-  "todoist",
   "recallio",
   "briefing",
   "host-health",
@@ -17,15 +16,13 @@ export const DEFAULT_COLLAPSED_PANEL_IDS = new Set<string>([
  */
 export const DEFAULT_PANEL_LAYOUT: PanelLayoutEntry[] = [
   { id: "calendar", x: 0, y: 0, w: 2, h: 2, collapsed: true },
-  { id: "todoist", x: 2, y: 0, w: 2, h: 2, collapsed: true },
-  { id: "recallio", x: 4, y: 0, w: 2, h: 2, collapsed: true },
-  { id: "host-health", x: 6, y: 0, w: 2, h: 2, collapsed: true },
-  { id: "briefing", x: 8, y: 0, w: 2, h: 2, collapsed: true },
-  { id: "ai-security", x: 10, y: 0, w: 2, h: 2, collapsed: true },
+  { id: "recallio", x: 2, y: 0, w: 2, h: 2, collapsed: true },
+  { id: "host-health", x: 4, y: 0, w: 2, h: 2, collapsed: true },
+  { id: "briefing", x: 6, y: 0, w: 2, h: 2, collapsed: true },
+  { id: "ai-security", x: 8, y: 0, w: 2, h: 2, collapsed: true },
   { id: "activity", x: 0, y: 1, w: 3, h: 2 },
   { id: "hobie", x: 3, y: 1, w: 3, h: 2 },
   { id: "weather", x: 6, y: 1, w: 3, h: 2 },
-  { id: "github", x: 9, y: 1, w: 3, h: 2 },
   { id: "feeds", x: 0, y: 3, w: 8, h: 5 },
   { id: "tagged-news", x: 8, y: 3, w: 4, h: 2 },
   { id: "daily-briefing", x: 8, y: 5, w: 4, h: 2 },

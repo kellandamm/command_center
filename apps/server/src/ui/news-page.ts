@@ -1,9 +1,11 @@
+import type { NavLink } from "./layout";
 import { page } from "./layout";
 
-export function newsPage(): string {
+export function newsPage(nav?: NavLink[]): string {
   return page({
     title: "News — Command center",
     active: "/news",
+    nav,
     body: `<div class="page-content rss-page">
 <header class="page-header" style="margin-bottom:.25rem">
   <h1>News</h1>

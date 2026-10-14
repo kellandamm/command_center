@@ -2,6 +2,8 @@ import { join } from "node:path";
 import type { Config, LlmConfig } from "../config";
 import { llmConfig, todoistConfigured } from "../config";
 import { fetchCalendarEvents } from "../calendar/service";
+import { feedIdsInScope } from "../feed-scope";
+import type { FeedScopeSettings } from "../settings";
 import type { FeedsStore } from "../feeds/store";
 import { fetchGithubActivity } from "../github/activity";
 import { chatCompletion } from "../llm/provider";
@@ -66,6 +68,7 @@ export class DailyBriefingService {
   async generate(opts: {
     cfg: Config;
     feeds: FeedsStore;
+    feedScope?: FeedScopeSettings;
     trigger: "schedule" | "manual";
     now?: Date;
     fetchFn?: typeof fetch;
@@ -74,7 +77,7 @@ export class DailyBriefingService {
     const day = dayKey(now, this.tz);
     const sinceIso = new Date(now.getTime() - 24 * 60 * 60_000).toISOString();
     const fetchFn = opts.fetchFn ?? fetch;
-    const sources = await this.gatherSources(opts.cfg, opts.feeds, sinceIso, now, fetchFn);
+    const sources = await this.gatherSources(opts.cfg, opts.feeds, sinceIso, now, fetchFn, opts.feedScope);
     const rec: DailyBriefingRecord = { day, generatedAt: now.toISOString(), trigger: opts.trigger, sources };
     await writeBriefingFile(briefingDayPath(this.dir, day), rec);
     return rec;
@@ -86,8 +89,10 @@ export class DailyBriefingService {
     sinceIso: string,
     now: Date,
     fetchFn: typeof fetch,
+    feedScope?: FeedScopeSettings,
   ): Promise<DailyBriefingSources> {
-    const newsItems = feeds.itemsForBriefing(sinceIso);
+    const scope = feedScope ?? { mode: "all", folderIds: [] };
+    const newsItems = feeds.itemsForBriefing(sinceIso, 40, feedIdsInScope(feeds, scope));
     const news: DailyBriefingSources["news"] =
       newsItems.length > 0
         ? block("ok", { items: newsItems, itemCount: newsItems.length })

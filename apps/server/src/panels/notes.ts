@@ -4,6 +4,7 @@ import type { PanelModule } from "./types";
 export const notesPanel: PanelModule = {
   id: "notes",
   title: "Notes",
+  pageHref: "/notes",
   dashboardHtml: `
 <section class="card" id="panel-notes">
   <h2 style="margin:0 0 8px">Notes</h2>

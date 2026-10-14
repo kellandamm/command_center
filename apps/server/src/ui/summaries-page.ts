@@ -1,9 +1,12 @@
+import type { NavLink } from "./layout";
+import type { NavLink } from "./layout";
 import { page } from "./layout";
 
-export function summariesPage(): string {
+export function summariesPage(nav?: NavLink[]): string {
   return page({
     title: "Summaries — Command center",
     active: "/summaries",
+    nav,
     body: `<header class="page-header">
   <h1>Article summaries</h1>
   <p class="dim">AI summaries are kept even after feed entries are pruned. Search and open the original or live entry when it still exists.</p>

@@ -1,4 +1,5 @@
 import { dashboardGridCss } from "./dashboard-grid";
+import { DEFAULT_SIDEBAR_TABS, visibleNavTabs, type SidebarTab } from "../nav-tabs";
 
 export const esc = (s: unknown) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -160,6 +161,15 @@ pre.briefing{
 .status-pill.dim{opacity:.85}
 pre.briefing.bad{color:var(--destructive);background:transparent;border-color:color-mix(in srgb,var(--destructive) 30%,var(--border))}
 .theme-toggle{width:100%;justify-content:flex-start}
+.cal-week-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:.5rem}
+@media(max-width:900px){.cal-week-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.cal-day{border:1px solid var(--border);border-radius:calc(var(--radius) - 2px);padding:.5rem;min-height:5rem}
+.cal-ev{margin-bottom:.5rem;font-size:.8125rem}
+.dashboard-panel-chrome h2 a{text-decoration:none;color:inherit}
+.dashboard-panel-chrome h2 a:hover{text-decoration:underline}
+.settings-tabs{display:flex;gap:.35rem;margin-bottom:1rem;flex-wrap:wrap}
+.settings-tabs button.ghost.on{background:var(--sidebar-accent)}
+.settings-tab-panel{display:none}.settings-tab-panel.on{display:block}
 ${dashboardGridCss}
 @media(max-width:768px){
   .app-shell{flex-direction:column}
@@ -172,14 +182,7 @@ ${dashboardGridCss}
 }
 `;
 
-const NAV = [
-  ["/", "Dashboard"],
-  ["/ai-security", "AI Security"],
-  ["/briefing", "Daily Briefing"],
-  ["/news", "News"],
-  ["/summaries", "Summaries"],
-  ["/settings", "Settings"],
-] as const;
+export type NavLink = { href: string; label: string };
 
 const THEME_SCRIPT = `
 (function(){
@@ -203,11 +206,14 @@ const THEME_SCRIPT = `
 })();
 `;
 
-export function page(opts: { title: string; body: string; active?: string; script?: string }): string {
-  const nav = NAV.map(
-    ([href, label]) =>
-      `<a href="${href}"${opts.active === href ? ' class="on"' : ""}><span>${esc(label)}</span></a>`,
-  ).join("");
+export function page(opts: { title: string; body: string; active?: string; script?: string; nav?: NavLink[] }): string {
+  const links = opts.nav ?? visibleNavTabs(DEFAULT_SIDEBAR_TABS);
+  const nav = links
+    .map(
+      ({ href, label }) =>
+        `<a href="${href}"${opts.active === href ? ' class="on"' : ""}><span>${esc(label)}</span></a>`,
+    )
+    .join("");
   const shell = `<div class="app-shell">
 <aside class="sidebar" aria-label="Main navigation">
   <div class="sidebar-brand">Command Center</div>
