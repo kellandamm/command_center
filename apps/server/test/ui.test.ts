@@ -36,11 +36,13 @@ test("ui: daily briefing page has source sections and nav link", () => {
   assert.match(html, /class="briefing-grid"/);
 });
 
-test("ui: tagged news page has chip bar and compact list", () => {
+test("ui: news reader has feed tree and article list", () => {
   const html = newsPage();
   assert.match(html, /href="\/news" class="on"/);
   assert.match(html, /id="news-focus-chips"/);
-  assert.match(html, /class="news-compact-list"/);
+  assert.match(html, /id="rss-tree"/);
+  assert.match(html, /id="rss-articles"/);
+  assert.match(html, /id="rss-read-pane"/);
 });
 
 test("ui: settings page wraps form in card", () => {

@@ -1,0 +1,69 @@
+import type { DatabaseSync } from "node:sqlite";
+
+export function tryEnableFts5(db: DatabaseSync): boolean {
+  try {
+    db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS _fts_probe USING fts5(x)");
+    db.exec("DROP TABLE IF EXISTS _fts_probe");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function initSchema(db: DatabaseSync): { fts5: boolean } {
+  db.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA foreign_keys = ON;
+    CREATE TABLE IF NOT EXISTS folders (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      sort_order INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS feeds (
+      id TEXT PRIMARY KEY,
+      folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL,
+      title TEXT NOT NULL,
+      xml_url TEXT NOT NULL UNIQUE,
+      html_url TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      etag TEXT,
+      last_modified TEXT,
+      next_poll_at TEXT NOT NULL,
+      fail_streak INTEGER NOT NULL DEFAULT 0,
+      last_fetch_at TEXT,
+      last_error TEXT,
+      is_hn INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS entries (
+      id TEXT PRIMARY KEY,
+      feed_id TEXT NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
+      guid TEXT,
+      link TEXT,
+      title TEXT NOT NULL,
+      snippet TEXT,
+      content_html TEXT,
+      thumb_url TEXT,
+      duration_sec INTEGER,
+      published_at TEXT,
+      first_seen_at TEXT NOT NULL,
+      read_at TEXT,
+      starred INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_entries_feed_seen ON entries(feed_id, first_seen_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_entries_starred ON entries(starred, first_seen_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_feeds_next_poll ON feeds(next_poll_at);
+  `);
+  const fts5 = tryEnableFts5(db);
+  if (fts5) {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS entry_fts USING fts5(
+        entry_id UNINDEXED,
+        title,
+        snippet,
+        feed_title,
+        tokenize='porter'
+      );
+    `);
+  }
+  return { fts5 };
+}

@@ -25,6 +25,7 @@ import { MANIFEST, SERVICE_WORKER, iconPng } from "./pwa";
 import { aiSecurityPage } from "./ui/ai-security-page";
 import { dailyBriefingPage } from "./ui/daily-briefing-page";
 import { handleNewsRoutes } from "./feeds/news-routes";
+import { handleRssRoutes } from "./feeds/rss-routes";
 import type { NewsPrefsStore } from "./feeds/news-prefs";
 import type { DashboardLayoutStore } from "./dashboard-layout/storage";
 import { dashboardPage, settingsPage } from "./ui/pages";
@@ -164,7 +165,7 @@ export function createApp(app: App): Server {
           llmEnabled: llmConfigured(app.cfg),
           recallioEnabled: recallioConfigured(app.cfg),
           unread: app.feeds.list({ unreadOnly: true }).length,
-          feedCount: parsed.feeds.length,
+          feedCount: app.feeds.feedCount() || parsed.feeds.length,
           briefing: app.briefing.get() ?? null,
         });
       }
@@ -187,6 +188,7 @@ export function createApp(app: App): Server {
 
       if (await handleAiSecurityRoutes(app.aiSecurity, req, res, path, readBody)) return;
       if (await handleDailyBriefingRoutes(app, app.dailyBriefing, req, res, path)) return;
+      if (await handleRssRoutes(app.feeds, req, res, path, (r) => readBody(r, path === "/api/rss/opml/import" ? 8_000_000 : 200_000))) return;
       if (await handleNewsRoutes(app.feeds, app.newsPrefs, req, res, path, readBody)) return;
 
       for (const panel of panels) {

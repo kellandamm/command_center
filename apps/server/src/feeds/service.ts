@@ -1,6 +1,7 @@
 import { safeFetch } from "../ssrf";
 import type { FeedSpec } from "./parse";
 import { parseFeed } from "./parse";
+import { pollDueFeeds } from "./poller";
 import type { FeedsStore } from "./store";
 
 async function getJson(url: string): Promise<any> {
@@ -44,6 +45,11 @@ export interface FetchResult {
 }
 
 export async function fetchAllFeeds(store: FeedsStore, specs: FeedSpec[], now = new Date()): Promise<FetchResult[]> {
+  if (store.feedCount() > 0) {
+    const polled = await pollDueFeeds(store, now);
+    await store.save();
+    return polled;
+  }
   const out: FetchResult[] = [];
   for (const spec of specs) {
     try {

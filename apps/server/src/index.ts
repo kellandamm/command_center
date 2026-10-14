@@ -26,7 +26,7 @@ async function main() {
   const kv = await FileKV.open(join(cfg.dataDir, "state.json"));
   const settings = new SettingsStore(cfg.dataDir);
   await settings.load();
-  const feeds = await FeedsStore.open(cfg.dataDir);
+  const feeds = await FeedsStore.open(cfg.dataDir, { settingsFeeds: settings.get().feeds });
   const newsPrefs = await NewsPrefsStore.open(cfg.dataDir);
   const briefing = await BriefingService.open(cfg.dataDir, cfg.tz);
   const aiSecurity = await AiSecurityService.open(cfg.dataDir);

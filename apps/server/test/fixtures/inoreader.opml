@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="1.0">
+  <head>
+    <title>Feeds of Kellan Damm from Inoreader [https://www.inoreader.com]</title>
+  </head>
+  <body>
+    <outline text="3d Printing" title="3d Printing">
+      <outline text="Make Anything // 3D Printing Channel" title="Make Anything // 3D Printing Channel" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UCVc6AHfGw9b2zOE_ZGfmsnw" htmlUrl="https://www.youtube.com/channel/UCVc6AHfGw9b2zOE_ZGfmsnw"/>
+      <outline text="3D Printing" title="3D Printing" type="rss" xmlUrl="https://3dprinting.com/feed/" htmlUrl="https://3dprinting.com/"/>
+      <outline text="3D Printing &amp; Imaging DIY Projects for Makers - Make: DIY Projects and Ideas for Makers" title="3D Printing &amp; Imaging DIY Projects for Makers - Make: DIY Projects and Ideas for Makers" type="rss" xmlUrl="http://makezine.com/category/workshop/3d-printing-workshop/feed/" htmlUrl="https://makezine.com/category/digital-fabrication/3d-printing-workshop/"/>
+      <outline text="FAB365 3D Printing" title="FAB365 3D Printing" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UCRDdwl3dcosgjNhJSRIAmMA" htmlUrl="https://www.youtube.com/channel/UCRDdwl3dcosgjNhJSRIAmMA"/>
+      <outline text="MAKE » Category: 3D Printing" title="MAKE » Category: 3D Printing" type="rss" xmlUrl="https://makezine.com/category/workshop/3d-printing-workshop/feed/" htmlUrl="https://makezine.com/"/>
+      <outline text="Functional 3D Printing Reddit on Reddit" title="Functional 3D Printing Reddit on Reddit" type="rss" xmlUrl="https://www.reddit.com/r/functionalprint/.rss" htmlUrl="https://www.reddit.com/r/functionalprint/"/>
+      <outline text="3D Printing Nerd" title="3D Printing Nerd" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UC_7aK9PpYTqt08ERh1MewlQ" htmlUrl="http://www.youtube.com/channel/UC_7aK9PpYTqt08ERh1MewlQ"/>
+    </outline>
+    <outline text="AI - People" title="AI - People">
+      <outline text="Bit Doze Website" title="Bit Doze Website" type="rss" xmlUrl="https://www.bitdoze.com/rss.xml" htmlUrl="https://www.bitdoze.com/"/>
+      <outline text="karpathy" title="karpathy" type="rss" xmlUrl="https://karpathy.bearblog.dev/feed/" htmlUrl="https://karpathy.bearblog.dev/"/>
+      <outline text="One Useful Thing" title="One Useful Thing" type="rss" xmlUrl="https://www.oneusefulthing.org/feed" htmlUrl="https://www.oneusefulthing.org/"/>
+      <outline text="sebastianraschka.com" title="sebastianraschka.com" type="rss" xmlUrl="https://sebastianraschka.com/rss_feed.xml" htmlUrl="https://sebastianraschka.com/"/>
+      <outline text="Simon Willison's Weblog" title="Simon Willison's Weblog" type="rss" xmlUrl="https://simonwillison.net/atom/everything/" htmlUrl="http://simonwillison.net/"/>
+    </outline>
+    <outline text="AI Security" title="AI Security">
+      <outline text="Stories by Avinash Vishwakumar on Medium" title="Stories by Avinash Vishwakumar on Medium" type="rss" xmlUrl="https://medium.com/feed/@essveeavi" htmlUrl="https://medium.com/@essveeavi?source=rss-b1f879b9ed7------2"/>
+      <outline text="Cyber AI Archives - Cyber Security News" title="Cyber AI Archives - Cyber Security News" type="rss" xmlUrl="https://cybersecuritynews.com/category/cyber-ai/feed/" htmlUrl="https://cybersecuritynews.com/category/cyber-ai/"/>
+      <outline text="Angles of Attack: The AI Security Intelligence Brief" title="Angles of Attack: The AI Security Intelligence Brief" type="rss" xmlUrl="https://disesdi.substack.com/feed" htmlUrl="https://disesdi.substack.com/"/>
+      <outline text="Schneier on Security" title="Schneier on Security" type="rss" xmlUrl="https://www.schneier.com/feed/atom" htmlUrl="https://www.schneier.com/"/>
+      <outline text="Ai Security on Medium" title="Ai Security on Medium" type="rss" xmlUrl="https://medium.com/feed/tag/ai-security" htmlUrl="https://medium.com/tag/ai-security/latest?source=rss------ai_security-5"/>
+      <outline text="Ai Agent Security on Medium" title="Ai Agent Security on Medium" type="rss" xmlUrl="https://medium.com/feed/tag/ai-agent-security" htmlUrl="https://medium.com/tag/ai-agent-security/latest?source=rss------ai_agent_security-5"/>
+      <outline text="Stories by Bedrettin Cakmak on Medium" title="Stories by Bedrettin Cakmak on Medium" type="rss" xmlUrl="https://medium.com/feed/@bedrettincakmak8" htmlUrl="https://medium.com/@bedrettincakmak8?source=rss-e5828f5f30fe------2"/>
+      <outline text="Labs – SentinelOne" title="Labs – SentinelOne" type="rss" xmlUrl="https://www.sentinelone.com/labs/feed/" htmlUrl="https://www.sentinelone.com/"/>
+      <outline text="Stories by Vijay Kumar Gupta on Medium" title="Stories by Vijay Kumar Gupta on Medium" type="rss" xmlUrl="https://medium.com/feed/@bevijaygupta" htmlUrl="https://medium.com/@bevijaygupta?source=rss-1056708af987------2"/>
+      <outline text="OWASP Top 10 for LLM &amp; Generative AI Security" title="OWASP Top 10 for LLM &amp; Generative AI Security" type="rss" xmlUrl="https://genai.owasp.org/feed/" htmlUrl="https://genai.owasp.org/"/>
+    </outline>
+    <outline text="AI - Articles" title="AI - Articles">
+      <outline text="Artificial Intelligence News -- ScienceDaily" title="Artificial Intelligence News -- ScienceDaily" type="rss" xmlUrl="https://www.sciencedaily.com/rss/computers_math/artificial_intelligence.xml" htmlUrl="https://www.sciencedaily.com/news/computers_math/artificial_intelligence/"/>
+      <outline text="Towards AI - Medium" title="Towards AI - Medium" type="rss" xmlUrl="https://medium.com/feed/towards-artificial-intelligence" htmlUrl="https://medium.com/towards-artificial-intelligence?source=rss----98111c9905da---4"/>
+      <outline text="The Berkeley Artificial Intelligence Research Blog" title="The Berkeley Artificial Intelligence Research Blog" type="rss" xmlUrl="https://bair.berkeley.edu/blog/feed.xml" htmlUrl="https://bair.berkeley.edu/blog/"/>
+      <outline text="Christopher S. Penn Blog" title="Christopher S. Penn Blog" type="rss" xmlUrl="https://feeds.feedburner.com/ChristopherSPenn" htmlUrl="https://www.christopherspenn.com/"/>
+      <outline text="opensight.ch - Medium" title="opensight.ch - Medium" type="rss" xmlUrl="https://medium.com/feed/opensight-ch" htmlUrl="https://medium.com/opensight-ch?source=rss----d8d441ca6b25---4"/>
+      <outline text="AI Agents - Medium" title="AI Agents - Medium" type="rss" xmlUrl="https://medium.com/feed/ai-agents" htmlUrl="https://medium.com/ai-agents?source=rss----5d9791d88b6e---4"/>
+      <outline text="Stories by Nicolas Rehder on Medium" title="Stories by Nicolas Rehder on Medium" type="rss" xmlUrl="https://medium.com/feed/@nicolas-rehder" htmlUrl="https://medium.com/@nicolas-rehder?source=rss-3613f12c47a6------2"/>
+      <outline text="Stories by Shweta Lodha on Medium" title="Stories by Shweta Lodha on Medium" type="rss" xmlUrl="https://medium.com/feed/@shweta-lodha" htmlUrl="https://medium.com/@shweta-lodha?source=rss-3abee2522963------2"/>
+      <outline text="Stories by Ozgur Guler on Medium" title="Stories by Ozgur Guler on Medium" type="rss" xmlUrl="https://cloudatlas.me/feed?gi=bffaa26a68cf" htmlUrl="https://medium.com/@343544?source=rss-dc13b06bf69f------2"/>
+      <outline text="Machine Learning Mastery" title="Machine Learning Mastery" type="rss" xmlUrl="https://feeds.feedburner.com/MachineLearningMastery" htmlUrl="https://machinelearningmastery.com/"/>
+      <outline text="Data And Beyond - Medium" title="Data And Beyond - Medium" type="rss" xmlUrl="https://medium.com/feed/data-and-beyond" htmlUrl="https://medium.com/data-and-beyond?source=rss----b680b860beb1---4"/>
+      <outline text="AI &amp; Machine Learning" title="AI &amp; Machine Learning" type="rss" xmlUrl="https://cloudblog.withgoogle.com/products/ai-machine-learning/rss/" htmlUrl="https://cloud.google.com/blog/products/ai-machine-learning/"/>
+      <outline text="The Rundown AI" title="The Rundown AI" type="rss" xmlUrl="https://rss.beehiiv.com/feeds/2R3C6Bt5wj.xml" htmlUrl="https://www.therundown.ai/"/>
+      <outline text="KDnuggets" title="KDnuggets" type="rss" xmlUrl="http://feeds.feedburner.com/kdnuggets-data-mining-analytics" htmlUrl="http://www.kdnuggets.com/"/>
+      <outline text="Towards AI" title="Towards AI" type="rss" xmlUrl="https://towardsai.net/feed" htmlUrl="https://towardsai.net/"/>
+      <outline text="GoPenAI" title="GoPenAI" type="rss" xmlUrl="https://blog.gopenai.com/feed" htmlUrl="https://blog.gopenai.com/?source=rss----7adf3c3694ff---4"/>
+      <outline text="The Memo by LifeArchitect.ai" title="The Memo by LifeArchitect.ai" type="rss" xmlUrl="https://lifearchitect.substack.com/feed" htmlUrl="https://lifearchitect.substack.com/"/>
+      <outline text="AI Newsletter" title="AI Newsletter" type="rss" xmlUrl="https://nlpnews.substack.com/feed" htmlUrl="https://nlpnews.substack.com/"/>
+      <outline text="Analytics Vidhya " title="Analytics Vidhya " type="rss" xmlUrl="http://feeds.feedburner.com/AnalyticsVidhya" htmlUrl="http://www.analyticsvidhya.com/blog/"/>
+      <outline text="Generative AI" title="Generative AI" type="rss" xmlUrl="https://generativeai.pub/feed" htmlUrl="https://generativeai.pub?source=rss----440100e76000---4"/>
+      <outline text="TheSequence" title="TheSequence" type="rss" xmlUrl="https://thesequence.substack.com/feed/" htmlUrl="https://thesequence.substack.com/"/>
+      <outline text="Pivot to AI" title="Pivot to AI" type="rss" xmlUrl="https://pivot-to-ai.com/feed/" htmlUrl="https://pivot-to-ai.com/"/>
+      <outline text="AI Fire" title="AI Fire" type="rss" xmlUrl="https://rss.beehiiv.com/feeds/iKiINX6Tol.xml" htmlUrl="https://www.aifire.co/"/>
+      <outline text="Data Science at Microsoft" title="Data Science at Microsoft" type="rss" xmlUrl="https://medium.com/feed/data-science-at-microsoft" htmlUrl="https://medium.com/data-science-at-microsoft?source=rss----a6e43238cdaf---4"/>
+      <outline text="AI Advances" title="AI Advances" type="rss" xmlUrl="https://ai.gopubby.com/feed" htmlUrl="https://ai.gopubby.com/?source=rss----3fe99b2acc4---4"/>
+      <outline text="DZone AI/ML Zone" title="DZone AI/ML Zone" type="rss" xmlUrl="http://feeds.dzone.com/ai" htmlUrl="https://dzone.com/artificial-intelligence-tutorials-tools-news"/>
+      <outline text="AI News &amp; Artificial Intelligence | TechCrunch" title="AI News &amp; Artificial Intelligence | TechCrunch" type="rss" xmlUrl="https://techcrunch.com/category/artificial-intelligence/feed/" htmlUrl="https://techcrunch.com/category/artificial-intelligence/"/>
+      <outline text="Google Research" title="Google Research" type="rss" xmlUrl="https://feedly.com/new-features/feed.xml" htmlUrl="https://feedly.com/new-features"/>
+      <outline text="Artificial Intelligence (AI) | TechCrunch" title="Artificial Intelligence (AI) | TechCrunch" type="rss" xmlUrl="https://techcrunch.com/tag/artificial-intelligence/feed/" htmlUrl="https://techcrunch.com/"/>
+      <outline text="AIGuys" title="AIGuys" type="rss" xmlUrl="https://medium.com/feed/aiguys" htmlUrl="https://medium.com/aiguys?source=rss----decdbc13dde6---4"/>
+      <outline text="Artificial Intelligence in Plain English" title="Artificial Intelligence in Plain English" type="rss" xmlUrl="https://ai.plainenglish.io/feed" htmlUrl="https://ai.plainenglish.io/?source=rss----78d064101951---4"/>
+      <outline text="MarkTechPost" title="MarkTechPost" type="rss" xmlUrl="https://www.marktechpost.com/feed/" htmlUrl="https://www.marktechpost.com/"/>
+      <outline text="Engineering at Meta" title="Engineering at Meta" type="rss" xmlUrl="https://code.facebook.com/posts/rss" htmlUrl="https://code.facebook.com/"/>
+      <outline text="Ahead of AI" title="Ahead of AI" type="rss" xmlUrl="https://magazine.sebastianraschka.com/feed" htmlUrl="https://magazine.sebastianraschka.com/"/>
+      <outline text="Posts on Clemens Siebler's Blog" title="Posts on Clemens Siebler's Blog" type="rss" xmlUrl="https://clemenssiebler.com/posts/index.xml" htmlUrl="https://clemenssiebler.com/posts/"/>
+      <outline text="Stories by M K Pavan Kumar on Medium" title="Stories by M K Pavan Kumar on Medium" type="rss" xmlUrl="https://medium.com/feed/@manthapavankumar11" htmlUrl="https://medium.com/@manthapavankumar11?source=rss-934e21252654------2"/>
+      <outline text="Towards Data Science" title="Towards Data Science" type="rss" xmlUrl="https://medium.com/feed/towards-data-science" htmlUrl="https://medium.com/towards-data-science?source=rss----7f60cf5620c9---4"/>
+      <outline text="AI News" title="AI News" type="rss" xmlUrl="https://www.artificialintelligence-news.com/feed/" htmlUrl="https://www.artificialintelligence-news.com/"/>
+      <outline text="AI" title="AI" type="rss" xmlUrl="https://www.blog.google/technology/ai/rss/" htmlUrl="https://www.blog.google/technology/ai/"/>
+      <outline text="The New Stack" title="The New Stack" type="rss" xmlUrl="http://thenewstack.io/feed/" htmlUrl="https://thenewstack.io/"/>
+      <outline text="AI Parabellum" title="AI Parabellum" type="rss" xmlUrl="https://aiparabellum.com/feed/" htmlUrl="aiparabellum.com"/>
+      <outline text="Data Science in your pocket" title="Data Science in your pocket" type="rss" xmlUrl="https://medium.com/feed/data-science-in-your-pocket" htmlUrl="https://medium.com/data-science-in-your-pocket?source=rss----60130df77e02---4"/>
+      <outline text="Stories by Jiadong Chen on Medium" title="Stories by Jiadong Chen on Medium" type="rss" xmlUrl="https://medium.com/feed/@jiadong-chen" htmlUrl="https://medium.com/@jiadong-chen?source=rss-b5b0f0f690e6------2"/>
+      <outline text="MIT Technology Review" title="MIT Technology Review" type="rss" xmlUrl="https://www.technologyreview.com/feed/" htmlUrl="https://www.technologyreview.com/"/>
+      <outline text="Spotify Engineering" title="Spotify Engineering" type="rss" xmlUrl="http://labs.spotify.com/feed/" htmlUrl="https://labs.spotify.com/"/>
+    </outline>
+    <outline text="ANDROID" title="ANDROID">
+      <outline text="Phandroid" title="Phandroid" type="rss" xmlUrl="https://feeds2.feedburner.com/AndroidPhoneFans" htmlUrl="https://phandroid.com/"/>
+      <outline text="Android Authority" title="Android Authority" type="rss" xmlUrl="https://feeds.feedburner.com/androidauthority" htmlUrl="https://www.androidauthority.com/"/>
+      <outline text="9to5Google" title="9to5Google" type="rss" xmlUrl="http://9to5google.com/feed/" htmlUrl="http://9to5google.com/"/>
+      <outline text="Phandroid" title="Phandroid" type="rss" xmlUrl="http://phandroid.com/feed/" htmlUrl="http://phandroid.com/"/>
+      <outline text="Android Central" title="Android Central" type="rss" xmlUrl="http://www.androidcentral.com/feed" htmlUrl="https://www.androidcentral.com/"/>
+      <outline text="Android Police" title="Android Police" type="rss" xmlUrl="http://www.androidpolice.com/feed/" htmlUrl="http://www.androidpolice.com/"/>
+    </outline>
+    <outline text="Azure" title="Azure">
+      <outline text="Azure Feeds" title="Azure Feeds" type="rss" xmlUrl="https://azurefeeds.com/feed/" htmlUrl="https://azurefeeds.com/"/>
+      <outline text="Microsoft AI Blogs" title="Microsoft AI Blogs" type="rss" xmlUrl="https://www.microsoft.com/en-us/ai/blog/feed/" htmlUrl="https://www.microsoft.com/en-us/ai/blog/"/>
+      <outline text="What's New | Azure AI Foundry Blog" title="What's New | Azure AI Foundry Blog" type="rss" xmlUrl="https://devblogs.microsoft.com/foundry/category/whats-new/feed/" htmlUrl="https://devblogs.microsoft.com/foundry/category/whats-new/"/>
+      <outline text="AI + Machine Learning | Azure Blog | Microsoft Azure" title="AI + Machine Learning | Azure Blog | Microsoft Azure" type="rss" xmlUrl="https://azure.microsoft.com/en-us/blog/category/ai-machine-learning/feed/" htmlUrl="https://azure.microsoft.com/en-us/blog/category/ai-machine-learning/"/>
+      <outline text="Microsoft Azure Blog" title="Microsoft Azure Blog" type="rss" xmlUrl="https://azure.microsoft.com/blog/feed/" htmlUrl="https://azure.microsoft.com/blog"/>
+      <outline text="Chris Pietschmann" title="Chris Pietschmann" type="rss" xmlUrl="https://feeds2.feedburner.com/crpietschmann" htmlUrl="https://pietschsoft.com/"/>
+      <outline text="Code is a highway" title="Code is a highway" type="rss" xmlUrl="https://www.codeisahighway.com/rss/" htmlUrl="https://www.codeisahighway.com/"/>
+      <outline text="Sound Code" title="Sound Code" type="rss" xmlUrl="https://mark-dot-net.blogspot.com/feeds/posts/default" htmlUrl="https://mark-dot-net.blogspot.com/"/>
+      <outline text="CHARBEL NEMNOM @ Hyper-V Virtual Geek" title="CHARBEL NEMNOM @ Hyper-V Virtual Geek" type="rss" xmlUrl="https://charbelnemnom.com/feed/" htmlUrl="https://charbelnemnom.com/"/>
+      <outline text="mountainss SystemCenter Blog" title="mountainss SystemCenter Blog" type="rss" xmlUrl="https://mountainss.wordpress.com/feed/" htmlUrl="https://mountainss.wordpress.com/"/>
+      <outline text="Microsoft Security Blog" title="Microsoft Security Blog" type="rss" xmlUrl="http://blogs.microsoft.com/microsoftsecure/feed/" htmlUrl="https://www.microsoft.com/en-us/security/blog/"/>
+      <outline text="Bill Wilder's Coding Out Loud" title="Bill Wilder's Coding Out Loud" type="rss" xmlUrl="https://feeds2.feedburner.com/codingoutloud" htmlUrl="https://blog.codingoutloud.com"/>
+      <outline text="Quae Nocent Docent" title="Quae Nocent Docent" type="rss" xmlUrl="http://nocentdocent.wordpress.com/feed/" htmlUrl="https://nocentdocent.wordpress.com/"/>
+      <outline text="Microsoft Azure – Whizlabs Blog" title="Microsoft Azure – Whizlabs Blog" type="rss" xmlUrl="https://www.whizlabs.com/blog/microsoft-azure/feed/" htmlUrl="https://www.whizlabs.com/blog"/>
+      <outline text="Azure Aggregator" title="Azure Aggregator" type="rss" xmlUrl="https://azureaggregator.wordpress.com/feed/" htmlUrl="https://azureaggregator.wordpress.com/"/>
+      <outline text="Cloud Perspectives Blog" title="Cloud Perspectives Blog" type="rss" xmlUrl="https://cloudblogs.microsoft.com/feed/" htmlUrl="https://cloudblogs.microsoft.com/"/>
+      <outline text="Thomas Maurer" title="Thomas Maurer" type="rss" xmlUrl="http://www.thomasmaurer.ch/feed/" htmlUrl="https://www.thomasmaurer.ch/"/>
+      <outline text="Azure DevSecOps" title="Azure DevSecOps" type="rss" xmlUrl="https://stephaneeyskens.wordpress.com/feed/" htmlUrl="https://stephaneeyskens.wordpress.com/"/>
+      <outline text="samcogan.com" title="samcogan.com" type="rss" xmlUrl="https://samcogan.com/index.xml" htmlUrl="https://samcogan.com/"/>
+      <outline text="Steve Sanderson's Blog" title="Steve Sanderson's Blog" type="rss" xmlUrl="http://blog.stevensanderson.com/feed/" htmlUrl="https://blog.stevensanderson.com"/>
+      <outline text="christiaanbrinkhoff.com" title="christiaanbrinkhoff.com" type="rss" xmlUrl="https://www.christiaanbrinkhoff.com/feed/" htmlUrl="https://www.christiaanbrinkhoff.com/"/>
+      <outline text="azureweekly.info" title="azureweekly.info" type="rss" xmlUrl="https://azureweekly.info/rss.xml" htmlUrl="https://azureweekly.info/"/>
+      <outline text="AzureDiary" title="AzureDiary" type="rss" xmlUrl="https://medium.com/feed/azurediary" htmlUrl="medium.com"/>
+      <outline text="Azure AI | Microsoft Azure Blog | Microsoft Azure" title="Azure AI | Microsoft Azure Blog | Microsoft Azure" type="rss" xmlUrl="https://azure.microsoft.com/en-us/blog/product/azure-ai/feed/" htmlUrl="https://azure.microsoft.com/en-us/blog/product/azure-ai/"/>
+      <outline text="REBELADMIN" title="REBELADMIN" type="rss" xmlUrl="http://www.rebeladmin.com/feed/" htmlUrl="https://www.rebeladmin.com"/>
+      <outline text="Build5Nines" title="Build5Nines" type="rss" xmlUrl="http://buildazure.com/feed/" htmlUrl="https://build5nines.com"/>
+      <outline text="Microsoft Learn - &quot;azure&quot;" title="Microsoft Learn - &quot;azure&quot;" type="rss" xmlUrl="https://azure.microsoft.com/en-us/documentation/articles/feed/" htmlUrl="http://azure.microsoft.com/en-us/documentation/articles/"/>
+      <outline text="MyKloud" title="MyKloud" type="rss" xmlUrl="https://mykloud.wordpress.com/feed/" htmlUrl="https://mykloud.wordpress.com"/>
+      <outline text="The Developer's Cantina" title="The Developer's Cantina" type="rss" xmlUrl="https://www.developerscantina.com/index.xml" htmlUrl="https://www.developerscantina.com/"/>
+      <outline text="Wim Matthyssen" title="Wim Matthyssen" type="rss" xmlUrl="https://wmatthyssen.com/feed/" htmlUrl="https://wmatthyssen.com/"/>
+      <outline text="Cloud Build" title="Cloud Build" type="rss" xmlUrl="https://cloudbuild.co.uk/feed/" htmlUrl="https://cloudbuild.co.uk/"/>
+      <outline text="Journey Of The Geek" title="Journey Of The Geek" type="rss" xmlUrl="https://journeyofthegeek.com/feed/" htmlUrl="https://journeyofthegeek.com/"/>
+      <outline text="Networking | Microsoft Azure Blog | Microsoft Azure" title="Networking | Microsoft Azure Blog | Microsoft Azure" type="rss" xmlUrl="https://azure.microsoft.com/en-us/blog/topics/networking/feed/" htmlUrl="https://azure.microsoft.com/blog/topics/networking/"/>
+      <outline text="Thomas Thornton Blog" title="Thomas Thornton Blog" type="rss" xmlUrl="https://thomasthornton.cloud/feed/" htmlUrl="https://thomasthornton.cloud/"/>
+      <outline text="Databases | Microsoft Azure Blog | Microsoft Azure" title="Databases | Microsoft Azure Blog | Microsoft Azure" type="rss" xmlUrl="https://azure.microsoft.com/en-us/blog/topics/database/feed/" htmlUrl="https://azure.microsoft.com/blog/topics/database/"/>
+      <outline text="Microsoft Azure Blog" title="Microsoft Azure Blog" type="rss" xmlUrl="https://azure.microsoft.com/en-us/blog/feed/" htmlUrl="http://azure.microsoft.com/blog/"/>
+      <outline text="Microsoft for Developers" title="Microsoft for Developers" type="rss" xmlUrl="https://devblogs.microsoft.com/landingpage/" htmlUrl="https://devblogs.microsoft.com/"/>
+      <outline text="adatum" title="adatum" type="rss" xmlUrl="https://adatum.no/feed" htmlUrl="https://adatum.no/"/>
+      <outline text="Aidan Finn, IT Pro" title="Aidan Finn, IT Pro" type="rss" xmlUrl="http://www.aidanfinn.com/?feed=rss2" htmlUrl="http://www.aidanfinn.com/"/>
+      <outline text="Turbo360" title="Turbo360" type="rss" xmlUrl="https://www.serverless360.com/feed" htmlUrl="https://www.serverless360.com/"/>
+      <outline text="Microsoft Integration &amp; Cloud Architect" title="Microsoft Integration &amp; Cloud Architect" type="rss" xmlUrl="http://microsoftintegration.guru/feed/" htmlUrl="http://microsoftintegration.guru/"/>
+      <outline text="Microsoft Foundry Blog" title="Microsoft Foundry Blog" type="rss" xmlUrl="https://devblogs.microsoft.com/foundry/feed/" htmlUrl="https://devblogs.microsoft.com/foundry/"/>
+      <outline text="Microsoft Foundry Blog articles" title="Microsoft Foundry Blog articles" type="rss" xmlUrl="https://techcommunity.microsoft.com/t5/s/gxcuf89792/rss/board?board.id=azure-ai-foundry-blog" htmlUrl="https://techcommunity.microsoft.com/t5/azure-ai-foundry-blog/bg-p/azure-ai-foundry-blog"/>
+      <outline text="SQL Authority with Pinal Dave" title="SQL Authority with Pinal Dave" type="rss" xmlUrl="http://blog.sqlauthority.com/feed/" htmlUrl="https://blog.sqlauthority.com/"/>
+      <outline text="Azure Architecture Center" title="Azure Architecture Center" type="rss" xmlUrl="https://docs.microsoft.com/en-us/azure/architecture/feed.atom" htmlUrl="https://docs.microsoft.com/en-us/azure/architecture/feed.atom"/>
+      <outline text="Robert Smit MVP Blog" title="Robert Smit MVP Blog" type="rss" xmlUrl="http://robertsmit.wordpress.com/feed/" htmlUrl="https://robertsmit.wordpress.com/"/>
+      <outline text="Pixel Robots." title="Pixel Robots." type="rss" xmlUrl="https://pixelrobots.co.uk/feed/" htmlUrl="https://pixelrobots.co.uk/"/>
+      <outline text="Microsoft Developer Community Blog articles" title="Microsoft Developer Community Blog articles" type="rss" xmlUrl="https://techcommunity.microsoft.com/t5/s/gxcuf89792/rss/board?board.id=AzureDevCommunityBlog" htmlUrl="https://techcommunity.microsoft.com/t5/microsoft-developer-community/bg-p/AzureDevCommunityBlog"/>
+      <outline text="Azure AI Developer Hub Blog" title="Azure AI Developer Hub Blog" type="rss" xmlUrl="https://azureaidevs.github.io/hub/2023-aia/rss.xml" htmlUrl="https://azureaidevs.github.io/hub/2023-aia"/>
+      <outline text="Azure Greg" title="Azure Greg" type="rss" xmlUrl="http://gregorsuttie.com/feed/" htmlUrl="https://gregorsuttie.com/"/>
+      <outline text="Blog on Justin Bird: Data &amp; Analytics Consultant based in South Wales" title="Blog on Justin Bird: Data &amp; Analytics Consultant based in South Wales" type="rss" xmlUrl="https://justinjbird.com/blog/index.xml" htmlUrl="https://justinjbird.com/blog/"/>
+      <outline text="Darryl van der Peijl" title="Darryl van der Peijl" type="rss" xmlUrl="http://www.darrylvanderpeijl.nl/feed/" htmlUrl="http://www.darrylvanderpeijl.nl/"/>
+      <outline text="AI - Azure AI services Blog articles" title="AI - Azure AI services Blog articles" type="rss" xmlUrl="https://techcommunity.microsoft.com/t5/s/gxcuf89792/rss/board?board.id=Azure-AI-Services-blog" htmlUrl="https://techcommunity.microsoft.com/t5/ai-azure-ai-services-blog/bg-p/Azure-AI-Services-blog"/>
+      <outline text="Microsoft Azure Blog" title="Microsoft Azure Blog" type="rss" xmlUrl="http://azure.microsoft.com/blog/feed/" htmlUrl="http://azure.microsoft.com/blog/"/>
+      <outline text="Security | Microsoft Azure Blog | Microsoft Azure" title="Security | Microsoft Azure Blog | Microsoft Azure" type="rss" xmlUrl="https://azure.microsoft.com/en-us/blog/topics/security/feed/" htmlUrl="https://azure.microsoft.com/blog/topics/security/"/>
+      <outline text="Coding Out Loud" title="Coding Out Loud" type="rss" xmlUrl="http://blog.codingoutloud.com/feed/" htmlUrl="https://blog.codingoutloud.com"/>
+      <outline text="wedoAzure" title="wedoAzure" type="rss" xmlUrl="https://wedoazure.ie/feed/" htmlUrl="https://wedoazure.ie/"/>
+      <outline text="Stories by Valentina Alto on Medium" title="Stories by Valentina Alto on Medium" type="rss" xmlUrl="https://medium.com/feed/@valentinaalto" htmlUrl="https://medium.com/@valentinaalto?source=rss-341264d69dd4------2"/>
+      <outline text="Microsoft Copilot Blog" title="Microsoft Copilot Blog" type="rss" xmlUrl="https://www.microsoft.com/en-us/microsoft-copilot/blog/feed/" htmlUrl="https://www.microsoft.com/en-us/microsoft-copilot/blog/"/>
+      <outline text="The Frog Pond of Technology" title="The Frog Pond of Technology" type="rss" xmlUrl="https://briantjackett.com/feed/" htmlUrl="https://briantjackett.com/"/>
+      <outline text="DEV Community: Microsoft Azure" title="DEV Community: Microsoft Azure" type="rss" xmlUrl="https://dev.to/feed/azure" htmlUrl="https://dev.to/azure"/>
+      <outline text="Hi, I'm Den  on Den Delimarsky" title="Hi, I'm Den  on Den Delimarsky" type="rss" xmlUrl="https://den.dev/index.xml" htmlUrl="https://den.dev/"/>
+      <outline text="Semantic Kernel" title="Semantic Kernel" type="rss" xmlUrl="https://devblogs.microsoft.com/semantic-kernel/feed/" htmlUrl="https://devblogs.microsoft.com/semantic-kernel/"/>
+      <outline text="Azure Alan" title="Azure Alan" type="rss" xmlUrl="https://azurealan.ie/feed/" htmlUrl="https://azurealan.ie/"/>
+      <outline text="pamela fox's blog" title="pamela fox's blog" type="rss" xmlUrl="http://blog.pamelafox.org/feeds/posts/default" htmlUrl="http://blog.pamelafox.org/"/>
+      <outline text="Microsoft Security Blog" title="Microsoft Security Blog" type="rss" xmlUrl="http://blogs.microsoft.com/cybertrust/category/cybersecurity/feed/" htmlUrl="https://www.microsoft.com/en-us/security/blog/"/>
+      <outline text="Marc Kean" title="Marc Kean" type="rss" xmlUrl="http://marckean.wordpress.com/feed/" htmlUrl="http://marckean.wordpress.com/"/>
+      <outline text="Franky's Notes" title="Franky's Notes" type="rss" xmlUrl="http://www.frankysnotes.com/feeds/posts/default" htmlUrl="https://www.frankysnotes.com/"/>
+      <outline text="Best practices | Microsoft Azure Blog | Microsoft Azure" title="Best practices | Microsoft Azure Blog | Microsoft Azure" type="rss" xmlUrl="https://azure.microsoft.com/en-us/blog/topics/cloud-strategy/feed/" htmlUrl="https://azure.microsoft.com/blog/topics/cloud-strategy/"/>
+      <outline text="Azure App Service" title="Azure App Service" type="rss" xmlUrl="https://azure.github.io/AppService/feed.xml" htmlUrl="https://azure.github.io/AppService/"/>
+      <outline text="Azure InfoHub RSS - Azure" title="Azure InfoHub RSS - Azure" type="rss" xmlUrl="https://azureinfohub.azurewebsites.net/Feed?serviceTitle=Azure" htmlUrl="https://azureinfohub.azurewebsites.net/feed?serviceTitle=Azure"/>
+      <outline text="Microsoft Azure" title="Microsoft Azure" type="rss" xmlUrl="https://medium.com/feed/microsoftazure" htmlUrl="https://medium.com/microsoftazure?source=rss----8bec1183ada9---4"/>
+      <outline text="Announcements | Microsoft Azure Blog | Microsoft Azure" title="Announcements | Microsoft Azure Blog | Microsoft Azure" type="rss" xmlUrl="http://azure.microsoft.com/blog/topics/announcements/feed/" htmlUrl="https://azure.microsoft.com/blog/topics/announcements/"/>
+      <outline text="Nick’s Blog" title="Nick’s Blog" type="rss" xmlUrl="https://blog.nicholasrogoff.com/feed/" htmlUrl="https://blog.nicholasrogoff.com"/>
+      <outline text="CI/CD - Category | Azure DevOps Blog" title="CI/CD - Category | Azure DevOps Blog" type="rss" xmlUrl="https://devblogs.microsoft.com/devops/category/ci/feed/" htmlUrl="https://devblogs.microsoft.com/devops"/>
+      <outline text="Joonas W's Blog" title="Joonas W's Blog" type="rss" xmlUrl="https://joonasw.net/rss" htmlUrl="https://joonasw.net/"/>
+      <outline text="Cloud Administrator in Azure World" title="Cloud Administrator in Azure World" type="rss" xmlUrl="http://cloudadministrator.wordpress.com/feed/" htmlUrl="https://cloudadministrator.net"/>
+      <outline text="Ciraltos" title="Ciraltos" type="rss" xmlUrl="https://www.ciraltos.com/feed/" htmlUrl="https://www.ciraltos.com/"/>
+    </outline>
+    <outline text="Apple" title="Apple">
+      <outline text="TUAW" title="TUAW" type="rss" xmlUrl="https://www.tuaw.com/rss.xml" htmlUrl="https://www.tuaw.com/"/>
+      <outline text="iOS Apps Reviews - AppleRepo.com" title="iOS Apps Reviews - AppleRepo.com" type="rss" xmlUrl="https://www.applerepo.com/feed/" htmlUrl="https://www.applerepo.com/"/>
+      <outline text="Macworld - News, Tips &amp; Reviews from the Apple Experts" title="Macworld - News, Tips &amp; Reviews from the Apple Experts" type="rss" xmlUrl="https://www.macworld.com/en-us/feed" htmlUrl="https://www.macworld.com/en-us/feed"/>
+      <outline text="Slashdot: Apple" title="Slashdot: Apple" type="rss" xmlUrl="http://rss.slashdot.org/Slashdot/slashdotApple" htmlUrl="http://apple.slashdot.org/"/>
+      <outline text="AppleInsider - Frontpage News" title="AppleInsider - Frontpage News" type="rss" xmlUrl="https://www.appleinsider.com/appleinsider.rss" htmlUrl="https://appleinsider.com/"/>
+    </outline>
+    <outline text="Curated" title="Curated">
+      <outline text="Morning Dew" title="Morning Dew" type="rss" xmlUrl="https://feeds2.feedburner.com/alvinashcraft" htmlUrl="https://www.alvinashcraft.com/"/>
+    </outline>
+    <outline text="Data" title="Data">
+      <outline text="Microsoft Fabric Blog" title="Microsoft Fabric Blog" type="rss" xmlUrl="https://www.microsoft.com/en-us/microsoft-fabric/blog/feed/" htmlUrl="https://www.microsoft.com/en-us/microsoft-fabric/blog/"/>
+      <outline text="Sandeep Pawar | Microsoft Fabric" title="Sandeep Pawar | Microsoft Fabric" type="rss" xmlUrl="https://fabric.guru/rss.xml" htmlUrl="https://fabric.guru/"/>
+      <outline text="Microsoft Fabric on Medium" title="Microsoft Fabric on Medium" type="rss" xmlUrl="https://medium.com/feed/tag/microsoft-fabric" htmlUrl="https://medium.com/tag/microsoft-fabric/latest?source=rss------microsoft_fabric-5"/>
+      <outline text="anderegg.ca" title="anderegg.ca" type="rss" xmlUrl="https://anderegg.ca/feed.xml" htmlUrl="https://anderegg.ca/"/>
+      <outline text="Kevin Cox's Blog" title="Kevin Cox's Blog" type="rss" xmlUrl="https://kevincox.ca/feed.atom" htmlUrl="https://kevincox.ca/"/>
+      <outline text="FourMoo | Microsoft Fabric | Power BI" title="FourMoo | Microsoft Fabric | Power BI" type="rss" xmlUrl="https://www.fourmoo.com/feed/" htmlUrl="https://www.fourmoo.com/"/>
+      <outline text="BI Insight" title="BI Insight" type="rss" xmlUrl="http://biinsight.com/?feed=rss2" htmlUrl="http://biinsight.com/"/>
+      <outline text="justB smart" title="justB smart" type="rss" xmlUrl="https://justb.dk/feed/" htmlUrl="https://justb.dk/"/>
+      <outline text="workingondata" title="workingondata" type="rss" xmlUrl="https://workingondata.wordpress.com/feed/" htmlUrl="https://workingondata.wordpress.com"/>
+      <outline text="K Chant" title="K Chant" type="rss" xmlUrl="https://www.kevinrchant.com/feed/" htmlUrl="https://www.kevinrchant.com"/>
+      <outline text="James Serra's Blog" title="James Serra's Blog" type="rss" xmlUrl="http://feeds.feedburner.com/JamesSerra" htmlUrl="https://www.jamesserra.com"/>
+      <outline text="DataVeld" title="DataVeld" type="rss" xmlUrl="https://dataveld.com/feed/" htmlUrl="https://dataveld.com/"/>
+      <outline text="Microsoft Fabric Blog" title="Microsoft Fabric Blog" type="rss" xmlUrl="https://blog.fabric.microsoft.com/en-us/blog/feed/" htmlUrl="https://blog.fabric.microsoft.com/en-US/blog/"/>
+      <outline text="Data – Marc" title="Data – Marc" type="rss" xmlUrl="https://data-marc.com/feed/" htmlUrl="https://data-marc.com/"/>
+      <outline text="Analytics | Microsoft Azure Blog | Microsoft Azure" title="Analytics | Microsoft Azure Blog | Microsoft Azure" type="rss" xmlUrl="https://azure.microsoft.com/en-us/blog/topics/business-intelligence/feed/" htmlUrl="https://azure.microsoft.com/blog/topics/business-intelligence/"/>
+      <outline text="Gerhard Brueckl on BI &amp; Data" title="Gerhard Brueckl on BI &amp; Data" type="rss" xmlUrl="http://blog.gbrueckl.at/feed/" htmlUrl="https://blog.gbrueckl.at/"/>
+    </outline>
+    <outline text="Developer" title="Developer">
+      <outline text="How-To Geek" title="How-To Geek" type="rss" xmlUrl="https://www.howtogeek.com/feed/" htmlUrl="http://www.howtogeek.com/"/>
+      <outline text="Geeky Gadgets" title="Geeky Gadgets" type="rss" xmlUrl="https://www.geeky-gadgets.com/feed/" htmlUrl="https://www.geeky-gadgets.com/"/>
+      <outline text="The Awesomer" title="The Awesomer" type="rss" xmlUrl="https://theawesomer.com/feed/" htmlUrl="https://theawesomer.com/"/>
+      <outline text="Gadget Flow" title="Gadget Flow" type="rss" xmlUrl="https://thegadgetflow.com/blog/?feed=gfl_google_news" htmlUrl="https://thegadgetflow.com/"/>
+      <outline text="KDnuggets" title="KDnuggets" type="rss" xmlUrl="https://www.kdnuggets.com/feed/" htmlUrl="https://www.kdnuggets.com/"/>
+      <outline text="Pocket-lint" title="Pocket-lint" type="rss" xmlUrl="https://cdn.pocket-lint.com/rss/all.xml" htmlUrl="https://www.pocket-lint.com/"/>
+      <outline text="MakeUseOf" title="MakeUseOf" type="rss" xmlUrl="https://www.makeuseof.com/feed/" htmlUrl="https://www.makeuseof.com"/>
+      <outline text="xda-developers" title="xda-developers" type="rss" xmlUrl="https://feeds.feedburner.com/xda-developers/ShsH" htmlUrl="https://www.xda-developers.com/"/>
+      <outline text="BGR - Industry-Leading Insights In Tech And Entertainment" title="BGR - Industry-Leading Insights In Tech And Entertainment" type="rss" xmlUrl="https://www.bgr.com/category/news/feed/" htmlUrl="https://www.bgr.com/"/>
+    </outline>
+    <outline text="Homelab" title="Homelab">
+      <outline text="IT Homelabs - Medium" title="IT Homelabs - Medium" type="rss" xmlUrl="https://ithomelabs.com/feed" htmlUrl="https://ithomelabs.com/?source=rss----9fee26256d06---4"/>
+      <outline text="ServeTheHome - Server and Workstation Reviews" title="ServeTheHome - Server and Workstation Reviews" type="rss" xmlUrl="https://feeds.feedburner.com/ServeTheHome" htmlUrl="https://www.servethehome.com/"/>
+      <outline text="Virtualization Howto" title="Virtualization Howto" type="rss" xmlUrl="https://www.virtualizationhowto.com/feed/" htmlUrl="https://www.virtualizationhowto.com/"/>
+      <outline text="ServeTheHome - Server and Workstation Reviews" title="ServeTheHome - Server and Workstation Reviews" type="rss" xmlUrl="https://www.servethehome.com/feed/" htmlUrl="https://www.servethehome.com/"/>
+      <outline text="Homelab Launchpad" title="Homelab Launchpad" type="rss" xmlUrl="https://homelablaunchpad.com/rss/" htmlUrl="https://homelablaunchpad.com/"/>
+      <outline text="Homelab on Medium" title="Homelab on Medium" type="rss" xmlUrl="https://medium.com/feed/tag/homelab" htmlUrl="https://medium.com/tag/homelab/latest?source=rss------homelab-5"/>
+      <outline text="Home Network Guy" title="Home Network Guy" type="rss" xmlUrl="https://homenetworkguy.com/index.xml" htmlUrl="https://homenetworkguy.com/"/>
+      <outline text="ktz." title="ktz." type="rss" xmlUrl="https://blog.ktz.me/rss/" htmlUrl="https://blog.ktz.me/"/>
+      <outline text="Raid Owl" title="Raid Owl" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UC9evhW4JB_UdXSLeZGy8lGw" htmlUrl="https://www.youtube.com/channel/UC9evhW4JB_UdXSLeZGy8lGw"/>
+      <outline text="WunderTech" title="WunderTech" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UC1733iBvNpXIscZk4QnfYBw" htmlUrl="https://www.youtube.com/channel/UC1733iBvNpXIscZk4QnfYBw"/>
+      <outline text="LinuxServer.io Blog" title="LinuxServer.io Blog" type="rss" xmlUrl="https://www.linuxserver.io/blog.atom" htmlUrl="https://www.linuxserver.io/blog.atom"/>
+      <outline text="Awesome Self Hosted Newsletter" title="Awesome Self Hosted Newsletter" type="rss" xmlUrl="https://selfhosted.libhunt.com/newsletter/feed" htmlUrl="https://selfhosted.libhunt.com/newsletter/feed"/>
+      <outline text="Jay LaCroix" title="Jay LaCroix" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UCxQKHvKbmSzGMvUrVtJYnUA" htmlUrl="https://www.youtube.com/channel/UCxQKHvKbmSzGMvUrVtJYnUA/videos"/>
+      <outline text="Awesome Open Source" title="Awesome Open Source" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UCwFpzG5MK5Shg_ncAhrgr9g" htmlUrl="https://www.youtube.com/channel/UCwFpzG5MK5Shg_ncAhrgr9g"/>
+      <outline text="Everything Smart Home" title="Everything Smart Home" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UCrVLgIniVg6jW38uVqDRIiQ" htmlUrl="https://www.youtube.com/channel/UCrVLgIniVg6jW38uVqDRIiQ"/>
+      <outline text="Techno Tim" title="Techno Tim" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UCOk-gHyjcWZNj3Br4oxwh0A" htmlUrl="https://www.youtube.com/channel/UCOk-gHyjcWZNj3Br4oxwh0A"/>
+      <outline text="The Digital Life" title="The Digital Life" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UCZNhwA1B5YqiY1nLzmM0ZRg" htmlUrl="https://www.youtube.com/channel/UCZNhwA1B5YqiY1nLzmM0ZRg"/>
+      <outline text="Marius Hosting" title="Marius Hosting" type="rss" xmlUrl="https://mariushosting.com/feed/" htmlUrl="https://mariushosting.com/"/>
+      <outline text="Jeff Geerling" title="Jeff Geerling" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UCR-DXc1voovS8nhAvccRZhg" htmlUrl="https://www.youtube.com/channel/UCR-DXc1voovS8nhAvccRZhg"/>
+      <outline text="Lawrence Systems / PC Pickup" title="Lawrence Systems / PC Pickup" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UCHkYOD-3fZbuGhwsADBd9ZQ" htmlUrl="https://www.youtube.com/channel/UCHkYOD-3fZbuGhwsADBd9ZQ"/>
+      <outline text="selfh.st" title="selfh.st" type="rss" xmlUrl="https://selfh.st/rss/" htmlUrl="https://selfh.st/"/>
+    </outline>
+    <outline text="Techy News" title="Techy News">
+      <outline text="Digital Trends" title="Digital Trends" type="rss" xmlUrl="https://www.digitaltrends.com/feed/" htmlUrl="https://www.digitaltrends.com/"/>
+      <outline text="Feed: All Latest" title="Feed: All Latest" type="rss" xmlUrl="https://feeds.wired.com/wired/index" htmlUrl="https://www.wired.com/latest"/>
+      <outline text="Engadget" title="Engadget" type="rss" xmlUrl="http://www.engadget.com/rss-full.xml" htmlUrl="http://www.engadget.com/"/>
+      <outline text="Ars Technica - All content" title="Ars Technica - All content" type="rss" xmlUrl="http://feeds.arstechnica.com/arstechnica/index/" htmlUrl="https://arstechnica.com"/>
+      <outline text="The Verge" title="The Verge" type="rss" xmlUrl="http://www.theverge.com/rss/full.xml" htmlUrl="http://www.theverge.com/"/>
+      <outline text="BGR - Industry-Leading Insights In Tech And Entertainment" title="BGR - Industry-Leading Insights In Tech And Entertainment" type="rss" xmlUrl="http://www.boygeniusreport.com/feed/" htmlUrl="http://www.boygeniusreport.com"/>
+      <outline text="The Register" title="The Register" type="rss" xmlUrl="http://www.theregister.co.uk/excerpts.rss" htmlUrl="https://www.theregister.com/"/>
+    </outline>
+    <outline text="Productivity" title="Productivity">
+      <outline text="Lifehacker" title="Lifehacker" type="rss" xmlUrl="http://feeds.gawker.com/lifehacker/vip" htmlUrl="http://lifehacker.com/"/>
+      <outline text="The Next Web » LifeHacks" title="The Next Web » LifeHacks" type="rss" xmlUrl="https://feeds.feedburner.com/TheNextWebLifehacks" htmlUrl="https://thenextweb.com/"/>
+      <outline text="Life Optimizer" title="Life Optimizer" type="rss" xmlUrl="https://feeds.feedburner.com/lifeoptimizer" htmlUrl="https://www.lifeoptimizer.org/"/>
+      <outline text="Lifehack" title="Lifehack" type="rss" xmlUrl="https://www.lifehack.org/feed/" htmlUrl="https://www.lifehack.org/"/>
+      <outline text="Forte Labs" title="Forte Labs" type="rss" xmlUrl="https://praxis.fortelabs.co/feed" htmlUrl="https://praxis.fortelabs.co/?source=rss----43a173dea401---4"/>
+    </outline>
+    <outline text="Youtube AI" title="Youtube AI">
+      <outline text="All About AI" title="All About AI" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UCR9j1jqqB5Rse69wjUnbYwA" htmlUrl="https://www.youtube.com/channel/UCR9j1jqqB5Rse69wjUnbYwA"/>
+      <outline text="Microsoft Reactor" title="Microsoft Reactor" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UCkm6luGCS3hD25jcEhvRMIA" htmlUrl="https://www.youtube.com/channel/UCkm6luGCS3hD25jcEhvRMIA"/>
+      <outline text="Unsupervised Learning: Redpoint's AI Podcast" title="Unsupervised Learning: Redpoint's AI Podcast" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UCUl-s_Vp-Kkk_XVyDylNwLA" htmlUrl="https://www.youtube.com/channel/UCUl-s_Vp-Kkk_XVyDylNwLA"/>
+      <outline text="Theo - T3 Tools" title="Theo - T3 Tools" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UCbRP3c757lWg9M-U7TyEkXA" htmlUrl="https://www.youtube.com/channel/UCbRP3c757lWg9M-U7TyEkXA"/>
+      <outline text="Adam Lucek" title="Adam Lucek" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UCy6rH4hKHMLdd5s-FUrto7Q" htmlUrl="https://www.youtube.com/channel/UCy6rH4hKHMLdd5s-FUrto7Q"/>
+      <outline text="James Briggs" title="James Briggs" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UCv83tO5cePwHMt1952IVVHw" htmlUrl="https://www.youtube.com/channel/UCv83tO5cePwHMt1952IVVHw"/>
+      <outline text="Sam Witteveen" title="Sam Witteveen" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UC55ODQSvARtgSyc8ThfiepQ" htmlUrl="https://www.youtube.com/channel/UC55ODQSvARtgSyc8ThfiepQ"/>
+      <outline text="Matthew Berman" title="Matthew Berman" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UCawZsQWqfGSbCI5yjkdVkTA" htmlUrl="https://www.youtube.com/channel/UCawZsQWqfGSbCI5yjkdVkTA"/>
+      <outline text="Shailender Choudhary" title="Shailender Choudhary" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UCkJRkUw2hYSlleTUuHY43lQ" htmlUrl="https://www.youtube.com/channel/UCkJRkUw2hYSlleTUuHY43lQ"/>
+      <outline text="Nate B Jones" title="Nate B Jones" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UC0C-17n9iuUQPylguM1d-lQ" htmlUrl="https://www.youtube.com/channel/UC0C-17n9iuUQPylguM1d-lQ"/>
+      <outline text="AI Engineer" title="AI Engineer" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UCLKPca3kwwd-B59HNr-_lvA" htmlUrl="https://www.youtube.com/channel/UCLKPca3kwwd-B59HNr-_lvA"/>
+      <outline text="Alex The Analyst" title="Alex The Analyst" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UC7cs8q-gJRlGwj4A8OmCmXg" htmlUrl="https://www.youtube.com/channel/UC7cs8q-gJRlGwj4A8OmCmXg"/>
+      <outline text="The Code Wolf" title="The Code Wolf" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UCiNpRUgrAx3tuTOG-VAmbrA" htmlUrl="https://www.youtube.com/channel/UCiNpRUgrAx3tuTOG-VAmbrA"/>
+      <outline text="Ominous Industries" title="Ominous Industries" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UCOCahKBCEUuzDJawM7yN1dg" htmlUrl="https://www.youtube.com/channel/UCOCahKBCEUuzDJawM7yN1dg"/>
+    </outline>
+  </body>
+</opml>
