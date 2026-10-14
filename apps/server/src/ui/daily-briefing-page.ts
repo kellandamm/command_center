@@ -6,38 +6,50 @@ export function dailyBriefingPage(nav?: NavLink[]): string {
     title: "Daily Briefing — Command center",
     active: "/briefing",
     nav,
-    body: `<header class="page-header">
-  <h1>Daily Briefing</h1>
-  <p class="dim">One snapshot per day — news, AI summary, tasks, weather, calendar, and GitHub.</p>
-</header>
-<div class="briefing-toolbar">
-  <label class="dim" style="margin:0;display:flex;align-items:center;gap:.5rem;font-weight:500">
-    <span>Day</span>
-    <select id="db-day" aria-label="Briefing day"></select>
-  </label>
-  <button type="button" id="db-refresh">Refresh briefing</button>
-  <span class="dim" id="db-meta"></span>
-</div>
-<div class="briefing-grid" id="db-sections">
-  <section class="card briefing-section" id="db-news"><div class="section-head"><h2>News feeds</h2><span class="status-pill dim" id="db-news-status">…</span></div><div id="db-news-body"></div></section>
-  <section class="card briefing-section" id="db-ai"><div class="section-head"><h2>AI briefing</h2><span class="status-pill dim" id="db-ai-status">…</span></div><pre class="briefing" id="db-ai-body"></pre></section>
-  <section class="card briefing-section" id="db-todoist"><div class="section-head"><h2>Todoist</h2><span class="status-pill dim" id="db-todoist-status">…</span></div><div id="db-todoist-body"></div></section>
-  <section class="card briefing-section" id="db-weather"><div class="section-head"><h2>Weather</h2><span class="status-pill dim" id="db-weather-status">…</span></div><div id="db-weather-body"></div></section>
-  <section class="card briefing-section" id="db-calendar"><div class="section-head"><h2>Calendar</h2><span class="status-pill dim" id="db-calendar-status">…</span></div><div id="db-calendar-body"></div></section>
-  <section class="card briefing-section" id="db-github"><div class="section-head"><h2>GitHub</h2><span class="status-pill dim" id="db-github-status">…</span></div><div id="db-github-body"></div></section>
-</div>`,
+    body: `<main class="morning-briefing">
+  <header class="morning-masthead">
+    <div class="morning-kicker"><span>YOUR PERSONAL EDITION</span><span>THE DAILY READ</span><span>ONE OPEN TAB</span></div>
+    <h1>The Morning Briefing</h1>
+    <p class="morning-deck">A considered look at your corner of the internet.</p>
+  </header>
+  <div class="morning-edition">
+    <label><span class="visually-hidden">Briefing day</span><select id="db-day" aria-label="Briefing day"></select></label>
+    <span class="morning-edition-label">Morning edition</span>
+    <div class="morning-edition-actions"><span id="db-meta" class="dim"></span><button type="button" id="db-refresh" class="ghost">Refresh edition</button></div>
+  </div>
+  <div id="db-error" class="morning-error" role="status" hidden></div>
+  <div class="briefing-grid" id="db-sections">
+    <section class="briefing-section briefing-news" id="db-news">
+      <div class="section-head"><div><p class="briefing-kicker">FROM YOUR FEEDS</p><h2>Stories worth your time</h2></div><span class="status-pill dim" id="db-news-status">…</span></div>
+      <div id="db-news-body"></div>
+    </section>
+    <section class="briefing-section briefing-ai" id="db-ai">
+      <div class="section-head"><div><p class="briefing-kicker">THE EDITOR'S NOTE</p><h2>What matters today</h2></div><span class="status-pill dim" id="db-ai-status">…</span></div>
+      <pre class="briefing" id="db-ai-body"></pre>
+    </section>
+    <aside class="briefing-rail" aria-label="Your day">
+      <section class="briefing-section briefing-rail-card" id="db-calendar"><div class="section-head"><h2>Your day</h2><span class="status-pill dim" id="db-calendar-status">…</span></div><div id="db-calendar-body"></div></section>
+      <section class="briefing-section briefing-rail-card" id="db-weather"><div class="section-head"><h2>The almanac</h2><span class="status-pill dim" id="db-weather-status">…</span></div><div id="db-weather-body"></div></section>
+      <section class="briefing-section briefing-rail-card" id="db-todoist"><div class="section-head"><h2>On your list</h2><span class="status-pill dim" id="db-todoist-status">…</span></div><div id="db-todoist-body"></div></section>
+    </aside>
+    <section class="briefing-section briefing-github" id="db-github"><div class="section-head"><div><p class="briefing-kicker">FROM THE WORKBENCH</p><h2>GitHub dispatches</h2></div><span class="status-pill dim" id="db-github-status">…</span></div><div id="db-github-body"></div></section>
+  </div>
+</main>`,
     script: dailyBriefingScript(),
   });
 }
 
 function dailyBriefingScript(): string {
   return `
-var dbCurrentDay=null;
 function pill(el,status,label){
   el.textContent=label||status.replace("_"," ");
   el.className="status-pill "+(status==="ok"?"ok":status==="error"?"bad":"dim");
 }
-function setMsg(id,msg){document.getElementById(id).innerHTML='<p class="dim">'+esc(msg)+'</p>'}
+function briefingError(message){
+  var el=document.getElementById("db-error");
+  el.textContent=message;
+  el.hidden=!message;
+}
 function fmtWhen(iso){
   if(!iso)return "";
   try{return new Date(iso).toLocaleString()}catch(e){return iso}
@@ -52,10 +64,11 @@ function renderNews(s){
   if(s.status==="not_configured"||s.status==="error"){body.innerHTML='<p class="bad">'+esc(s.message||"Unavailable")+'</p>';return}
   var items=(s.data&&s.data.items)||[];
   if(!items.length){body.innerHTML='<p class="dim">'+esc(s.message||"No items.")+'</p>';return}
-  body.innerHTML=items.map(function(it){
-    return '<div class="feed-item"><strong>'+(it.link?'<a href="'+esc(it.link)+'" target="_blank" rel="noopener">'+esc(it.title)+'</a>':esc(it.title))+'</strong>'
-      +(it.summary?'<p class="dim" style="margin:.25em 0 0">'+esc(it.summary.slice(0,200))+'</p>':'')+'</div>';
-  }).join("");
+  var stories=items.slice(0,8);
+  body.innerHTML=stories.map(function(it,index){
+    return '<article class="briefing-story'+(index===0?" featured":"")+'"><h3>'+(it.link?'<a href="'+esc(it.link)+'" target="_blank" rel="noopener">'+esc(it.title)+'</a>':esc(it.title))+'</h3>'
+      +(it.summary?'<p>'+esc(it.summary.slice(0,index===0?420:240))+(it.summary.length>(index===0?420:240)?"…":"")+'</p>':'')+'</article>';
+  }).join("")+(items.length>stories.length?'<p><a href="/news">Read all stories in News →</a></p>':"");
 }
 function renderAi(s){
   pill(document.getElementById("db-ai-status"),s.status);
@@ -83,11 +96,11 @@ function renderTodoist(s){
 function renderWeather(s){
   pill(document.getElementById("db-weather-status"),s.status);
   var body=document.getElementById("db-weather-body");
-  if(s.status==="error"){body.innerHTML='<p class="bad">'+esc(s.message||"Error")+'</p>';return}
+  if(s.status==="error"||s.status==="not_configured"){body.innerHTML='<p class="dim">'+esc(s.message||"Unavailable")+'</p>';return}
   var w=s.data&&s.data.weather;
-  if(!w){body.innerHTML='<p class="dim">No data.</p>';return}
-  body.innerHTML='<p style="font-size:1.25rem;font-weight:600;margin:0">'+esc(w.label)+'</p>'
-    +'<p class="dim" style="margin:.35em 0 0">Now '+esc(String(w.current.temperatureC))+'°C · High '+esc(String(w.today.highC))+'° / Low '+esc(String(w.today.lowC))+'°</p>';
+  if(!w){body.innerHTML='<p class="dim">'+esc(s.message||"No weather data.")+'</p>';return}
+  body.innerHTML='<p>'+esc(w.label)+' · '+esc(String(w.current.temperatureC))+'°C</p>'
+    +'<p class="dim">High '+esc(String(w.today.highC))+'° / Low '+esc(String(w.today.lowC))+'°</p>';
 }
 function renderCalendar(s){
   pill(document.getElementById("db-calendar-status"),s.status);
@@ -95,8 +108,8 @@ function renderCalendar(s){
   if(s.status==="not_configured"){body.innerHTML='<p class="dim">'+esc(s.message||"Not configured.")+'</p>';return}
   var events=(s.data&&s.data.events)||[];
   if(!events.length){body.innerHTML='<p class="dim">'+esc(s.message||"No events.")+'</p>';return}
-  body.innerHTML='<ul style="margin:0;padding-left:1.2rem">'+events.map(function(ev){
-    return '<li><strong>'+esc(ev.summary)+'</strong> · '+esc(fmtEventWhen(ev))+'</li>';
+  body.innerHTML='<ul>'+events.slice(0,5).map(function(ev){
+    return '<li><strong>'+esc(ev.summary)+'</strong><br><span class="dim">'+esc(fmtEventWhen(ev))+'</span></li>';
   }).join("")+'</ul>';
 }
 function renderGithub(s){
@@ -118,6 +131,7 @@ function renderGithub(s){
 }
 function renderBriefing(b){
   var meta=document.getElementById("db-meta");
+  briefingError("");
   if(!b){meta.textContent="No briefing stored for this day yet — use Refresh briefing.";renderNews({status:"empty",message:"Generate a briefing to load feed highlights."});
     renderAi({status:"not_configured",message:"Generate a briefing to build the AI summary."});
     renderTodoist({status:"not_configured",message:"Generate a briefing to load tasks."});
@@ -137,11 +151,14 @@ function renderBriefing(b){
 function loadDayOptions(days,selected){
   var sel=document.getElementById("db-day");
   var opts=days.length?days:[selected];
-  sel.innerHTML=opts.map(function(d){return '<option value="'+esc(d)+'"'+(d===selected?" selected":"")+'>'+esc(d)+'</option>'}).join("");
+  sel.innerHTML=opts.map(function(d){
+    var label=new Date(d+"T12:00:00").toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric",year:"numeric"});
+    return '<option value="'+esc(d)+'"'+(d===selected?" selected":"")+'>'+esc(label)+'</option>';
+  }).join("");
 }
 function loadBriefing(day){
-  dbCurrentDay=day;
-  return api("/api/daily-briefing?day="+encodeURIComponent(day)).then(function(r){renderBriefing(r.briefing)})
+  document.getElementById("db-meta").textContent="";
+  return api("/api/daily-briefing?day="+encodeURIComponent(day)).then(function(r){renderBriefing(r.briefing)}).catch(function(err){briefingError(err.message||"Could not load this edition.")})
 }
 function initDays(){
   return api("/api/daily-briefing/days").then(function(r){
@@ -149,7 +166,7 @@ function initDays(){
     var today=days[0]||new Date().toISOString().slice(0,10);
     loadDayOptions(days,today);
     return loadBriefing(document.getElementById("db-day").value||today);
-  });
+  }).catch(function(err){briefingError(err.message||"Could not load briefing dates.")});
 }
 document.getElementById("db-day").onchange=function(){loadBriefing(this.value)};
 var refreshBtn=document.getElementById("db-refresh");
@@ -160,7 +177,7 @@ refreshBtn.onclick=function(){
       loadDayOptions(d.days||[],r.briefing.day);
       renderBriefing(r.briefing);
     });
-  }).finally(function(){refreshBtn.disabled=false});
+  }).catch(function(err){briefingError(err.message||"Could not refresh the briefing.")}).finally(function(){refreshBtn.disabled=false});
 };
 initDays();
 `;
