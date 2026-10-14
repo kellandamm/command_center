@@ -6,7 +6,7 @@
     "build": "pnpm --filter @homepage/extension build",
     "dev": "pnpm --filter @homepage/extension dev",
     "typecheck": "pnpm -r typecheck",
-    "test": "bun test harness/",
+    "test": "pnpm --filter @homepage/server test",
     "agent:run": "bun harness/run-agent.ts",
     "agent:verify": "bun harness/verify-homepage.ts",
     "agent:resume-test": "bun harness/test-resume.ts crash && bun harness/test-resume.ts resume",

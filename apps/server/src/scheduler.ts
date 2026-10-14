@@ -1,46 +1,68 @@
-import type { KVStore } from "@homepage/agent-core";
-import type { BuildManager } from "./build";
+import type { BriefingService } from "./briefing/service";
+import { llmConfig, type Config } from "./config";
+import { parseFeedList } from "./feeds/parse";
+import { fetchAllFeeds } from "./feeds/service";
+import type { FeedsStore } from "./feeds/store";
 import type { SettingsStore } from "./settings";
-import type { EditionStore } from "./store";
 import { dayKey } from "./store";
 
-/** Offset (ms) of `tz` from UTC at the given instant. */
+export interface KVLike {
+  get<T>(key: string): Promise<T | undefined>;
+  set(key: string, value: unknown): Promise<void>;
+}
+
+export interface SchedState {
+  lastFeedFetchAt?: string;
+  slot?: string;
+  attempts?: number;
+  lastAt?: string;
+  lastStatus?: "ok" | "failed";
+}
+
+const KEY = "scheduler";
+export const RETRY_AFTER_MS = 30 * 60_000;
+
 export function tzOffsetMs(at: Date, tz: string): number {
   const p = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", {
-      timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit",
-      hour: "2-digit", minute: "2-digit", second: "2-digit",
-    }).formatToParts(at).map((x) => [x.type, x.value]),
+      timeZone: tz,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    })
+      .formatToParts(at)
+      .map((x) => [x.type, x.value]),
   );
   const asUtc = Date.UTC(+p.year!, +p.month! - 1, +p.day!, +p.hour!, +p.minute!, +p.second!);
   return asUtc - Math.floor(at.getTime() / 1000) * 1000;
 }
 
-/** The instant at which the wall clock in `tz` reads `day` (YYYY-MM-DD) `hhmm` (HH:MM). */
 export function slotInstant(day: string, hhmm: string, tz: string): Date {
   const [y, m, d] = day.split("-").map(Number);
   const [hh, mm] = hhmm.split(":").map(Number);
   const guess = Date.UTC(y!, m! - 1, d!, hh, mm);
   let t = guess - tzOffsetMs(new Date(guess), tz);
-  t = guess - tzOffsetMs(new Date(t), tz); // second pass settles DST edges
+  t = guess - tzOffsetMs(new Date(t), tz);
   return new Date(t);
 }
 
-export interface SchedState {
-  slot?: string; // "YYYY-MM-DD HH:MM" of the slot last attempted
-  attempts?: number;
-  lastAt?: string; // ISO time of last attempt
-  lastStatus?: "ok" | "failed" | "cancelled" | "capped";
+export function dueBriefingSlot(state: SchedState, briefingTime: string, now: Date, tz: string): string | null {
+  const day = dayKey(now, tz);
+  const at = slotInstant(day, briefingTime, tz);
+  if (at > now) return null;
+  const key = `${day} ${briefingTime}`;
+  if (state.slot !== key) return key;
+  if (state.lastStatus === "failed" && (state.attempts ?? 0) < 2 && state.lastAt && now.getTime() - new Date(state.lastAt).getTime() >= RETRY_AFTER_MS) {
+    return key;
+  }
+  return null;
 }
 
-export const RETRY_AFTER_MS = 30 * 60_000;
-
-/**
- * Which slot, if any, should run right now.
- * - Only today's most recent past slot counts: a laptop-style catch-up after a restart,
- *   but never a pile-up of yesterday's runs.
- * - A failed slot is retried once, 30 minutes later; after that it waits for the next slot.
- */
+/** Kept for tests that still import dueSlot from the old homepage scheduler API. */
 export function dueSlot(state: SchedState, times: string[], now: Date, tz: string): string | null {
   const day = dayKey(now, tz);
   const past = times
@@ -57,16 +79,21 @@ export function dueSlot(state: SchedState, times: string[], now: Date, tz: strin
   return null;
 }
 
-const KEY = "scheduler";
-
 export class Scheduler {
   private timer: NodeJS.Timeout | null = null;
   private ticking = false;
   constructor(
-    private d: { manager: BuildManager; settings: SettingsStore; kv: KVStore; editions: EditionStore; tz: string; now?: () => Date },
+    private d: {
+      cfg: Config;
+      settings: SettingsStore;
+      kv: KVLike;
+      feeds: FeedsStore;
+      briefing: BriefingService;
+      now?: () => Date;
+    },
   ) {}
 
-  start(intervalMs = 30_000) {
+  start(intervalMs = 60_000) {
     this.timer = setInterval(() => void this.tick(), intervalMs);
     void this.tick();
   }
@@ -75,32 +102,43 @@ export class Scheduler {
     this.timer = null;
   }
 
-  /** Returns the slot it started a build for, if any. */
-  async tick(): Promise<string | null> {
-    if (this.ticking) return null;
+  async tick(): Promise<void> {
+    if (this.ticking) return;
     this.ticking = true;
     try {
-      const s = this.d.settings.get();
-      if (!s.scheduleEnabled || !s.times.length || this.d.manager.running) return null;
-      // Never spend money unattended until a human has seen one build succeed.
-      if (!(await this.d.editions.latest())) return null;
       const now = (this.d.now ?? (() => new Date()))();
-      const state = (await this.d.kv.get<SchedState>(KEY)) ?? {};
-      const slot = dueSlot(state, s.times, now, this.d.tz);
-      if (!slot) return null;
-      const started = await this.d.manager.start("schedule");
-      const attempts = state.slot === slot ? (state.attempts ?? 0) + 1 : 1;
-      if (!started.ok) {
-        // Caps and missing config are not retried within the slot.
-        await this.d.kv.set(KEY, { slot, attempts: 2, lastAt: now.toISOString(), lastStatus: "capped" } satisfies SchedState);
-        return null;
+      const s = this.d.settings.get();
+      let state = (await this.d.kv.get<SchedState>(KEY)) ?? {};
+
+      const fetchDue =
+        !state.lastFeedFetchAt || now.getTime() - new Date(state.lastFeedFetchAt).getTime() >= s.fetchIntervalMinutes * 60_000;
+      if (fetchDue) {
+        const parsed = parseFeedList(s.feeds);
+        await fetchAllFeeds(this.d.feeds, parsed.feeds, now);
+        state = { ...state, lastFeedFetchAt: now.toISOString() };
+        await this.d.kv.set(KEY, state);
       }
-      await this.d.kv.set(KEY, { slot, attempts, lastAt: now.toISOString(), lastStatus: undefined } satisfies SchedState);
-      void this.d.manager.idle().then(async () => {
-        const last = this.d.manager.status().last;
-        await this.d.kv.set(KEY, { slot, attempts, lastAt: new Date().toISOString(), lastStatus: last?.status } satisfies SchedState);
-      });
-      return slot;
+
+      const slot = dueBriefingSlot(state, s.briefingTime, now, this.d.cfg.tz);
+      if (slot && llmConfig(this.d.cfg)) {
+        const since = new Date(now.getTime() - 24 * 60 * 60_000).toISOString();
+        const rec = await this.d.briefing.generate({
+          llm: llmConfig(this.d.cfg),
+          feeds: this.d.feeds,
+          sinceIso: since,
+          trigger: "schedule",
+          now,
+        });
+        const attempts = state.slot === slot ? (state.attempts ?? 0) + 1 : 1;
+        state = {
+          ...state,
+          slot,
+          attempts,
+          lastAt: now.toISOString(),
+          lastStatus: rec.error ? "failed" : "ok",
+        };
+        await this.d.kv.set(KEY, state);
+      }
     } finally {
       this.ticking = false;
     }

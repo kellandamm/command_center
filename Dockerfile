@@ -1,52 +1,36 @@
 # syntax=docker/dockerfile:1.7
-# AI Homepage — self-hosted server + browser-extension build, in one image.
-#   docker build -t ai-homepage .
+# Personal command center dashboard — single Node container on :8080.
+#   docker build -t command-center .
 # See SELFHOST.md for configuration.
 
-# ---------------------------------------------------------------- build
 FROM node:24-bookworm-slim AS build
 RUN npm install -g pnpm@10.11.1
 WORKDIR /src
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-COPY packages/agent-core/package.json packages/agent-core/
 COPY apps/server/package.json apps/server/
+COPY packages/agent-core/package.json packages/agent-core/
 COPY apps/extension/package.json apps/extension/
 COPY harness/package.json harness/
-# The extension's postinstall runs `wxt prepare`, which needs its config, so install after copying everything.
-COPY . .
-RUN pnpm install --frozen-lockfile
+COPY apps/server ./apps/server
+RUN pnpm install --frozen-lockfile --filter @homepage/server...
 RUN pnpm --filter @homepage/server typecheck \
  && pnpm --filter @homepage/server test \
- && pnpm --filter @homepage/server build \
- && pnpm --filter @homepage/extension zip
+ && pnpm --filter @homepage/server build
 
-# ---------------------------------------------------------------- runtime
 FROM node:24-bookworm-slim AS runtime
 ENV NODE_ENV=production \
-    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     DATA_DIR=/data \
-    PUBLIC_DIR=/app/public \
     PORT=8080
 WORKDIR /app
-
-# Runtime deps that cannot be bundled (native binary / resolved at runtime), then Chromium + its OS libraries.
-COPY --from=build /src/apps/server/dist/runtime-package.json ./package.json
-RUN npm install --omit=dev --no-audit --no-fund \
- && npx --no-install playwright-core install --with-deps chromium \
- && rm -rf /var/lib/apt/lists/* /root/.npm
-
 COPY --from=build /src/apps/server/dist/server.mjs ./server.mjs
 COPY --from=build /src/apps/server/dist/server.mjs.map ./server.mjs.map
-COPY --from=build /src/apps/extension/.output/*-chrome.zip /tmp/extension.zip
-RUN mkdir -p /app/public /data \
- && mv /tmp/extension.zip /app/public/extension.zip \
- && groupadd --gid 10001 app && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin app \
- && chown -R app:app /data
+RUN groupadd --gid 10001 app && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin app \
+ && mkdir -p /data && chown -R app:app /data
 
 ARG APP_VERSION=dev
 ENV APP_VERSION=$APP_VERSION
-LABEL org.opencontainers.image.title="ai-homepage" \
-      org.opencontainers.image.description="Self-hosted AI-built personal homepage (fork of ThariqS/ai-newtab)" \
+LABEL org.opencontainers.image.title="command-center" \
+      org.opencontainers.image.description="Self-hosted personal command center dashboard" \
       org.opencontainers.image.source="https://github.com/OWNER/REPO"
 
 USER app

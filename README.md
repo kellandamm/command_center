@@ -161,6 +161,8 @@ MIT
 
 ---
 
-## Self-hosted server (this fork)
+## Self-hosted command center (this fork)
 
-This fork also ships a Docker image that builds the homepage on a schedule from RSS/HN/GitHub/web sources, with spend caps, an edition archive and a phone-installable PWA. See [SELFHOST.md](SELFHOST.md).
+`apps/server` is a **personal command center** dashboard in one Docker container (port 8080, data on a volume). It serves pluggable panels—today **news feeds** (RSS/Atom, stored locally with unread state) and an optional **AI briefing** over OpenAI-compatible chat completions (`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`). Cloudflare Access JWT auth and an `ADMIN_TOKEN` fallback match the previous server.
+
+**Add a panel:** create `apps/server/src/panels/<name>.ts` exporting a `PanelModule`, register it in `panels/registry.ts`, and wire any dashboard script from `ui/pages.ts`. Details in [SELFHOST.md](SELFHOST.md).

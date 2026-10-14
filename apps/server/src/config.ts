@@ -1,28 +1,28 @@
 /**
- * Everything the server reads from its environment, in one place. Secrets
- * (the Anthropic key, the admin token) are only ever read from here: they are
- * never written to the data directory, returned by the API or shown in the UI.
+ * Environment configuration. Secrets (LLM key, admin token) are only read here —
+ * never written to disk, returned by the API, or shown in the UI.
  */
 export interface Config {
   port: number;
   host: string;
   dataDir: string;
-  /** IANA zone the schedule, the daily spend window and the model's "time of day" use. */
+  /** IANA zone for schedules and briefing day boundaries. */
   tz: string;
-  anthropicApiKey: string | null;
+  llmBaseUrl: string | null;
+  llmApiKey: string | null;
+  llmModel: string | null;
   githubToken: string | null;
-  /** Cloudflare Access: when both are set, every request must carry a valid Access JWT. */
   cfTeamDomain: string | null;
   cfAud: string | null;
-  /** Fallback auth for setups without Access: `Authorization: Bearer <token>` or `?token=` once. */
   adminToken: string | null;
-  /** Explicit opt-in to serve without any auth (only sane on 127.0.0.1). */
   allowInsecureNoAuth: boolean;
-  /** Optional URL that receives a JSON POST when a build fails or a spend cap stops one. */
-  notifyWebhook: string | null;
-  /** Directory holding the prebuilt `extension.zip`, if this image includes one. */
-  publicDir: string | null;
   version: string;
+}
+
+export interface LlmConfig {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
 }
 
 const truthy = (v: string | undefined) => v === "1" || v?.toLowerCase() === "true";
@@ -49,19 +49,27 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     host: blank(env.HOST) ?? "0.0.0.0",
     dataDir: blank(env.DATA_DIR) ?? "/data",
     tz,
-    anthropicApiKey: blank(env.ANTHROPIC_API_KEY),
+    llmBaseUrl: blank(env.LLM_BASE_URL),
+    llmApiKey: blank(env.LLM_API_KEY),
+    llmModel: blank(env.LLM_MODEL),
     githubToken: blank(env.GITHUB_TOKEN),
     cfTeamDomain,
     cfAud,
     adminToken,
     allowInsecureNoAuth: truthy(env.ALLOW_INSECURE_NO_AUTH),
-    notifyWebhook: blank(env.NOTIFY_WEBHOOK_URL),
-    publicDir: blank(env.PUBLIC_DIR),
     version: blank(env.APP_VERSION) ?? "dev",
   };
 }
 
-/** Refuse to start an internet-facing server with no authentication, unless explicitly told to. */
+export function llmConfigured(cfg: Config): boolean {
+  return Boolean(cfg.llmBaseUrl && cfg.llmApiKey && cfg.llmModel);
+}
+
+export function llmConfig(cfg: Config): LlmConfig | null {
+  if (!llmConfigured(cfg)) return null;
+  return { baseUrl: cfg.llmBaseUrl!.replace(/\/+$/, ""), apiKey: cfg.llmApiKey!, model: cfg.llmModel! };
+}
+
 export function assertAuthConfigured(cfg: Config): void {
   if (cfg.cfTeamDomain || cfg.adminToken || cfg.allowInsecureNoAuth) return;
   throw new Error(
