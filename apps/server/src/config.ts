@@ -12,6 +12,7 @@ export interface Config {
   llmApiKey: string | null;
   llmModel: string | null;
   githubToken: string | null;
+  todoistApiToken: string | null;
   cfTeamDomain: string | null;
   cfAud: string | null;
   adminToken: string | null;
@@ -53,6 +54,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     llmApiKey: blank(env.LLM_API_KEY),
     llmModel: blank(env.LLM_MODEL),
     githubToken: blank(env.GITHUB_TOKEN),
+    todoistApiToken: blank(env.TODOIST_API_TOKEN),
     cfTeamDomain,
     cfAud,
     adminToken,
@@ -63,6 +65,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
 export function llmConfigured(cfg: Config): boolean {
   return Boolean(cfg.llmBaseUrl && cfg.llmApiKey && cfg.llmModel);
+}
+
+export function todoistConfigured(cfg: Config): boolean {
+  return Boolean(cfg.todoistApiToken);
 }
 
 export function llmConfig(cfg: Config): LlmConfig | null {

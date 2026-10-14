@@ -17,6 +17,8 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:.9rem;min-height:9em
 .dock a{color:var(--fg);text-decoration:none;padding:10px 14px;border-radius:999px;min-height:44px;display:inline-flex;align-items:center;font-size:.95rem}
 .dock a.on{background:var(--accent);color:#1b1305}
 .feed-item{border-top:1px solid var(--line);padding:12px 0}.feed-item:first-child{border-top:0}
+.todoist-list{list-style:none;margin:0;padding:0}.todoist-item{border-top:1px solid var(--line);padding:10px 0}.todoist-item:first-child{border-top:0}
+.todoist-item input[type=checkbox]{width:auto;margin-top:4px;min-height:auto}
 pre.briefing{white-space:pre-wrap;font:inherit;background:var(--bg);padding:12px;border-radius:10px;border:1px solid var(--line);max-height:420px;overflow:auto}
 @media(max-width:430px){.dock a{padding:10px 10px;font-size:.85rem}}
 `;
