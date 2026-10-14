@@ -23,6 +23,8 @@ export interface Config {
   cfTeamDomain: string | null;
   cfAud: string | null;
   adminToken: string | null;
+  /** Publish-only token for POST /api/ai-security/roundups (optional). */
+  aiSecurityToken: string | null;
   allowInsecureNoAuth: boolean;
   /** Unix socket path for read-only Docker Engine API; null disables container list. */
   dockerSocket: string | null;
@@ -80,6 +82,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   const adminToken = blank(env.ADMIN_TOKEN);
   if (adminToken && adminToken.length < 24) throw new Error("ADMIN_TOKEN must be at least 24 characters.");
+  const aiSecurityToken = blank(env.AI_SECURITY_TOKEN);
+  if (aiSecurityToken && aiSecurityToken.length < 24) {
+    throw new Error("AI_SECURITY_TOKEN must be at least 24 characters.");
+  }
   return {
     port,
     host: blank(env.HOST) ?? "0.0.0.0",
@@ -97,6 +103,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     cfTeamDomain,
     cfAud,
     adminToken,
+    aiSecurityToken,
     allowInsecureNoAuth: truthy(env.ALLOW_INSECURE_NO_AUTH),
     dockerSocket: blank(env.DOCKER_SOCKET),
     version: blank(env.APP_VERSION) ?? "dev",

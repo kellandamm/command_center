@@ -100,6 +100,7 @@ and accepts JSON either as an array of hits or as `{ results | items | memories 
 - `briefing.json` — latest briefing and short history
 - `state.json` — scheduler timestamps
 - `notes.md` — dashboard **Notes** panel (plain markdown)
+- `ai-security/` — weekly AI Security roundups (`YYYY-MM-DD.json`, keyed by `weekOf`)
 
 Back up the volume to keep feeds, read state, and briefings.
 

@@ -102,6 +102,7 @@ pre.briefing{
 
 const NAV = [
   ["/", "Dashboard"],
+  ["/ai-security", "AI Security"],
   ["/settings", "Settings"],
 ] as const;
 

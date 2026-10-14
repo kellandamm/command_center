@@ -1,9 +1,11 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { BriefingService } from "./briefing/service";
+import { handleAiSecurityRoutes } from "./ai-security/routes";
+import type { AiSecurityService } from "./ai-security/service";
 import { llmConfigured, type Config } from "./config";
 import { recallioConfigured } from "./recallio/client";
 import type { Authenticator } from "./auth";
-import { csrfOk } from "./auth";
+import { csrfOk, tokenEquals } from "./auth";
 import type { FeedsStore } from "./feeds/store";
 import type { NotesStore } from "./notes/store";
 import { parseFeedList } from "./feeds/parse";
@@ -12,6 +14,7 @@ import type { PanelContext } from "./panels/types";
 import type { SettingsStore } from "./settings";
 import { ValidationError } from "./settings";
 import { MANIFEST, SERVICE_WORKER, iconPng } from "./pwa";
+import { aiSecurityPage } from "./ui/ai-security-page";
 import { dashboardPage, settingsPage } from "./ui/pages";
 
 export interface App {
@@ -20,6 +23,7 @@ export interface App {
   settings: SettingsStore;
   feeds: FeedsStore;
   briefing: BriefingService;
+  aiSecurity: AiSecurityService;
   notes: NotesStore;
 }
 
@@ -55,6 +59,18 @@ async function readBody(req: IncomingMessage, limit = 200_000): Promise<unknown>
 const icons = new Map<string, Buffer>();
 const icon = (name: string, size: number, maskable = false) => icons.get(name) ?? (icons.set(name, iconPng(size, maskable)), icons.get(name)!);
 
+function bearerToken(req: IncomingMessage): string | undefined {
+  return req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+}
+
+/** POST /api/ai-security/roundups may use AI_SECURITY_TOKEN instead of dashboard session auth. */
+export function aiSecurityPublishAuthorized(cfg: Config, req: IncomingMessage, path: string, method: string): boolean {
+  if (method !== "POST" || path !== "/api/ai-security/roundups") return false;
+  const token = bearerToken(req);
+  if (!token || !cfg.aiSecurityToken) return false;
+  return tokenEquals(token, cfg.aiSecurityToken);
+}
+
 export function createApp(app: App): Server {
   const ctx = (): PanelContext => ({
     cfg: app.cfg,
@@ -68,14 +84,16 @@ export function createApp(app: App): Server {
     try {
       const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
       const path = url.pathname;
+      const method = req.method ?? "GET";
 
       if (path === "/healthz") return json(res, 200, { ok: true, version: app.cfg.version });
 
-      const who = await app.auth(req, url);
+      const publishOnly = aiSecurityPublishAuthorized(app.cfg, req, path, method);
+      const who = publishOnly ? { ok: true as const, who: "ai-security-publish" } : await app.auth(req, url);
       if (!who.ok) return send(res, who.status, `<h1>${who.status}</h1><p>${who.reason}</p>`);
       const extra: Record<string, string> = who.setCookie ? { "set-cookie": who.setCookie } : {};
       if (!csrfOk(req)) return json(res, 403, { error: "cross-site request refused" });
-      const get = req.method === "GET" || req.method === "HEAD";
+      const get = method === "GET" || method === "HEAD";
 
       if (get && path === "/manifest.webmanifest") return send(res, 200, MANIFEST, "application/manifest+json", extra);
       if (get && path === "/sw.js") return send(res, 200, SERVICE_WORKER, "text/javascript", { ...extra, "service-worker-allowed": "/" });
@@ -84,6 +102,7 @@ export function createApp(app: App): Server {
       if (get && path === "/icon-maskable-512.png") return send(res, 200, icon("m512", 512, true), "image/png", extra);
 
       if (get && path === "/") return send(res, 200, dashboardPage(), undefined, extra);
+      if (get && path === "/ai-security") return send(res, 200, aiSecurityPage(), undefined, extra);
       if (get && path === "/settings") return send(res, 200, settingsPage(), undefined, extra);
 
       if (get && path === "/api/state") {
@@ -104,6 +123,8 @@ export function createApp(app: App): Server {
         const parsed = parseFeedList(next.feeds);
         return json(res, 200, { settings: next, feedCount: parsed.feeds.length, feedErrors: parsed.errors });
       }
+
+      if (await handleAiSecurityRoutes(app.aiSecurity, req, res, path, readBody)) return;
 
       for (const panel of panels) {
         if (panel.handle && (await panel.handle(ctx(), req, res, path))) return;
