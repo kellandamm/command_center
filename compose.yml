@@ -14,6 +14,9 @@ services:
       CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}
       CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      RECALLIO_URL: ${RECALLIO_URL:-}
+      CF_ACCESS_CLIENT_ID: ${CF_ACCESS_CLIENT_ID:-}
+      CF_ACCESS_CLIENT_SECRET: ${CF_ACCESS_CLIENT_SECRET:-}
     ports:
       # Loopback only: put a tunnel or reverse proxy in front. Never publish this port to the internet unauthenticated.
       - "127.0.0.1:${HOST_PORT:-8088}:8080"
