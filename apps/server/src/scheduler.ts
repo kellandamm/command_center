@@ -5,6 +5,8 @@ import { parseFeedList } from "./feeds/parse";
 import { pollDueFeeds } from "./feeds/poller";
 import { fetchAllFeeds } from "./feeds/service";
 import type { FeedsStore } from "./feeds/store";
+import type { NewsPrefsStore } from "./feeds/news-prefs";
+import type { SummaryService } from "./feeds/summary-service";
 import type { SettingsStore } from "./settings";
 import { dayKey } from "./store";
 
@@ -92,6 +94,8 @@ export class Scheduler {
       feeds: FeedsStore;
       dailyBriefing: DailyBriefingService;
       briefing: BriefingService;
+      newsPrefs: NewsPrefsStore;
+      summaryService: SummaryService;
       now?: () => Date;
     },
   ) {}
@@ -118,7 +122,10 @@ export class Scheduler {
       if (fetchDue) {
         const parsed = parseFeedList(s.feeds);
         if (this.d.feeds.feedCount() > 0) {
-          await pollDueFeeds(this.d.feeds, now);
+          const prefs = this.d.newsPrefs.get();
+          await pollDueFeeds(this.d.feeds, now, undefined, async (ids) => {
+            for (const id of ids) await this.d.summaryService.maybeAutoSummarize(id, prefs, now);
+          });
           await this.d.feeds.save();
         } else {
           await fetchAllFeeds(this.d.feeds, parsed.feeds, now);
