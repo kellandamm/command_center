@@ -12,6 +12,8 @@ export interface Config {
   llmApiKey: string | null;
   llmModel: string | null;
   githubToken: string | null;
+  /** GitHub login for the activity panel (open issues/PRs and public events). */
+  githubUsername: string;
   todoistApiToken: string | null;
   cfTeamDomain: string | null;
   cfAud: string | null;
@@ -56,6 +58,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     llmApiKey: blank(env.LLM_API_KEY),
     llmModel: blank(env.LLM_MODEL),
     githubToken: blank(env.GITHUB_TOKEN),
+    githubUsername: blank(env.GITHUB_USERNAME) ?? "kellandamm",
     todoistApiToken: blank(env.TODOIST_API_TOKEN),
     cfTeamDomain,
     cfAud,
