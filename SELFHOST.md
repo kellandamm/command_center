@@ -29,8 +29,17 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 | `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | Optional **outbound** Cloudflare Access service token. Sent as `CF-Access-Client-Id` / `CF-Access-Client-Secret` when the server calls Recallio behind Access. Set both if Recallio requires them; omit if Recallio is reachable without a service token. |
 | `WEATHER_LAT`, `WEATHER_LON` | Optional. Open-Meteo coordinates for the **Weather** panel (no API key). Default **Chicago** (`41.8781`, `-87.6298`) when unset. |
 | `ICS_URLS` | Optional. Comma-separated **https** iCal feed URLs for the **Calendar** panel. When unset, the panel explains how to enable it. Feeds are fetched server-side with the same SSRF rules as RSS. |
+| `MCP_APP_TOKENS` | JSON map of MCP client id → bearer token (≥ 24 chars each). Enables **Streamable HTTP** MCP at `/mcp`. |
+| `MCP_CF_CLIENT_MAP` | When Access protects the site, map each MCP client id to its inbound **service token** `CF-Access-Client-Id`. Both this and a matching app token are required per request. |
+| `WEBHOOK_SECRET` | ≥ 24 chars. `POST /api/webhooks/power-automate` with header `X-Webhook-Secret` (Power Automate fallback). |
+| `HOBIE_POLL_TOKEN` | Optional bearer for Hobie to `GET /api/hobie/tasks` and `POST /api/hobie/claim`. Admin or MCP tokens also work. |
+| `MCP_MAX_HOBIE_PENDING` | Max pending Hobie tasks (default 20). |
 
 `/healthz` is unauthenticated and returns `{ ok, version }` only.
+
+### MCP and webhooks
+
+External agents (e.g. work Copilot) connect to **`/mcp`** (Streamable HTTP). Tools: `notes_read`, `notes_append`, `panel_post_update`, `todoist_add_task`, `hobie_queue_task`. If IT blocks custom MCP connectors, use **`POST /api/webhooks/power-automate`** with JSON `{ "action": "…", … }` and the same fields as each tool.
 
 ### Server health panel (optional Docker socket)
 
@@ -101,6 +110,8 @@ and accepts JSON either as an array of hits or as `{ results | items | memories 
 - `briefing.json` — latest briefing and short history
 - `state.json` — scheduler timestamps
 - `notes.md` — dashboard **Notes** panel (plain markdown)
+- `panel-updates.json` — **Activity** panel (agent updates via MCP/webhook)
+- `hobie-queue.json` — **Hobie queue** (tasks for the owner assistant)
 
 Back up the volume to keep feeds, read state, and briefings.
 

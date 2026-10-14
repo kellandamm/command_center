@@ -19,6 +19,7 @@ import { FeedsStore } from "../src/feeds/store";
 import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
+import { openIntegrationStores } from "./helpers";
 
 const TOKEN = "t".repeat(32);
 
@@ -67,7 +68,8 @@ test("recallio: API route returns graceful JSON", async () => {
   const newsPrefs = await NewsPrefsStore.open(dir);
   const briefing = await BriefingService.open(dir, cfg.tz);
   const notes = await NotesStore.open(dir);
-  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, feeds, briefing, newsPrefs, notes });
+  const { panelUpdates, hobieQueue } = await openIntegrationStores(dir);
+  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, feeds, briefing, newsPrefs, notes, panelUpdates, hobieQueue });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const authz = { authorization: `Bearer ${TOKEN}` };

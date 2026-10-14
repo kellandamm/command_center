@@ -1,3 +1,5 @@
+import { tokenEquals } from "./auth";
+
 /**
  * Environment configuration. Secrets (LLM key, admin token) are only read here —
  * never written to disk, returned by the API, or shown in the UI.
@@ -33,6 +35,13 @@ export interface Config {
   weatherLon: number;
   /** Comma-separated https iCal feed URLs (may be empty). */
   icsUrls: string[];
+  /** MCP: clientId → app bearer token (env JSON). */
+  mcpAppTokens: Record<string, string>;
+  /** MCP: clientId → Cloudflare Access service-token client id. */
+  mcpCfClientMap: Record<string, string>;
+  webhookSecret: string | null;
+  hobiePollToken: string | null;
+  mcpMaxHobiePending: number;
 }
 
 export interface LlmConfig {
@@ -53,6 +62,20 @@ function parseLatLon(raw: string | undefined, fallback: number, name: string): n
   const n = Number(raw.trim());
   if (!Number.isFinite(n)) throw new Error(`${name} must be a number`);
   return n;
+}
+
+function parseJsonRecord(raw: string | undefined): Record<string, string> {
+  if (!raw || !raw.trim()) return {};
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof v === "string" && v.trim()) out[k.trim()] = v.trim();
+    }
+    return out;
+  } catch {
+    throw new Error("Invalid JSON object in MCP env var");
+  }
 }
 
 /** Split `ICS_URLS` on commas; empty segments are dropped. */
@@ -103,7 +126,30 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     weatherLat: parseLatLon(env.WEATHER_LAT, DEFAULT_WEATHER_LAT, "WEATHER_LAT"),
     weatherLon: parseLatLon(env.WEATHER_LON, DEFAULT_WEATHER_LON, "WEATHER_LON"),
     icsUrls: parseIcsUrls(env.ICS_URLS),
+    mcpAppTokens: parseJsonRecord(env.MCP_APP_TOKENS),
+    mcpCfClientMap: parseJsonRecord(env.MCP_CF_CLIENT_MAP),
+    webhookSecret: blank(env.WEBHOOK_SECRET),
+    hobiePollToken: blank(env.HOBIE_POLL_TOKEN),
+    mcpMaxHobiePending: Math.min(50, Math.max(1, Number(env.MCP_MAX_HOBIE_PENDING ?? 20) || 20)),
   };
+}
+
+export function mcpConfigured(cfg: Config): boolean {
+  return Object.keys(cfg.mcpAppTokens).length > 0;
+}
+
+export function resolveMcpClientFromBearer(cfg: Config, bearer: string): string | null {
+  for (const [clientId, token] of Object.entries(cfg.mcpAppTokens)) {
+    if (tokenEquals(bearer, token)) return clientId;
+  }
+  return null;
+}
+
+export function mcpClientIdForCfAccessClientId(cfg: Config, cfClientId: string): string | null {
+  for (const [clientId, mapped] of Object.entries(cfg.mcpCfClientMap)) {
+    if (mapped === cfClientId) return clientId;
+  }
+  return null;
 }
 
 export function dockerSocketPath(cfg: Config): string | null {

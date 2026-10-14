@@ -1,4 +1,6 @@
+import { activityPanel } from "./activity";
 import { briefingPanel } from "./briefing";
+import { hobiePanel } from "./hobie";
 import { calendarPanel } from "./calendar";
 import { feedsPanel } from "./feeds";
 import { githubPanel } from "./github";
@@ -11,6 +13,8 @@ import type { PanelModule } from "./types";
 
 /** Register panels here: one module file + one line in this array. */
 export const panels: PanelModule[] = [
+  activityPanel,
+  hobiePanel,
   weatherPanel,
   calendarPanel,
   notesPanel,
