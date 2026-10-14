@@ -15,7 +15,7 @@ export function dashboardPage(): string {
   return page({
     title: "Command center",
     active: "/",
-    body: `<h1>Command center</h1><p class="dim">Daily tools in one place.</p>${sections}`,
+    body: `<header class="page-header"><h1>Dashboard</h1><p class="dim">Daily tools in one place.</p></header><div class="panel-grid">${sections}</div>`,
     script: `${weatherDashboardScript()}${calendarDashboardScript()}${notesDashboardScript()}${feedsDashboardScript()}${briefingDashboardScript()}${todoistDashboardScript()}${hostHealthDashboardScript()}${githubDashboardScript()}${recallioDashboardScript()}`,
   });
 }
@@ -24,7 +24,8 @@ export function settingsPage(): string {
   return page({
     title: "Settings",
     active: "/settings",
-    body: `<h1>Settings</h1><form id="f">
+    body: `<header class="page-header"><h1>Settings</h1><p class="dim">Feeds, briefing schedule, and fetch interval.</p></header>
+<div class="card settings-card"><form id="f">
 <label for="feeds">RSS / Atom feeds</label>
 <textarea id="feeds" spellcheck="false"></textarea>
 <p class="dim">One per line. Use <code>hn</code> for Hacker News, or paste a feed URL. Lines starting with <code>#</code> are comments.</p>
@@ -33,7 +34,7 @@ export function settingsPage(): string {
 <div style="flex:1"><label for="fetchInterval">Fetch interval (minutes)</label><input id="fetchInterval" type="number" min="5" max="1440"></div>
 <div style="flex:1"><label for="briefingTime">Daily briefing time</label><input id="briefingTime" placeholder="07:00"></div>
 </div>
-<div class="row" style="margin-top:18px"><button type="submit">Save</button><span id="saved" class="dim"></span></div></form>`,
+<div class="row" style="margin-top:18px"><button type="submit">Save</button><span id="saved" class="dim"></span></div></form></div>`,
     script: `
 api("/api/settings").then(function(r){var s=r.settings;
  $("feeds").value=s.feeds;$("fetchInterval").value=s.fetchIntervalMinutes;$("briefingTime").value=s.briefingTime});
