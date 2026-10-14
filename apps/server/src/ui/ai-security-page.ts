@@ -17,7 +17,7 @@ export function aiSecurityPage(): string {
 </div>
 <div id="as-empty" class="card" style="display:none">
   <h2>No roundups yet</h2>
-  <p class="dim" style="margin:.5rem 0 0">Publish the first edition with <code>POST /api/ai-security/roundups</code> and your admin token.</p>
+  <p class="dim" style="margin:.5rem 0 0">Publish the first edition with <code>POST /api/ai-security/roundups</code> and <code>Authorization: Bearer …</code> using <code>AI_SECURITY_TOKEN</code> (or <code>ADMIN_TOKEN</code>).</p>
 </div>
 <div id="as-content" style="display:none">
   <section class="card" id="as-latest">

@@ -88,6 +88,12 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:.8125rem;min-height:
 pre.briefing{
   white-space:pre-wrap;font:inherit;font-size:.8125rem;background:var(--muted);color:var(--foreground);
   padding:.75rem;border-radius:calc(var(--radius) - 2px);border:1px solid var(--border);max-height:420px;overflow:auto}
+.briefing-toolbar{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;margin-bottom:1rem}
+.briefing-toolbar select{max-width:12rem}
+.status-pill{font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:.2em .5em;border-radius:999px;border:1px solid var(--border);color:var(--muted-foreground)}
+.status-pill.ok{border-color:color-mix(in srgb,var(--ok) 40%,var(--border));color:var(--ok)}
+.status-pill.bad{border-color:color-mix(in srgb,var(--destructive) 40%,var(--border));color:var(--destructive)}
+.status-pill.dim{opacity:.85}
 .theme-toggle{width:100%;justify-content:flex-start}
 @media(max-width:768px){
   .app-shell{flex-direction:column}
