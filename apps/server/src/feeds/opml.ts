@@ -85,6 +85,13 @@ export function feedIdFromUrl(xmlUrl: string): string {
   return createHash("sha256").update(xmlUrl).digest("hex").slice(0, 24);
 }
 
+/** Stable id from full folder path (supports nested OPML outlines). */
+export function folderIdFromPath(pathSegments: string[]): string {
+  const path = pathSegments.map((s) => s.trim()).filter(Boolean);
+  return createHash("sha256").update(`folder-path\0${path.join("\0")}`).digest("hex").slice(0, 16);
+}
+
+/** @deprecated Use folderIdFromPath for imports; kept for migration tests. */
 export function folderIdFromName(name: string): string {
-  return createHash("sha256").update(`folder\0${name}`).digest("hex").slice(0, 16);
+  return folderIdFromPath([name]);
 }

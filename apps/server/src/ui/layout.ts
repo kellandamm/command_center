@@ -113,6 +113,14 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:.8125rem;min-height:
 .rss-tree button.tree-item{width:100%;text-align:left;border:0;background:transparent;color:inherit;padding:.35rem .75rem;border-radius:0;min-height:auto;justify-content:flex-start;font-weight:500}
 .rss-tree button.tree-item:hover,.rss-tree button.tree-item.on{background:var(--sidebar-accent)}
 .rss-tree .tree-feed{padding-left:1.25rem;font-weight:400;font-size:.75rem}
+.rss-tree .tree-folder-row{display:flex;align-items:center;gap:.15rem;width:100%}
+.rss-tree .tree-folder-row .tree-item{flex:1;min-width:0;display:flex}
+.rss-tree button.tree-toggle{width:1.25rem;flex-shrink:0;padding:0;border:0;background:transparent;color:var(--muted-foreground);cursor:pointer;font-size:.7rem;line-height:1}
+.rss-tree button.tree-gear{width:1.5rem;flex-shrink:0;padding:0;border:0;background:transparent;color:var(--muted-foreground);cursor:pointer;font-size:.75rem;opacity:.6}
+.rss-tree button.tree-gear:hover{opacity:1}
+.rss-tree .tree-feed-row{display:flex;align-items:center;gap:.25rem;padding-right:.35rem}
+.rss-tree .tree-feed-row .tree-item{flex:1}
+.rss-tree select.tree-feed-move{max-width:4.5rem;font-size:.65rem;padding:.1rem .2rem;height:1.35rem}
 .rss-tree .count{margin-left:auto;font-size:.7rem;color:var(--muted-foreground)}
 .rss-main{flex:1;display:flex;min-width:0;min-height:0}
 .rss-list-pane{flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)}

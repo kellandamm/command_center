@@ -108,6 +108,41 @@ export async function handleRssRoutes(
     return true;
   }
 
+  const patchFeed = path.match(/^\/api\/rss\/feeds\/([^/]+)$/);
+  if (patchFeed && req.method === "PATCH") {
+    const body = (await readBody(req)) as { folderId?: string | null };
+    if (body.folderId === undefined) throw new ValidationError("folderId required (use null for ungrouped)");
+    const ok = feeds.moveFeed(decodeURIComponent(patchFeed[1]!), body.folderId);
+    await feeds.save();
+    json(res, 200, { ok });
+    return true;
+  }
+
+  if (path === "/api/rss/folders" && req.method === "POST") {
+    const body = (await readBody(req)) as { name?: string; parentId?: string | null };
+    if (!body.name?.trim()) throw new ValidationError("name required");
+    const created = feeds.createFolder(body.name.trim(), body.parentId ?? null);
+    await feeds.save();
+    json(res, 200, created);
+    return true;
+  }
+
+  const folderRoute = path.match(/^\/api\/rss\/folders\/([^/]+)$/);
+  if (folderRoute && req.method === "PATCH") {
+    const body = (await readBody(req)) as { name?: string };
+    if (!body.name?.trim()) throw new ValidationError("name required");
+    const ok = feeds.renameFolder(decodeURIComponent(folderRoute[1]!), body.name.trim());
+    await feeds.save();
+    json(res, 200, { ok });
+    return true;
+  }
+  if (folderRoute && req.method === "DELETE") {
+    const ok = feeds.deleteFolder(decodeURIComponent(folderRoute[1]!));
+    await feeds.save();
+    json(res, 200, { removed: ok });
+    return true;
+  }
+
   if (path === "/api/rss/opml/import" && req.method === "POST") {
     const body = (await readBody(req)) as { xml?: string; replace?: boolean };
     if (!body.xml || typeof body.xml !== "string") throw new ValidationError("xml required");
