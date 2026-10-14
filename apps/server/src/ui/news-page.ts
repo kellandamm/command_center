@@ -1,9 +1,11 @@
+import type { NavLink } from "./layout";
 import { page } from "./layout";
 
-export function newsPage(): string {
+export function newsPage(nav?: NavLink[]): string {
   return page({
     title: "News — Command center",
     active: "/news",
+    nav,
     body: `<div class="page-content rss-page">
 <header class="page-header" style="margin-bottom:.25rem">
   <h1>News</h1>
@@ -32,7 +34,7 @@ export function newsPage(): string {
         <button type="button" class="ghost" id="rss-view-toggle">Dense list</button>
         <button type="button" class="ghost" id="rss-mark-read">Mark all read</button>
         <button type="button" class="ghost" id="news-refresh">Refresh</button>
-        <label class="row" style="margin:0;font-size:.75rem"><input type="checkbox" id="rss-unread-only"/> Unread only</label>
+        <label class="row choice-row" style="margin:0;font-size:.75rem"><input type="checkbox" id="rss-unread-only"/> Unread only</label>
         <input type="search" id="rss-search" placeholder="Search articles" autocomplete="off"/>
         <button type="button" class="ghost" id="rss-opml-export">Export OPML</button>
         <button type="button" class="ghost" id="rss-opml-import">Import OPML</button>
