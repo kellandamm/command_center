@@ -1,5 +1,6 @@
 import type { DailyBriefingService } from "./daily-briefing/service";
-import type { Config } from "./config";
+import type { BriefingService } from "./briefing/service";
+import { llmConfig, type Config } from "./config";
 import { parseFeedList } from "./feeds/parse";
 import { fetchAllFeeds } from "./feeds/service";
 import type { FeedsStore } from "./feeds/store";
@@ -89,6 +90,7 @@ export class Scheduler {
       kv: KVLike;
       feeds: FeedsStore;
       dailyBriefing: DailyBriefingService;
+      briefing: BriefingService;
       now?: () => Date;
     },
   ) {}
@@ -127,8 +129,20 @@ export class Scheduler {
           trigger: "schedule",
           now,
         });
+        let failed = rec.sources.ai.status === "error";
+        const llm = llmConfig(this.d.cfg);
+        if (llm) {
+          const since = new Date(now.getTime() - 24 * 60 * 60_000).toISOString();
+          const briefing = await this.d.briefing.generate({
+            llm,
+            feeds: this.d.feeds,
+            sinceIso: since,
+            trigger: "schedule",
+            now,
+          });
+          failed ||= Boolean(briefing.error);
+        }
         const attempts = state.slot === slot ? (state.attempts ?? 0) + 1 : 1;
-        const failed = rec.sources.ai.status === "error";
         state = {
           ...state,
           slot,

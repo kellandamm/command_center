@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { dailyBriefingPage } from "../src/ui/daily-briefing-page";
+import { newsPage } from "../src/ui/news-page";
 import { dashboardPage, settingsPage } from "../src/ui/pages";
 
 test("ui: dashboard uses shadcn-style shell and panel grid", () => {
@@ -18,6 +19,13 @@ test("ui: daily briefing page has source sections and nav link", () => {
   assert.match(html, /id="db-todoist"/);
   assert.match(html, /id="db-refresh"/);
   assert.match(html, /class="briefing-grid"/);
+});
+
+test("ui: tagged news page has chip bar and compact list", () => {
+  const html = newsPage();
+  assert.match(html, /href="\/news" class="on"/);
+  assert.match(html, /id="news-focus-chips"/);
+  assert.match(html, /class="news-compact-list"/);
 });
 
 test("ui: settings page wraps form in card", () => {

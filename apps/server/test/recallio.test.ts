@@ -15,6 +15,7 @@ import {
 import { BriefingService } from "../src/briefing/service";
 import { DailyBriefingService } from "../src/daily-briefing/service";
 import { makeAuthenticator } from "../src/auth";
+import { NewsPrefsStore } from "../src/feeds/news-prefs";
 import { FeedsStore } from "../src/feeds/store";
 import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
@@ -64,10 +65,11 @@ test("recallio: API route returns graceful JSON", async () => {
   const settings = new SettingsStore(dir);
   await settings.load();
   const feeds = await FeedsStore.open(dir);
+  const newsPrefs = await NewsPrefsStore.open(dir);
   const briefing = await BriefingService.open(dir, cfg.tz);
   const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
   const notes = await NotesStore.open(dir);
-  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, feeds, briefing, dailyBriefing, notes });
+  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, feeds, briefing, dailyBriefing, newsPrefs, notes });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const authz = { authorization: `Bearer ${TOKEN}` };

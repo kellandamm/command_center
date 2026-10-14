@@ -92,6 +92,16 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:.8125rem;min-height:
 .status-pill.bad{border-color:color-mix(in srgb,var(--destructive) 40%,var(--border));color:var(--destructive)}
 .status-pill.dim{opacity:.85}
 .feed-item{border-top:1px solid var(--border);padding:.75rem 0}.feed-item:first-child{border-top:0}
+.tag-chip-bar{display:flex;flex-wrap:wrap;gap:.5rem}
+.tag-chip{
+  font:inherit;font-size:.75rem;font-weight:500;padding:.35rem .65rem;border-radius:999px;
+  border:1px solid var(--border);background:var(--secondary);color:var(--secondary-foreground);cursor:pointer}
+.tag-chip.on{background:var(--primary);color:var(--primary-foreground);border-color:transparent}
+.tag-chip.muted{opacity:.55;text-decoration:line-through}
+.tag-mini{font-size:.65rem;font-weight:600;padding:.15em .45em;border-radius:999px;background:var(--muted);color:var(--muted-foreground)}
+.news-compact-list{max-height:32rem;overflow:auto;border:1px solid var(--border);border-radius:calc(var(--radius) - 2px);padding:0 .75rem}
+.news-row{border-top:1px solid var(--border);padding:.75rem 0}.news-row:first-child{border-top:0}
+.news-list-card{padding-bottom:1rem}
 .todoist-list{list-style:none;margin:0;padding:0}
 .todoist-item{border-top:1px solid var(--border);padding:.625rem 0}.todoist-item:first-child{border-top:0}
 .todoist-item input[type=checkbox]{width:auto;margin-top:.25rem;min-height:auto;accent-color:var(--primary)}
@@ -114,6 +124,7 @@ pre.briefing.bad{color:var(--destructive);background:transparent;border-color:co
 const NAV = [
   ["/", "Dashboard"],
   ["/briefing", "Daily Briefing"],
+  ["/news", "Tagged news"],
   ["/settings", "Settings"],
 ] as const;
 
