@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { assertAuthConfigured, llmConfigured, loadConfig } from "./config";
 import { makeAuthenticator } from "./auth";
 import { BriefingService } from "./briefing/service";
+import { DailyBriefingService } from "./daily-briefing/service";
 import { NewsPrefsStore } from "./feeds/news-prefs";
 import { FeedsStore } from "./feeds/store";
 import { createApp } from "./http";
@@ -23,10 +24,11 @@ async function main() {
   const feeds = await FeedsStore.open(cfg.dataDir);
   const newsPrefs = await NewsPrefsStore.open(cfg.dataDir);
   const briefing = await BriefingService.open(cfg.dataDir, cfg.tz);
+  const dailyBriefing = await DailyBriefingService.open(cfg.dataDir, cfg.tz);
   const notes = await NotesStore.open(cfg.dataDir);
 
-  const scheduler = new Scheduler({ cfg, settings, kv, feeds, briefing });
-  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, feeds, briefing, newsPrefs, notes });
+  const scheduler = new Scheduler({ cfg, settings, kv, feeds, briefing, dailyBriefing });
+  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, feeds, briefing, dailyBriefing, newsPrefs, notes });
   server.listen(cfg.port, cfg.host, () => {
     console.log(`command-center ${cfg.version} listening on ${cfg.host}:${cfg.port} (tz ${cfg.tz})`);
     console.log(llmConfigured(cfg) ? "LLM: configured" : "LLM: not set (briefing disabled)");
