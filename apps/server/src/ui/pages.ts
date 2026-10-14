@@ -1,55 +1,86 @@
 import { panels } from "../panels/registry";
-import { activityDashboardScript } from "../panels/activity";
-import { aiSecurityDashboardScript } from "../panels/ai-security-panel";
-import { briefingDashboardScript } from "../panels/briefing";
-import { dailyBriefingDashboardScript } from "../panels/daily-briefing-panel";
-import { hobieDashboardScript } from "../panels/hobie";
-import { calendarDashboardScript } from "../panels/calendar";
-import { feedsDashboardScript } from "../panels/feeds";
-import { hostHealthDashboardScript } from "../panels/host-health";
-import { notesDashboardScript } from "../panels/notes";
-import { recallioDashboardScript } from "../panels/recallio";
-import { taggedNewsDashboardScript } from "../panels/tagged-news";
-import { weatherDashboardScript } from "../panels/weather";
-import { defaultDashboardLayout } from "../dashboard-layout/defaults";
-import type { PanelLayoutEntry } from "../dashboard-layout/types";
-import { dashboardGridScript } from "./dashboard-grid";
 import type { NavLink } from "./layout";
 import { page } from "./layout";
 
-function panelGridStyle(entry: PanelLayoutEntry): string {
-  const span = entry.collapsed ? 1 : entry.h;
-  return `--gc-start:${entry.x + 1};--gc-span:${entry.w};--gr-start:${entry.y + 1};--gr-span:${span}`;
-}
-
-function panelItemAttrs(entry: PanelLayoutEntry): string {
-  const collapsed = entry.collapsed ? " is-collapsed" : "";
-  return `class="dashboard-item${collapsed}" data-full-h="${entry.h}"`;
-}
-
-const PANEL_PAGE_LINKS = Object.fromEntries(panels.filter((p) => p.pageHref).map((p) => [p.id, p.pageHref!]));
-
 export function dashboardPage(nav?: NavLink[]): string {
-  const layout = defaultDashboardLayout(panels.map((p) => p.id));
-  const byId = new Map(layout.panels.map((p) => [p.id, p]));
-  const sections = panels
-    .map((p) => {
-      const entry = byId.get(p.id)!;
-      return `<div ${panelItemAttrs(entry)} data-panel-id="${p.id}" style="${panelGridStyle(entry)}">${p.dashboardHtml}</div>`;
-    })
-    .join("\n");
   return page({
     title: "Command center",
     active: "/",
     nav,
-    body: `<div class="dashboard-page"><header class="page-header"><h1>Dashboard</h1><p class="dim">Daily tools in one place. Drag panel headers to rearrange; resize from the corner handle.</p></header>
-<div class="dashboard-toolbar">
-  <button type="button" class="ghost" id="dashboard-reset-layout">Reset layout</button>
-  <p class="dim">Layout is saved on this server.</p>
-</div>
-<div class="dashboard-grid" id="dashboard-grid">${sections}</div></div>`,
-    script: `var PANEL_PAGE_LINKS=${JSON.stringify(PANEL_PAGE_LINKS)};
-${dashboardGridScript()}${activityDashboardScript()}${hobieDashboardScript()}${taggedNewsDashboardScript()}${dailyBriefingDashboardScript()}${aiSecurityDashboardScript()}${weatherDashboardScript()}${calendarDashboardScript()}${notesDashboardScript()}${feedsDashboardScript()}${briefingDashboardScript()}${hostHealthDashboardScript()}${recallioDashboardScript()}`,
+    body: `<div class="dashboard-page"><header class="page-header"><h1>Dashboard</h1><p class="dim">A quick view of what needs attention and what's coming up.</p></header>
+<div class="dashboard-overview">
+  <section class="card dashboard-overview-card dashboard-attention-card">
+    <h2>Needs attention</h2>
+    <div class="dashboard-metrics">
+      <a class="dashboard-metric" href="/hobie"><span>Pending Hobie tasks</span><strong id="dashboard-hobie-count">Loading…</strong><span class="dim" id="dashboard-hobie-detail"></span></a>
+      <a class="dashboard-metric" href="/news"><span>Unread news</span><strong id="dashboard-news-count">Loading…</strong><span class="dim">Open News reader</span></a>
+    </div>
+  </section>
+  <section class="card dashboard-overview-card">
+    <h2>Next up</h2>
+    <p id="dashboard-calendar-status" class="dashboard-summary">Loading calendar…</p>
+    <a href="/calendar" class="dashboard-card-link">Open calendar</a>
+  </section>
+  <section class="card dashboard-overview-card">
+    <h2>Today's briefing</h2>
+    <p id="dashboard-briefing-status" class="dashboard-summary">Loading briefing…</p>
+    <a href="/briefing" class="dashboard-card-link">Open daily briefing</a>
+  </section>
+  <section class="card dashboard-overview-card">
+    <h2>Recent agent activity</h2>
+    <p id="dashboard-activity-status" class="dashboard-summary">Loading activity…</p>
+    <a href="/activity" class="dashboard-card-link">Open activity</a>
+  </section>
+</div></div>`,
+    script: `
+function dashboardSetError(id,err){
+  var el=document.getElementById(id);
+  if(!el)return;
+  el.textContent="Could not load: "+(err&&err.message?err.message:"request failed");
+  el.classList.add("bad");
+}
+function loadDashboardHobie(){
+  return api("/api/hobie/queue?status=pending").then(function(r){
+    var tasks=r.tasks||[],urgent=tasks.filter(function(t){return t.urgent}).length;
+    document.getElementById("dashboard-hobie-count").textContent=String(tasks.length);
+    document.getElementById("dashboard-hobie-detail").textContent=urgent?urgent+" urgent":"No urgent tasks";
+  }).catch(function(err){dashboardSetError("dashboard-hobie-count",err)});
+}
+function loadDashboardNews(){
+  return api("/api/feeds").then(function(r){
+    document.getElementById("dashboard-news-count").textContent=String(r.unread||0);
+  }).catch(function(err){dashboardSetError("dashboard-news-count",err)});
+}
+function loadDashboardCalendar(){
+  return api("/api/calendar?horizonDays=7").then(function(r){
+    var el=document.getElementById("dashboard-calendar-status");
+    if(!r.configured){el.textContent="Calendar isn't configured.";return}
+    var event=(r.events||[])[0];
+    if(!event){el.textContent="No upcoming events this week.";return}
+    var when=event.allDay?new Date(event.start).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}):new Date(event.start).toLocaleString(undefined,{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
+    el.textContent=event.summary+" · "+when;
+  }).catch(function(err){dashboardSetError("dashboard-calendar-status",err)});
+}
+function loadDashboardBriefing(){
+  return api("/api/daily-briefing").then(function(r){
+    var el=document.getElementById("dashboard-briefing-status"),b=r.briefing;
+    if(!b){el.textContent="No briefing has been prepared for today.";return}
+    var sources=Object.keys(b.sources||{}).map(function(k){return b.sources[k]});
+    var errors=sources.filter(function(s){return s.status==="error"}).length;
+    var ok=sources.filter(function(s){return s.status==="ok"}).length;
+    el.textContent=b.day+" · "+ok+" sources ready"+(errors?" · "+errors+" errors":"");
+  }).catch(function(err){dashboardSetError("dashboard-briefing-status",err)});
+}
+function loadDashboardActivity(){
+  return api("/api/activity/updates?limit=5").then(function(r){
+    var el=document.getElementById("dashboard-activity-status"),rows=r.updates||[];
+    if(!rows.length){el.textContent="No agent updates yet.";return}
+    var latest=rows[0],when=new Date(latest.createdAt).toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
+    el.textContent=rows.length+" recent update"+(rows.length===1?"":"s")+" · Latest from "+latest.clientId+" · "+when;
+  }).catch(function(err){dashboardSetError("dashboard-activity-status",err)});
+}
+loadDashboardHobie();loadDashboardNews();loadDashboardCalendar();loadDashboardBriefing();loadDashboardActivity();
+`,
   });
 }
 
