@@ -1,5 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { BriefingService } from "./briefing/service";
+import type { DailyBriefingService } from "./daily-briefing/service";
+import { handleDailyBriefingRoutes } from "./daily-briefing/routes";
 import { llmConfigured, type Config } from "./config";
 import { recallioConfigured } from "./recallio/client";
 import type { Authenticator } from "./auth";
@@ -12,6 +14,7 @@ import type { PanelContext } from "./panels/types";
 import type { SettingsStore } from "./settings";
 import { ValidationError } from "./settings";
 import { MANIFEST, SERVICE_WORKER, iconPng } from "./pwa";
+import { dailyBriefingPage } from "./ui/daily-briefing-page";
 import { dashboardPage, settingsPage } from "./ui/pages";
 
 export interface App {
@@ -20,6 +23,7 @@ export interface App {
   settings: SettingsStore;
   feeds: FeedsStore;
   briefing: BriefingService;
+  dailyBriefing: DailyBriefingService;
   notes: NotesStore;
 }
 
@@ -84,6 +88,7 @@ export function createApp(app: App): Server {
       if (get && path === "/icon-maskable-512.png") return send(res, 200, icon("m512", 512, true), "image/png", extra);
 
       if (get && path === "/") return send(res, 200, dashboardPage(), undefined, extra);
+      if (get && path === "/briefing") return send(res, 200, dailyBriefingPage(), undefined, extra);
       if (get && path === "/settings") return send(res, 200, settingsPage(), undefined, extra);
 
       if (get && path === "/api/state") {
@@ -104,6 +109,8 @@ export function createApp(app: App): Server {
         const parsed = parseFeedList(next.feeds);
         return json(res, 200, { settings: next, feedCount: parsed.feeds.length, feedErrors: parsed.errors });
       }
+
+      if (await handleDailyBriefingRoutes(app, app.dailyBriefing, req, res, path)) return;
 
       for (const panel of panels) {
         if (panel.handle && (await panel.handle(ctx(), req, res, path))) return;
