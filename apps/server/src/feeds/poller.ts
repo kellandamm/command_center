@@ -72,8 +72,13 @@ export async function pollDueFeeds(
   now = new Date(),
   http: FeedHttpFn = defaultFeedHttp,
   onNewEntries?: (entryIds: string[], feedId: string) => void | Promise<void>,
+  feedIds?: string[] | null,
 ): Promise<Array<{ feedId: string; added: number; error?: string }>> {
-  const due = store.dueFeeds(now, POLL.dueBatchSize);
+  let due = store.dueFeeds(now, POLL.dueBatchSize);
+  if (feedIds) {
+    const allow = new Set(feedIds);
+    due = due.filter((row) => allow.has(row.id));
+  }
   const out: Array<{ feedId: string; added: number; error?: string }> = [];
   let i = 0;
   async function worker() {

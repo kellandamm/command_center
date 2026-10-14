@@ -1,16 +1,18 @@
+import type { NavLink } from "./layout";
 import { page } from "./layout";
 
-export function summariesPage(): string {
+export function summariesPage(nav?: NavLink[]): string {
   return page({
     title: "Summaries — Command center",
     active: "/summaries",
+    nav,
     body: `<header class="page-header">
   <h1>Article summaries</h1>
   <p class="dim">AI summaries are kept even after feed entries are pruned. Search and open the original or live entry when it still exists.</p>
 </header>
 <div class="card" style="margin-bottom:1rem">
   <h2 style="margin:0 0 .75rem;font-size:.875rem">Auto-summarize settings</h2>
-  <label class="row" style="margin:0 0 .5rem;font-weight:400"><input type="checkbox" id="sum-auto-star"/> Starred articles</label>
+  <label class="row choice-row" style="margin:0 0 .5rem;font-weight:400"><input type="checkbox" id="sum-auto-star"/> Starred articles</label>
   <p class="dim" style="margin:0 0 .5rem;font-size:.8125rem">Folder auto-summarize (folder ids from feed tree):</p>
   <input type="text" id="sum-folder-ids" placeholder="comma-separated folder ids" style="margin-bottom:.5rem"/>
   <label style="margin:.5rem 0 .35rem">Max summaries per hour</label>

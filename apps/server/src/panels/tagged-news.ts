@@ -3,6 +3,7 @@ import type { PanelModule } from "./types";
 export const taggedNewsPanel: PanelModule = {
   id: "tagged-news",
   title: "Tagged news",
+  pageHref: "/news",
   dashboardHtml: `
 <section class="card" id="panel-tagged-news">
   <p class="dim" id="tn-status">Loading…</p>

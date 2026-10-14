@@ -6,11 +6,9 @@ import { hobiePanel } from "./hobie";
 import { taggedNewsPanel } from "./tagged-news";
 import { calendarPanel } from "./calendar";
 import { feedsPanel } from "./feeds";
-import { githubPanel } from "./github";
 import { hostHealthPanel } from "./host-health";
 import { notesPanel } from "./notes";
 import { recallioPanel } from "./recallio";
-import { todoistPanel } from "./todoist";
 import { weatherPanel } from "./weather";
 import type { PanelModule } from "./types";
 
@@ -26,9 +24,7 @@ export const panels: PanelModule[] = [
   notesPanel,
   feedsPanel,
   briefingPanel,
-  todoistPanel,
   hostHealthPanel,
-  githubPanel,
   recallioPanel,
 ];
 

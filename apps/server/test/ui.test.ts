@@ -4,6 +4,10 @@ import { aiSecurityPage } from "../src/ui/ai-security-page";
 import { dailyBriefingPage } from "../src/ui/daily-briefing-page";
 import { newsPage } from "../src/ui/news-page";
 import { summariesPage } from "../src/ui/summaries-page";
+import { activityPage } from "../src/ui/activity-page";
+import { calendarPage } from "../src/ui/calendar-page";
+import { hobiePage } from "../src/ui/hobie-page";
+import { notesPage } from "../src/ui/notes-page";
 import { dashboardPage, settingsPage } from "../src/ui/pages";
 
 test("ui: dashboard uses shadcn-style shell and draggable grid", () => {
@@ -53,8 +57,18 @@ test("ui: summaries page has search and auto settings", () => {
   assert.match(html, /id="sum-auto-star"/);
 });
 
-test("ui: settings page wraps form in card", () => {
+test("ui: settings page has schedule and tabs sections", () => {
   const html = settingsPage();
-  assert.match(html, /class="card settings-card"/);
+  assert.match(html, /settings-card settings-tab-panel/);
   assert.match(html, /href="\/settings" class="on"/);
+  assert.match(html, /id="tab-schedule"/);
+  assert.match(html, /id="tab-tabs"/);
+  assert.match(html, /id="scope-all"/);
+});
+
+test("ui: full sidebar pages render", () => {
+  assert.match(hobiePage(), /href="\/hobie" class="on"/);
+  assert.match(notesPage(), /id="notes-editor-full"/);
+  assert.match(calendarPage(), /id="cal-week-grid"/);
+  assert.match(activityPage(), /id="activity-full-list"/);
 });

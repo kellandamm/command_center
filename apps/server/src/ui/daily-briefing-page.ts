@@ -1,9 +1,11 @@
+import type { NavLink } from "./layout";
 import { page } from "./layout";
 
-export function dailyBriefingPage(): string {
+export function dailyBriefingPage(nav?: NavLink[]): string {
   return page({
     title: "Daily Briefing — Command center",
     active: "/briefing",
+    nav,
     body: `<header class="page-header">
   <h1>Daily Briefing</h1>
   <p class="dim">One snapshot per day — news, AI summary, tasks, weather, calendar, and GitHub.</p>

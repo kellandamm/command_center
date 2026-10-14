@@ -61,10 +61,11 @@ export class BriefingService {
     trigger: "schedule" | "manual";
     now?: Date;
     fetchFn?: typeof fetch;
+    feedIds?: string[] | null;
   }): Promise<BriefingRecord> {
     const now = opts.now ?? new Date();
     const day = dayKey(now, this.tz);
-    const items = opts.feeds.itemsForBriefing(opts.sinceIso);
+    const items = opts.feeds.itemsForBriefing(opts.sinceIso, 40, opts.feedIds);
     if (!opts.llm) {
       const rec: BriefingRecord = {
         day,

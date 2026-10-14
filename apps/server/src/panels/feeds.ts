@@ -1,10 +1,11 @@
-import { parseFeedList } from "../feeds/parse";
-import { fetchAllFeeds } from "../feeds/service";
+import { feedIdsInScope } from "../feed-scope";
+import { pollDueFeeds } from "../feeds/poller";
 import type { PanelModule } from "./types";
 
 export const feedsPanel: PanelModule = {
   id: "feeds",
   title: "News feeds",
+  pageHref: "/news",
   dashboardHtml: `
 <section class="card" id="panel-feeds">
   <div class="row"><h2 style="margin:0">News feeds</h2>
@@ -21,21 +22,19 @@ export const feedsPanel: PanelModule = {
       res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
       res.end(JSON.stringify(data));
     };
+    const scope = ctx.settings.get().feedScope;
+    const scopedIds = feedIdsInScope(ctx.feeds, scope);
+    const listOpts = scopedIds ? { feedIds: scopedIds } : {};
     if (path === "/api/feeds" && req.method === "GET") {
-      const parsed = parseFeedList(ctx.settings.get().feeds);
-      const feedIds = ctx.feeds.feedCount() > 0
-        ? ctx.feeds.list({ limit: 500 }).map((i) => i.feedId)
-        : parsed.feeds.map((f) => f.id);
-      const uniqueIds = [...new Set(feedIds)];
-      const items = ctx.feeds.list({ limit: 80 });
-      const unread = ctx.feeds.list({ unreadOnly: true, limit: 200 }).length;
-      json(200, { items, unread, feeds: ctx.feeds.statuses(uniqueIds.slice(0, 50)), feedErrors: parsed.errors });
+      const items = ctx.feeds.list({ limit: 80, ...listOpts });
+      const unread = ctx.feeds.list({ unreadOnly: true, limit: 200, ...listOpts }).length;
+      json(200, { items, unread, feedScope: scope });
       return true;
     }
     if (path === "/api/feeds/fetch" && req.method === "POST") {
-      const parsed = parseFeedList(ctx.settings.get().feeds);
-      const results = await fetchAllFeeds(ctx.feeds, parsed.feeds);
-      json(200, { results, unread: ctx.feeds.list({ unreadOnly: true }).length });
+      const results = await pollDueFeeds(ctx.feeds, new Date(), undefined, undefined, scopedIds);
+      await ctx.feeds.save();
+      json(200, { results, unread: ctx.feeds.list({ unreadOnly: true, ...listOpts }).length });
       return true;
     }
     if (path === "/api/feeds/read" && req.method === "POST") {
@@ -48,7 +47,9 @@ export const feedsPanel: PanelModule = {
       return true;
     }
     if (path === "/api/feeds/read-all" && req.method === "POST") {
-      const n = ctx.feeds.markAllRead();
+      const n = scopedIds?.length
+        ? ctx.feeds.markRead(ctx.feeds.list({ unreadOnly: true, limit: 500, feedIds: scopedIds }).map((x) => x.id))
+        : ctx.feeds.markAllRead();
       await ctx.feeds.save();
       json(200, { marked: n });
       return true;
@@ -73,7 +74,7 @@ function renderFeeds(data){
     if(it.summary)html+='<p class="feed-summary dim">'+esc(it.summary)+'</p>';
     html+='<p class="feed-meta dim">'+esc(it.feedId)+' · '+esc(it.firstSeenAt)+'</p></details>';
   });
-  document.getElementById("feeds-list").innerHTML=html||'<p class="dim">No items yet. Feeds refresh on a schedule, or click Refresh now.</p>';
+  document.getElementById("feeds-list").innerHTML=html||'<p class="dim">No items yet. Add feeds on the News page or import OPML.</p>';
   document.querySelectorAll(".mark-read").forEach(function(b){b.onclick=function(e){
     e.preventDefault();e.stopPropagation();
     api("/api/feeds/read","POST",{ids:[b.dataset.id]}).then(loadFeeds);

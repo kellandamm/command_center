@@ -382,6 +382,13 @@ export class FeedsStore {
     return segments;
   }
 
+  feedIdsInFolderIds(folderIds: string[]): string[] {
+    if (!folderIds.length) return [];
+    const placeholders = folderIds.map(() => "?").join(",");
+    const rows = this.db.prepare(`SELECT id FROM feeds WHERE folder_id IN (${placeholders})`).all(...folderIds) as Array<{ id: string }>;
+    return rows.map((r) => r.id);
+  }
+
   folderIdsWithDescendants(folderId: string): string[] {
     const rows = this.db
       .prepare(
@@ -558,7 +565,17 @@ export class FeedsStore {
     };
   }
 
-  list(opts: { unreadOnly?: boolean; limit?: number; feedId?: string; folderId?: string; starred?: boolean; q?: string } = {}): StoredItem[] {
+  list(
+    opts: {
+      unreadOnly?: boolean;
+      limit?: number;
+      feedId?: string;
+      folderId?: string;
+      feedIds?: string[];
+      starred?: boolean;
+      q?: string;
+    } = {},
+  ): StoredItem[] {
     const limit = opts.limit ?? 200;
     const params: unknown[] = [];
     const where: string[] = [];
@@ -571,6 +588,11 @@ export class FeedsStore {
       const ids = this.folderIdsWithDescendants(opts.folderId);
       where.push(`f.folder_id IN (${ids.map(() => "?").join(",")})`);
       params.push(...ids);
+    }
+    if (opts.feedIds) {
+      if (!opts.feedIds.length) return [];
+      where.push(`e.feed_id IN (${opts.feedIds.map(() => "?").join(",")})`);
+      params.push(...opts.feedIds);
     }
     if (opts.starred) where.push("e.starred = 1");
     if (opts.q?.trim()) {
@@ -610,13 +632,21 @@ export class FeedsStore {
     return rows.map((r) => this.rowToItem(r));
   }
 
-  itemsForBriefing(sinceIso: string, limit = 40): StoredItem[] {
+  itemsForBriefing(sinceIso: string, limit = 40, feedIds?: string[] | null): StoredItem[] {
+    if (feedIds && !feedIds.length) return [];
+    const params: unknown[] = [sinceIso];
+    let feedFilter = "";
+    if (feedIds) {
+      feedFilter = ` AND e.feed_id IN (${feedIds.map(() => "?").join(",")})`;
+      params.push(...feedIds);
+    }
+    params.push(limit);
     const rows = this.db
       .prepare(
         `SELECT e.*, f.title AS feed_title FROM entries e JOIN feeds f ON f.id = e.feed_id
-         WHERE e.first_seen_at >= ? ORDER BY e.first_seen_at DESC LIMIT ?`,
+         WHERE e.first_seen_at >= ?${feedFilter} ORDER BY e.first_seen_at DESC LIMIT ?`,
       )
-      .all(sinceIso, limit) as Array<Record<string, unknown>>;
+      .all(...(params as Array<string | number>)) as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToItem(r));
   }
 

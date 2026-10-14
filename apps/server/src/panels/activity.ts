@@ -3,6 +3,7 @@ import type { PanelModule } from "./types";
 export const activityPanel: PanelModule = {
   id: "activity",
   title: "Activity",
+  pageHref: "/activity",
   dashboardHtml: `
 <section class="card" id="panel-activity">
   <h2 style="margin:0 0 8px">Activity</h2>
@@ -15,7 +16,9 @@ export const activityPanel: PanelModule = {
       res.end(JSON.stringify(data));
     };
     if (path === "/api/activity/updates" && req.method === "GET") {
-      json(200, { updates: ctx.panelUpdates.list(40) });
+      const url = new URL(req.url ?? "/", "http://local");
+      const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? 40)));
+      json(200, { updates: ctx.panelUpdates.list(limit) });
       return true;
     }
     return false;

@@ -22,6 +22,8 @@ export type PanelHandler = (ctx: PanelContext, req: IncomingMessage, res: Server
 export interface PanelModule {
   id: string;
   title: string;
+  /** Full-page route for dashboard title link (preview tiles only). */
+  pageHref?: string;
   /** HTML fragment for the dashboard (inside a section). */
   dashboardHtml: string;
   /** Return true if the request was handled. */

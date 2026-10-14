@@ -16,7 +16,7 @@ import { handleMcpRoute } from "./mcp/handler";
 import type { IntegrationDeps } from "./mcp/actions";
 import type { HobieQueueStore } from "./stores/hobie-queue";
 import type { PanelUpdatesStore } from "./stores/panel-updates";
-import { parseFeedList } from "./feeds/parse";
+import { visibleNavTabs } from "./nav-tabs";
 import { panels } from "./panels/registry";
 import type { PanelContext } from "./panels/types";
 import type { SettingsStore } from "./settings";
@@ -28,6 +28,10 @@ import { handleNewsRoutes } from "./feeds/news-routes";
 import { handleRssRoutes } from "./feeds/rss-routes";
 import type { NewsPrefsStore } from "./feeds/news-prefs";
 import type { DashboardLayoutStore } from "./dashboard-layout/storage";
+import { activityPage } from "./ui/activity-page";
+import { calendarPage } from "./ui/calendar-page";
+import { hobiePage } from "./ui/hobie-page";
+import { notesPage } from "./ui/notes-page";
 import { dashboardPage, settingsPage } from "./ui/pages";
 import { newsPage } from "./ui/news-page";
 import { summariesPage } from "./ui/summaries-page";
@@ -154,22 +158,27 @@ export function createApp(app: App): Server {
       if (get && path === "/icon-512.png") return send(res, 200, icon("512", 512), "image/png", extra);
       if (get && path === "/icon-maskable-512.png") return send(res, 200, icon("m512", 512, true), "image/png", extra);
 
-      if (get && path === "/") return send(res, 200, dashboardPage(), undefined, extra);
-      if (get && path === "/ai-security") return send(res, 200, aiSecurityPage(), undefined, extra);
-      if (get && path === "/briefing") return send(res, 200, dailyBriefingPage(), undefined, extra);
-      if (get && path === "/news") return send(res, 200, newsPage(), undefined, extra);
-      if (get && path === "/summaries") return send(res, 200, summariesPage(), undefined, extra);
-      if (get && path === "/settings") return send(res, 200, settingsPage(), undefined, extra);
+      const nav = () => visibleNavTabs(app.settings.get().sidebarTabs);
+
+      if (get && path === "/") return send(res, 200, dashboardPage(nav()), undefined, extra);
+      if (get && path === "/ai-security") return send(res, 200, aiSecurityPage(nav()), undefined, extra);
+      if (get && path === "/briefing") return send(res, 200, dailyBriefingPage(nav()), undefined, extra);
+      if (get && path === "/news") return send(res, 200, newsPage(nav()), undefined, extra);
+      if (get && path === "/summaries") return send(res, 200, summariesPage(nav()), undefined, extra);
+      if (get && path === "/hobie") return send(res, 200, hobiePage(nav()), undefined, extra);
+      if (get && path === "/notes") return send(res, 200, notesPage(nav()), undefined, extra);
+      if (get && path === "/calendar") return send(res, 200, calendarPage(nav()), undefined, extra);
+      if (get && path === "/activity") return send(res, 200, activityPage(nav()), undefined, extra);
+      if (get && path === "/settings") return send(res, 200, settingsPage(nav()), undefined, extra);
 
       if (get && path === "/api/state") {
-        const parsed = parseFeedList(app.settings.get().feeds);
         return json(res, 200, {
           version: app.cfg.version,
           tz: app.cfg.tz,
           llmEnabled: llmConfigured(app.cfg),
           recallioEnabled: recallioConfigured(app.cfg),
           unread: app.feeds.list({ unreadOnly: true }).length,
-          feedCount: app.feeds.feedCount() || parsed.feeds.length,
+          feedCount: app.feeds.feedCount(),
           briefing: app.briefing.get() ?? null,
         });
       }
@@ -186,8 +195,7 @@ export function createApp(app: App): Server {
       if (get && path === "/api/settings") return json(res, 200, { settings: app.settings.get() });
       if (req.method === "PUT" && path === "/api/settings") {
         const next = await app.settings.update(await readBody(req));
-        const parsed = parseFeedList(next.feeds);
-        return json(res, 200, { settings: next, feedCount: parsed.feeds.length, feedErrors: parsed.errors });
+        return json(res, 200, { settings: next, feedCount: app.feeds.feedCount() });
       }
 
       if (await handleAiSecurityRoutes(app.aiSecurity, req, res, path, readBody)) return;

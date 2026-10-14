@@ -1,9 +1,11 @@
+import type { NavLink } from "./layout";
 import { page } from "./layout";
 
-export function newsPage(): string {
+export function newsPage(nav?: NavLink[]): string {
   return page({
     title: "News — Command center",
     active: "/news",
+    nav,
     body: `<div class="page-content rss-page">
 <header class="page-header" style="margin-bottom:.25rem">
   <h1>News</h1>
@@ -21,6 +23,7 @@ export function newsPage(): string {
     </div>
     <div class="rss-tree" id="rss-tree"></div>
     <div style="padding:.5rem .75rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:.35rem">
+      <button type="button" class="ghost" id="rss-organize" style="width:100%">Organize feeds</button>
       <button type="button" class="ghost" id="rss-add-folder" style="width:100%">New folder</button>
       <button type="button" class="ghost" id="rss-add-feed" style="width:100%">Add feed</button>
     </div>
@@ -31,7 +34,7 @@ export function newsPage(): string {
         <button type="button" class="ghost" id="rss-view-toggle">Dense list</button>
         <button type="button" class="ghost" id="rss-mark-read">Mark all read</button>
         <button type="button" class="ghost" id="news-refresh">Refresh</button>
-        <label class="row" style="margin:0;font-size:.75rem"><input type="checkbox" id="rss-unread-only"/> Unread only</label>
+        <label class="row choice-row" style="margin:0;font-size:.75rem"><input type="checkbox" id="rss-unread-only"/> Unread only</label>
         <input type="search" id="rss-search" placeholder="Search articles" autocomplete="off"/>
         <button type="button" class="ghost" id="rss-opml-export">Export OPML</button>
         <button type="button" class="ghost" id="rss-opml-import">Import OPML</button>
@@ -64,7 +67,14 @@ export function newsPage(): string {
 
 function newsPageScript(): string {
   return `
-var rssState={view:"dense",scope:{type:"all"},items:[],selected:null,tree:null,prefs:{mutedTags:[],focusTags:[]},tags:[],listMeta:{total:0,filtered:0}};
+var rssState={view:"dense",scope:{type:"all"},items:[],selected:null,tree:null,prefs:{mutedTags:[],focusTags:[]},tags:[],listMeta:{total:0,filtered:0},organize:false};
+function setOrganize(on){
+  rssState.organize=on;
+  var tree=document.getElementById("rss-tree");
+  if(tree)tree.classList.toggle("organize",on);
+  var btn=document.getElementById("rss-organize");
+  if(btn){btn.textContent=on?"Done organizing":"Organize feeds";btn.classList.toggle("on",on)}
+}
 function collapsedFolders(){try{return new Set(JSON.parse(localStorage.getItem("rss-tree-collapsed")||"[]"))}catch(e){return new Set()}}
 function setCollapsedFolders(set){localStorage.setItem("rss-tree-collapsed",JSON.stringify(Array.from(set)))}
 function tagLabel(id){var t=rssState.tags.find(function(x){return x.id===id});return t?t.label:id}
@@ -133,7 +143,9 @@ function renderFolderNode(f,depth){
   html+='<div class="tree-folder-row" style="padding-left:'+pad+'">';
   html+='<button type="button" class="tree-toggle" data-collapse="'+esc(f.id)+'">'+(isCollapsed?"▸":"▾")+'</button>';
   html+='<button type="button" class="tree-item tree-folder-btn'+(on?" on":"")+'" data-scope="folder" data-id="'+esc(f.id)+'">'+esc(f.name)+' <span class="count">'+esc(f.unread)+'</span></button>';
-  html+='<button type="button" class="tree-gear" data-folder="'+esc(f.id)+'" title="Folder actions">⋯</button>';
+  html+='<span class="tree-folder-actions"><button type="button" class="tree-act" data-act="rename" data-folder="'+esc(f.id)+'">Rename</button>'
+    +'<button type="button" class="tree-act" data-act="subfolder" data-folder="'+esc(f.id)+'">+Sub</button>'
+    +'<button type="button" class="tree-act" data-act="delete" data-folder="'+esc(f.id)+'">Delete</button></span>';
   html+='</div>';
   if(!isCollapsed){
     (f.feeds||[]).forEach(function(fd){html+=renderFeedRow(fd,depth+1)});
@@ -158,11 +170,11 @@ function renderTree(){
   el.querySelectorAll(".tree-toggle").forEach(function(btn){
     btn.onclick=function(e){e.stopPropagation();var id=btn.dataset.collapse;var c=collapsedFolders();if(c.has(id))c.delete(id);else c.add(id);setCollapsedFolders(c);renderTree()};
   });
-  el.querySelectorAll(".tree-gear").forEach(function(btn){
-    btn.onclick=function(e){e.stopPropagation();var id=btn.dataset.folder;var act=prompt("Folder: rename / delete / subfolder","rename");if(!act)return;
+  el.querySelectorAll(".tree-act").forEach(function(btn){
+    btn.onclick=function(e){e.stopPropagation();var id=btn.dataset.folder;var act=btn.dataset.act;
       if(act==="delete"){if(confirm("Delete folder? Feeds become ungrouped."))api("/api/rss/folders/"+encodeURIComponent(id),"DELETE").then(refreshAll);return}
       if(act==="subfolder"){var n=prompt("Subfolder name");if(!n)return;api("/api/rss/folders","POST",{name:n,parentId:id}).then(refreshAll);return}
-      var name=prompt("New folder name");if(name)api("/api/rss/folders/"+encodeURIComponent(id),"PATCH",{name:name}).then(refreshAll);
+      if(act==="rename"){var name=prompt("New folder name");if(name)api("/api/rss/folders/"+encodeURIComponent(id),"PATCH",{name:name}).then(refreshAll);}
     };
   });
   el.querySelectorAll(".tree-item[data-scope]").forEach(function(b){
@@ -276,6 +288,7 @@ document.getElementById("rss-opml-file").onchange=function(ev){
   var f=ev.target.files[0];if(!f)return;
   f.text().then(function(xml){return api("/api/rss/opml/import","POST",{xml:xml,replace:false})}).then(refreshAll);
 };
+document.getElementById("rss-organize").onclick=function(){setOrganize(!rssState.organize);renderTree()};
 document.getElementById("rss-add-folder").onclick=function(){
   var name=prompt("Folder name");if(!name)return;
   var parentId=rssState.scope.type==="folder"?rssState.scope.id:null;

@@ -128,7 +128,7 @@ test("http: Cloudflare Access JWT is verified; a bad one is refused", async () =
   assert.equal((await auth(mk({ "cf-access-jwt-assertion": "bad" }), url)).ok, false);
 });
 
-test("settings API validates and persists feeds", async () => {
+test("settings API validates schedule and feed scope", async () => {
   const h = await harness();
   try {
     const put = (body: unknown) =>
@@ -137,11 +137,10 @@ test("settings API validates and persists feeds", async () => {
         headers: { ...authz, "x-ah": "1", "content-type": "application/json" },
         body: JSON.stringify(body),
       });
-    const ok = await put({ feeds: "hn\nnot a url", fetchIntervalMinutes: 20 });
+    const ok = await put({ fetchIntervalMinutes: 20, feedScope: { mode: "all", folderIds: [] } });
     assert.equal(ok.status, 200);
     const j: any = await ok.json();
-    assert.equal(j.feedCount, 1);
-    assert.equal(j.feedErrors[0].line, 2);
+    assert.equal(typeof j.feedCount, "number");
     assert.equal(h.settings.get().fetchIntervalMinutes, 20);
     assert.equal((await put({ briefingTime: "99:99" })).status, 400);
   } finally {
@@ -149,17 +148,15 @@ test("settings API validates and persists feeds", async () => {
   }
 });
 
-test("http: github activity API returns JSON without crashing", async () => {
+test("http: full pages render with sidebar nav", async () => {
   const h = await harness();
   try {
-    const r = await fetch(`${h.base}/api/github/activity`, { headers: authz });
-    assert.equal(r.status, 200);
-    const j: any = await r.json();
-    assert.ok(j.activity);
-    assert.equal(typeof j.activity.username, "string");
-    assert.ok(Array.isArray(j.activity.pulls));
-    assert.ok(Array.isArray(j.activity.issues));
-    assert.ok(Array.isArray(j.activity.events));
+    for (const path of ["/hobie", "/notes", "/calendar", "/activity", "/settings"]) {
+      const r = await fetch(`${h.base}${path}`, { headers: authz });
+      assert.equal(r.status, 200, path);
+      const html = await r.text();
+      assert.match(html, /sidebar-nav/);
+    }
   } finally {
     await h.close();
   }

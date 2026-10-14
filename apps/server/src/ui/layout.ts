@@ -1,4 +1,5 @@
 import { dashboardGridCss } from "./dashboard-grid";
+import { DEFAULT_SIDEBAR_TABS, visibleNavTabs, type SidebarTab } from "../nav-tabs";
 
 export const esc = (s: unknown) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -75,11 +76,18 @@ button.ghost,.btn.ghost{background:transparent;color:var(--foreground);border-co
 button.ghost:hover{background:var(--accent)}
 button.icon-btn{min-width:2.25rem;padding:.5rem}
 button:disabled{opacity:.5;cursor:default}
+label.field-label{display:block;margin:1rem 0 .35rem;font-size:.875rem;font-weight:500}
 label{display:block;margin:1rem 0 .35rem;font-size:.875rem;font-weight:500}
+label.choice-row,label.row.choice-row{
+  display:flex;align-items:center;gap:.5rem;margin:.35rem 0;font-weight:400;width:fit-content;max-width:100%}
+label.choice-row input[type=checkbox],label.choice-row input[type=radio],
+label.row.choice-row input[type=checkbox],label.row.choice-row input[type=radio]{
+  width:auto;min-height:auto;min-width:auto;margin:0;flex:0 0 auto}
 input,select,textarea{
   width:100%;font:inherit;font-size:.875rem;color:var(--foreground);background:var(--background);
   border:1px solid var(--input);border-radius:calc(var(--radius) - 2px);padding:.5rem .75rem;
   box-shadow:0 1px 2px rgba(0,0,0,.03)}
+input[type=checkbox],input[type=radio]{width:auto;min-height:auto}
 input:focus,select:focus,textarea:focus{outline:2px solid var(--ring);outline-offset:1px}
 textarea{font-family:ui-monospace,Menlo,monospace;font-size:.8125rem;min-height:9em}
 .settings-card{max-width:42rem}
@@ -116,11 +124,14 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:.8125rem;min-height:
 .rss-tree .tree-folder-row{display:flex;align-items:center;gap:.15rem;width:100%}
 .rss-tree .tree-folder-row .tree-item{flex:1;min-width:0;display:flex}
 .rss-tree button.tree-toggle{width:1.25rem;flex-shrink:0;padding:0;border:0;background:transparent;color:var(--muted-foreground);cursor:pointer;font-size:.7rem;line-height:1}
-.rss-tree button.tree-gear{width:1.5rem;flex-shrink:0;padding:0;border:0;background:transparent;color:var(--muted-foreground);cursor:pointer;font-size:.75rem;opacity:.6}
-.rss-tree button.tree-gear:hover{opacity:1}
-.rss-tree .tree-feed-row{display:flex;align-items:center;gap:.25rem;padding-right:.35rem}
-.rss-tree .tree-feed-row .tree-item{flex:1}
-.rss-tree select.tree-feed-move{max-width:4.5rem;font-size:.65rem;padding:.1rem .2rem;height:1.35rem}
+.rss-tree .tree-feed-row{display:flex;align-items:center;gap:.25rem;padding-right:.35rem;min-width:0}
+.rss-tree .tree-feed-row .tree-item{flex:1;min-width:0}
+.rss-tree select.tree-feed-move{display:none;max-width:5rem;font-size:.65rem;padding:.1rem .2rem;height:1.35rem;flex-shrink:0}
+.rss-tree.organize .tree-feed-row:hover .tree-feed-move,.rss-tree.organize .tree-feed-move:focus{display:block}
+.rss-tree .tree-folder-actions{display:none;flex-shrink:0;gap:.1rem;align-items:center}
+.rss-tree.organize .tree-folder-actions{display:flex}
+.rss-tree button.tree-act{font-size:.6rem;padding:.1rem .25rem;min-height:auto;line-height:1.2;border:1px solid var(--border);background:var(--muted);color:inherit;cursor:pointer;border-radius:3px}
+.rss-tree button.tree-act:hover{background:var(--sidebar-accent)}
 .rss-tree .count{margin-left:auto;font-size:.7rem;color:var(--muted-foreground)}
 .rss-main{flex:1;display:flex;min-width:0;min-height:0}
 .rss-list-pane{flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)}
@@ -160,6 +171,18 @@ pre.briefing{
 .status-pill.dim{opacity:.85}
 pre.briefing.bad{color:var(--destructive);background:transparent;border-color:color-mix(in srgb,var(--destructive) 30%,var(--border))}
 .theme-toggle{width:100%;justify-content:flex-start}
+.cal-week-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:.5rem}
+@media(max-width:900px){.cal-week-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.cal-day{border:1px solid var(--border);border-radius:calc(var(--radius) - 2px);padding:.5rem;min-height:5rem}
+.cal-ev{margin-bottom:.5rem;font-size:.8125rem}
+.dashboard-panel-chrome h2 a{text-decoration:none;color:inherit}
+.dashboard-panel-chrome h2 a:hover{text-decoration:underline}
+.settings-tabs{display:flex;gap:.35rem;margin-bottom:1rem;flex-wrap:wrap}
+.settings-tabs button.ghost.on{background:var(--sidebar-accent)}
+.settings-tab-panel{display:none}.settings-tab-panel.on{display:block}
+.scope-folder-grid{
+  margin:.35rem 0 0 1.25rem;font-size:.8125rem;max-height:11rem;overflow:auto;
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(13rem,1fr));gap:.1rem .65rem;align-content:start}
 ${dashboardGridCss}
 @media(max-width:768px){
   .app-shell{flex-direction:column}
@@ -172,14 +195,7 @@ ${dashboardGridCss}
 }
 `;
 
-const NAV = [
-  ["/", "Dashboard"],
-  ["/ai-security", "AI Security"],
-  ["/briefing", "Daily Briefing"],
-  ["/news", "News"],
-  ["/summaries", "Summaries"],
-  ["/settings", "Settings"],
-] as const;
+export type NavLink = { href: string; label: string };
 
 const THEME_SCRIPT = `
 (function(){
@@ -203,11 +219,14 @@ const THEME_SCRIPT = `
 })();
 `;
 
-export function page(opts: { title: string; body: string; active?: string; script?: string }): string {
-  const nav = NAV.map(
-    ([href, label]) =>
-      `<a href="${href}"${opts.active === href ? ' class="on"' : ""}><span>${esc(label)}</span></a>`,
-  ).join("");
+export function page(opts: { title: string; body: string; active?: string; script?: string; nav?: NavLink[] }): string {
+  const links = opts.nav ?? visibleNavTabs(DEFAULT_SIDEBAR_TABS);
+  const nav = links
+    .map(
+      ({ href, label }) =>
+        `<a href="${href}"${opts.active === href ? ' class="on"' : ""}><span>${esc(label)}</span></a>`,
+    )
+    .join("");
   const shell = `<div class="app-shell">
 <aside class="sidebar" aria-label="Main navigation">
   <div class="sidebar-brand">Command Center</div>

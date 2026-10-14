@@ -23,7 +23,11 @@ async function main() {
 
   const settings = new SettingsStore(dir);
   await settings.load();
-  await settings.update({ feeds: "hn\n", fetchIntervalMinutes: 30, briefingTime: "07:00" });
+  await settings.update({
+    fetchIntervalMinutes: 30,
+    briefingTime: "07:00",
+    feedScope: { mode: "folders", folderIds: [] },
+  });
 
   const feeds = await FeedsStore.open(dir);
   const now = new Date();
@@ -45,6 +49,8 @@ async function main() {
   const panelUpdates = await PanelUpdatesStore.open(dir);
   await panelUpdates.append({ clientId: "copilot", panel: "activity", markdown: "PR #42 ready for review — CI green." });
   await panelUpdates.append({ clientId: "home-agent", panel: "deploy", markdown: "Staging deploy finished at 14:05 UTC." });
+  await panelUpdates.append({ clientId: "copilot", panel: "activity", markdown: "Recallio sync completed — 3 new highlights." });
+  await panelUpdates.append({ clientId: "power-automate", panel: "activity", markdown: "Weekly digest email queued for 07:00." });
 
   const hobie = await HobieQueueStore.open(dir);
   await hobie.enqueue({ clientId: "copilot", title: "Review Q4 deck", body: "Focus on budget slide.", urgent: true }, 20);

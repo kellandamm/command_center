@@ -3,6 +3,7 @@ import type { PanelModule } from "./types";
 export const dailyBriefingPanel: PanelModule = {
   id: "daily-briefing",
   title: "Daily briefing",
+  pageHref: "/briefing",
   dashboardHtml: `
 <section class="card" id="panel-daily-briefing">
   <p class="dim" id="pdb-meta">Loading…</p>
