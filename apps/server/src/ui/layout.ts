@@ -180,6 +180,9 @@ pre.briefing.bad{color:var(--destructive);background:transparent;border-color:co
 .settings-tabs{display:flex;gap:.35rem;margin-bottom:1rem;flex-wrap:wrap}
 .settings-tabs button.ghost.on{background:var(--sidebar-accent)}
 .settings-tab-panel{display:none}.settings-tab-panel.on{display:block}
+.scope-folder-grid{
+  margin:.35rem 0 0 1.25rem;font-size:.8125rem;max-height:11rem;overflow:auto;
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(13rem,1fr));gap:.1rem .65rem;align-content:start}
 ${dashboardGridCss}
 @media(max-width:768px){
   .app-shell{flex-direction:column}

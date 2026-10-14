@@ -19,7 +19,10 @@ export const calendarPanel: PanelModule = {
     if (path === "/api/calendar" && req.method === "GET") {
       const url = new URL(req.url ?? "/", "http://local");
       const horizonDays = Math.min(60, Math.max(7, Number(url.searchParams.get("horizonDays") ?? 14)));
-      const snap = await fetchCalendarEvents(ctx.cfg.icsUrls, ctx.cfg.tz, { horizonDays });
+      const snap = await fetchCalendarEvents(ctx.cfg.icsUrls, ctx.cfg.tz, {
+        horizonDays,
+        localFiles: ctx.cfg.icsLocalFiles,
+      });
       json(200, snap);
       return true;
     }

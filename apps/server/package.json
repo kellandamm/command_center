@@ -10,7 +10,9 @@
     "start": "node dist/server.mjs",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts",
-    "seed:dashboard-screenshot": "tsx scripts/seed-dashboard-screenshot.ts"
+    "seed:dashboard-screenshot": "tsx scripts/seed-dashboard-screenshot.ts",
+    "seed:ui-screenshots": "tsx scripts/seed-ui-screenshots.ts",
+    "capture:ui-screenshots": "tsx scripts/capture-ui-screenshots.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
@@ -23,6 +25,7 @@
     "@types/node": "^24.13.3",
     "@types/sanitize-html": "^2.16.0",
     "esbuild": "^0.28.2",
+    "playwright": "^1.55.1",
     "tsx": "^4.23.12",
     "typescript": "^5.8.3"
   }

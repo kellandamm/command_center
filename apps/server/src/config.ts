@@ -37,6 +37,8 @@ export interface Config {
   weatherLon: number;
   /** Comma-separated https iCal feed URLs (may be empty). */
   icsUrls: string[];
+  /** Local .ics file paths (dev/screenshots; not fetched over the network). */
+  icsLocalFiles: string[];
   /** MCP: clientId → app bearer token (env JSON). */
   mcpAppTokens: Record<string, string>;
   /** MCP: clientId → Cloudflare Access service-token client id. */
@@ -141,6 +143,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     weatherLat: parseLatLon(env.WEATHER_LAT, DEFAULT_WEATHER_LAT, "WEATHER_LAT"),
     weatherLon: parseLatLon(env.WEATHER_LON, DEFAULT_WEATHER_LON, "WEATHER_LON"),
     icsUrls: parseIcsUrls(env.ICS_URLS),
+    icsLocalFiles: parseIcsUrls(env.ICS_LOCAL_FILES),
     mcpAppTokens,
     mcpCfClientMap: parseJsonRecord(env.MCP_CF_CLIENT_MAP),
     webhookSecret,

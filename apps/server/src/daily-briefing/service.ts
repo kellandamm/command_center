@@ -181,10 +181,10 @@ export class DailyBriefingService {
   }
 
   private async buildCalendar(cfg: Config): Promise<DailyBriefingSources["calendar"]> {
-    if (!cfg.icsUrls.length) {
+    if (!cfg.icsUrls.length && !cfg.icsLocalFiles.length) {
       return block("not_configured", { events: [] }, "Calendar is not configured — set ICS_URLS on the server.");
     }
-    const snap = await fetchCalendarEvents(cfg.icsUrls, cfg.tz);
+    const snap = await fetchCalendarEvents(cfg.icsUrls, cfg.tz, { localFiles: cfg.icsLocalFiles });
     if (!snap.events.length) {
       const bad = snap.feeds.filter((f) => !f.ok);
       const msg = bad.length ? `No upcoming events (${bad.length} feed error(s)).` : "No upcoming events in the next two weeks.";

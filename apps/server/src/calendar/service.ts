@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { safeFetch, BlockedUrlError } from "../ssrf";
 import { parseIcsEvents, upcomingEvents, type CalendarEvent } from "./parse-ics";
 
@@ -17,14 +18,28 @@ export interface CalendarSnapshot {
 export async function fetchCalendarEvents(
   urls: string[],
   tz: string,
-  opts: { limit?: number; horizonDays?: number } = {},
+  opts: { limit?: number; horizonDays?: number; localFiles?: string[] } = {},
 ): Promise<CalendarSnapshot> {
-  if (!urls.length) {
+  const localFiles = opts.localFiles ?? [];
+  if (!urls.length && !localFiles.length) {
     return { configured: false, feeds: [], events: [] };
   }
   const all: CalendarEvent[] = [];
   const feeds: CalendarFeedResult[] = [];
   const now = new Date();
+
+  for (const filePath of localFiles) {
+    const label = `file:${filePath}`;
+    try {
+      const body = await readFile(filePath, "utf8");
+      const parsed = parseIcsEvents(body, tz, now);
+      all.push(...parsed);
+      feeds.push({ url: label, ok: true, eventCount: parsed.length });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "read failed";
+      feeds.push({ url: label, ok: false, error: msg, eventCount: 0 });
+    }
+  }
 
   for (const url of urls) {
     try {

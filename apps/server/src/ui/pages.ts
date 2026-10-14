@@ -72,9 +72,9 @@ export function settingsPage(nav?: NavLink[]): string {
 </div>
 <fieldset style="margin-top:1rem;border:0;padding:0">
 <legend style="font-weight:600;font-size:.875rem">Feed scope</legend>
-<label class="row" style="margin:.5rem 0"><input type="radio" name="feedScope" value="all" id="scope-all"/> All feeds in News reader</label>
-<label class="row" style="margin:.5rem 0"><input type="radio" name="feedScope" value="folders" id="scope-folders"/> Selected folders only</label>
-<div id="scope-folder-list" class="dim" style="margin-left:1.25rem;font-size:.8125rem"></div>
+<label class="row choice-row" style="margin:.5rem 0"><input type="radio" name="feedScope" value="all" id="scope-all"/> All feeds in News reader</label>
+<label class="row choice-row" style="margin:.5rem 0"><input type="radio" name="feedScope" value="folders" id="scope-folders"/> Selected folders only</label>
+<div id="scope-folder-list" class="scope-folder-grid dim"></div>
 </fieldset>
 <div class="row" style="margin-top:18px"><button type="submit">Save schedule</button><span id="saved-schedule" class="dim"></span></div>
 </form></div>
@@ -98,7 +98,7 @@ function renderFolderScope(){
       var html="";
       nodes.forEach(function(f){
         var id=f.id;var checked=settingsState.feedScope.folderIds.indexOf(id)>=0;
-        html+='<label class="row" style="margin:.25rem 0"><input type="checkbox" class="scope-folder" data-id="'+esc(id)+'"'+(checked?" checked":"")+'/> '+esc(prefix+f.name)+'</label>';
+        html+='<label class="row choice-row" style="margin:.15rem 0"><input type="checkbox" class="scope-folder" data-id="'+esc(id)+'"'+(checked?" checked":"")+'/> '+esc(prefix+f.name)+'</label>';
         if(f.folders&&f.folders.length)html+=walk(f.folders,prefix+f.name+" / ");
       });
       return html;
@@ -116,7 +116,7 @@ function renderTabsEditor(){
   var rows=settingsState.sidebarTabs.slice().sort(function(a,b){return a.order-b.order});
   el.innerHTML=rows.map(function(t,idx){
     var lock=t.locked?" disabled":"";
-    var vis=t.locked?"":'<label class="row" style="margin:0;font-size:.8125rem"><input type="checkbox" class="tab-vis" data-id="'+esc(t.id)+'"'+(t.visible?" checked":"")+'/> Visible</label>';
+    var vis=t.locked?"":'<label class="row choice-row" style="margin:0;font-size:.8125rem"><input type="checkbox" class="tab-vis" data-id="'+esc(t.id)+'"'+(t.visible?" checked":"")+'/> Visible</label>';
     return '<div class="row" style="align-items:center;margin-bottom:.5rem;gap:.5rem" data-id="'+esc(t.id)+'">'
       +'<span class="dim" style="width:1.5rem">'+String(idx+1)+'</span>'
       +'<input type="text" class="tab-label" data-id="'+esc(t.id)+'" value="'+esc(t.label)+'" style="flex:1"'+lock+'/>'
