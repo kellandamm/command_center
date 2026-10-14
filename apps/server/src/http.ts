@@ -5,6 +5,7 @@ import { recallioConfigured } from "./recallio/client";
 import type { Authenticator } from "./auth";
 import { csrfOk } from "./auth";
 import type { FeedsStore } from "./feeds/store";
+import type { NotesStore } from "./notes/store";
 import { parseFeedList } from "./feeds/parse";
 import { panels } from "./panels/registry";
 import type { PanelContext } from "./panels/types";
@@ -19,6 +20,7 @@ export interface App {
   settings: SettingsStore;
   feeds: FeedsStore;
   briefing: BriefingService;
+  notes: NotesStore;
 }
 
 const SECURITY: Record<string, string> = {
@@ -59,6 +61,7 @@ export function createApp(app: App): Server {
     settings: app.settings,
     feeds: app.feeds,
     briefing: app.briefing,
+    notes: app.notes,
   });
 
   return createServer(async (req, res) => {

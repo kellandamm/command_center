@@ -6,6 +6,7 @@ import { FeedsStore } from "./feeds/store";
 import { createApp } from "./http";
 import { Scheduler } from "./scheduler";
 import { SettingsStore } from "./settings";
+import { NotesStore } from "./notes/store";
 import { FileKV, ensureDirs } from "./store";
 
 async function main() {
@@ -20,9 +21,10 @@ async function main() {
   await settings.load();
   const feeds = await FeedsStore.open(cfg.dataDir);
   const briefing = await BriefingService.open(cfg.dataDir, cfg.tz);
+  const notes = await NotesStore.open(cfg.dataDir);
 
   const scheduler = new Scheduler({ cfg, settings, kv, feeds, briefing });
-  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, feeds, briefing });
+  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, feeds, briefing, notes });
   server.listen(cfg.port, cfg.host, () => {
     console.log(`command-center ${cfg.version} listening on ${cfg.host}:${cfg.port} (tz ${cfg.tz})`);
     console.log(llmConfigured(cfg) ? "LLM: configured" : "LLM: not set (briefing disabled)");

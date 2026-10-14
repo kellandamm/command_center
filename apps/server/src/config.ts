@@ -27,6 +27,12 @@ export interface Config {
   /** Unix socket path for read-only Docker Engine API; null disables container list. */
   dockerSocket: string | null;
   version: string;
+  /** WGS-84 latitude for Open-Meteo (defaults to Chicago). */
+  weatherLat: number;
+  /** WGS-84 longitude for Open-Meteo (defaults to Chicago). */
+  weatherLon: number;
+  /** Comma-separated https iCal feed URLs (may be empty). */
+  icsUrls: string[];
 }
 
 export interface LlmConfig {
@@ -37,6 +43,26 @@ export interface LlmConfig {
 
 const truthy = (v: string | undefined) => v === "1" || v?.toLowerCase() === "true";
 const blank = (v: string | undefined) => (v && v.trim() ? v.trim() : null);
+
+/** Default coordinates: downtown Chicago. */
+export const DEFAULT_WEATHER_LAT = 41.8781;
+export const DEFAULT_WEATHER_LON = -87.6298;
+
+function parseLatLon(raw: string | undefined, fallback: number, name: string): number {
+  if (!raw || !raw.trim()) return fallback;
+  const n = Number(raw.trim());
+  if (!Number.isFinite(n)) throw new Error(`${name} must be a number`);
+  return n;
+}
+
+/** Split `ICS_URLS` on commas; empty segments are dropped. */
+export function parseIcsUrls(raw: string | undefined): string[] {
+  if (!raw || !raw.trim()) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const port = Number(env.PORT ?? 8080);
@@ -74,6 +100,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     allowInsecureNoAuth: truthy(env.ALLOW_INSECURE_NO_AUTH),
     dockerSocket: blank(env.DOCKER_SOCKET),
     version: blank(env.APP_VERSION) ?? "dev",
+    weatherLat: parseLatLon(env.WEATHER_LAT, DEFAULT_WEATHER_LAT, "WEATHER_LAT"),
+    weatherLon: parseLatLon(env.WEATHER_LON, DEFAULT_WEATHER_LON, "WEATHER_LON"),
+    icsUrls: parseIcsUrls(env.ICS_URLS),
   };
 }
 
