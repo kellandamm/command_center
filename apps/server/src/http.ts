@@ -76,7 +76,11 @@ const icons = new Map<string, Buffer>();
 const icon = (name: string, size: number, maskable = false) => icons.get(name) ?? (icons.set(name, iconPng(size, maskable)), icons.get(name)!);
 
 function bearerToken(req: IncomingMessage): string | undefined {
-  return req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+  const authorization = req.headers.authorization;
+  if (!authorization || authorization.slice(0, 6).toLowerCase() !== "bearer") return undefined;
+  let tokenStart = 6;
+  while (authorization[tokenStart] === " " || authorization[tokenStart] === "\t") tokenStart++;
+  return tokenStart > 6 && tokenStart < authorization.length ? authorization.slice(tokenStart) : undefined;
 }
 
 /** POST /api/ai-security/roundups may use AI_SECURITY_TOKEN instead of dashboard session auth. */
