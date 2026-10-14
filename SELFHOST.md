@@ -15,6 +15,7 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 | Variable | Notes |
 |---|---|
 | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | Optional. When all three are set, the **AI briefing** panel can generate summaries. Example base URL: `https://api.commandcode.ai/provider/v1`. Without them the dashboard still runs; briefing shows a clear disabled message. |
+| `TODOIST_API_TOKEN` | Optional. [Todoist REST API](https://developer.todoist.com/rest/v2/) token for the **Todoist** panel (today/overdue tasks, quick-add, complete). Without it the panel shows a clear disabled message. |
 | `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` | Cloudflare Access JWT on every request (`Cf-Access-Jwt-Assertion`). Set both or neither. |
 | `ADMIN_TOKEN` | ≥ 24 chars. `Authorization: Bearer …`, or `/?token=…` once (HttpOnly cookie; needs HTTPS). |
 | `ALLOW_INSECURE_NO_AUTH=1` | Localhost only. Without any auth setting the server refuses to start. |
