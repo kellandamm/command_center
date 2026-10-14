@@ -59,7 +59,7 @@ test("dashboard layout: missing panels append below saved layout", () => {
   }
 });
 
-test("dashboard layout: v1 saved file migrates to v2 compact default", () => {
+test("dashboard layout: v1 saved file maps positions into v2 grid", () => {
   const raw = {
     version: 1,
     cols: 12,
@@ -67,13 +67,25 @@ test("dashboard layout: v1 saved file migrates to v2 compact default", () => {
     panels: [
       { id: "feeds", x: 0, y: 0, w: 12, h: 12 },
       { id: "weather", x: 0, y: 0, w: 3, h: 3, collapsed: true },
+      { id: "removed-panel", x: 1, y: 1, w: 3, h: 3 },
     ],
   };
   const next = normalizeDashboardLayout(raw, PANEL_IDS);
   assert.equal(next.version, 2);
   assert.equal(next.panels.length, PANEL_IDS.length);
   assert.equal(next.panels.find((p) => p.id === "weather")?.collapsed, true);
-  assert.equal(next.panels.find((p) => p.id === "feeds")?.h, 2);
+  const feeds = next.panels.find((p) => p.id === "feeds")!;
+  assert.equal(feeds.w, 12);
+  assert.equal(feeds.h, 12);
+  assert.ok(!next.panels.some((p) => p.id === "removed-panel"));
+});
+
+test("dashboard layout: default collapses low-priority panels and enlarges feeds", () => {
+  const layout = defaultDashboardLayout(PANEL_IDS);
+  const feeds = layout.panels.find((p) => p.id === "feeds")!;
+  assert.ok(feeds.w >= 7 && feeds.h >= 4);
+  assert.equal(layout.panels.find((p) => p.id === "calendar")?.collapsed, true);
+  assert.equal(layout.panels.find((p) => p.id === "todoist")?.collapsed, true);
 });
 
 test("dashboard layout: normalize adds missing panels and drops unknown ids", () => {

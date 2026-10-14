@@ -14,11 +14,18 @@ import { taggedNewsDashboardScript } from "../panels/tagged-news";
 import { todoistDashboardScript } from "../panels/todoist";
 import { weatherDashboardScript } from "../panels/weather";
 import { defaultDashboardLayout } from "../dashboard-layout/defaults";
+import type { PanelLayoutEntry } from "../dashboard-layout/types";
 import { dashboardGridScript } from "./dashboard-grid";
 import { page } from "./layout";
 
-function panelGridStyle(entry: { x: number; y: number; w: number; h: number }): string {
-  return `--gc-start:${entry.x + 1};--gc-span:${entry.w};--gr-start:${entry.y + 1};--gr-span:${entry.h}`;
+function panelGridStyle(entry: PanelLayoutEntry): string {
+  const span = entry.collapsed ? 1 : entry.h;
+  return `--gc-start:${entry.x + 1};--gc-span:${entry.w};--gr-start:${entry.y + 1};--gr-span:${span}`;
+}
+
+function panelItemAttrs(entry: PanelLayoutEntry): string {
+  const collapsed = entry.collapsed ? " is-collapsed" : "";
+  return `class="dashboard-item${collapsed}" data-full-h="${entry.h}"`;
 }
 
 export function dashboardPage(): string {
@@ -27,7 +34,7 @@ export function dashboardPage(): string {
   const sections = panels
     .map((p) => {
       const entry = byId.get(p.id)!;
-      return `<div class="dashboard-item" data-panel-id="${p.id}" style="${panelGridStyle(entry)}">${p.dashboardHtml}</div>`;
+      return `<div ${panelItemAttrs(entry)} data-panel-id="${p.id}" style="${panelGridStyle(entry)}">${p.dashboardHtml}</div>`;
     })
     .join("\n");
   return page({

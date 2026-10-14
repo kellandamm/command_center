@@ -5,8 +5,8 @@ export const dashboardGridCss = `
 .dashboard-toolbar .dim{margin:0}
 .app-shell:has(.dashboard-page){height:100vh;max-height:100vh;overflow:hidden}
 .page-content:has(.dashboard-page){
-  flex:1 1 0;min-height:0;display:flex;flex-direction:column;padding:1rem 1.25rem .75rem;box-sizing:border-box;
-  overflow-x:hidden;overflow-y:auto}
+  flex:1 1 0;min-height:0;display:flex;flex-direction:column;padding:1rem 1.25rem .5rem;box-sizing:border-box;
+  overflow:hidden}
 .dashboard-page{flex:1 1 0;min-height:0;display:flex;flex-direction:column}
 .dashboard-page .page-header{margin-bottom:.5rem;flex-shrink:0}
 .dashboard-page .page-header p{margin:.2rem 0 0}
@@ -57,8 +57,12 @@ details.feed-item[open] .feed-headline summary::before{content:"▾ "}
 #panel-notes #notes-editor{min-height:3rem;flex:1;max-height:100%;resize:none;font-size:.8125rem}
 #panel-briefing #briefing-body{flex:1;min-height:0;max-height:none;margin:0;font-size:.75rem}
 #panel-notes .dim{font-size:.75rem;margin:0}
-#panel-feeds .feeds-full-link{margin:.25rem 0 0;font-size:.8125rem}
+#panel-feeds{flex:1;min-height:0;display:flex;flex-direction:column}
+#panel-feeds .dashboard-panel-body{flex:1;min-height:0}
+#panel-feeds .feeds-full-link{margin:.25rem 0 0;font-size:.8125rem;flex-shrink:0}
 #panel-feeds .feeds-full-link a{text-decoration:underline;text-underline-offset:2px}
+#panel-feeds .row{flex-shrink:0}
+#panel-feeds #feeds-status{flex-shrink:0;margin:0}
 @media(max-width:900px){
   .dashboard-grid{grid-template-columns:repeat(6,minmax(0,1fr))}
   .dashboard-item{grid-column:1/-1!important;grid-row:auto!important;height:auto!important}
@@ -87,9 +91,11 @@ export function dashboardGridScript(): string {
     grid.style.setProperty("--dash-rows",String(rows));
     var page=document.querySelector(".dashboard-page");
     if(!page)return;
-    var top=page.getBoundingClientRect().top;
-    var avail=Math.max(200,window.innerHeight-top-10);
-    var rowH=Math.max(52,(avail-GAP*(rows-1))/rows);
+    var header=page.querySelector(".page-header");
+    var toolbar=page.querySelector(".dashboard-toolbar");
+    var chrome=(header?header.offsetHeight:0)+(toolbar?toolbar.offsetHeight:0)+6;
+    var avail=Math.max(160,page.clientHeight-chrome);
+    var rowH=Math.max(44,(avail-GAP*(rows-1))/rows);
     grid.style.gridTemplateRows="repeat("+rows+", "+rowH+"px)";
     grid.style.height=(rowH*rows+GAP*(rows-1))+"px";
     grid.dataset.rowPx=String(rowH);
