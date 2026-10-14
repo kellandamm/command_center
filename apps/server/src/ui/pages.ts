@@ -10,15 +10,23 @@ import { notesDashboardScript } from "../panels/notes";
 import { recallioDashboardScript } from "../panels/recallio";
 import { todoistDashboardScript } from "../panels/todoist";
 import { weatherDashboardScript } from "../panels/weather";
+import { dashboardGridScript } from "./dashboard-grid";
 import { page } from "./layout";
 
 export function dashboardPage(): string {
-  const sections = panels.map((p) => p.dashboardHtml).join("\n");
+  const sections = panels
+    .map((p) => `<div class="dashboard-item" data-panel-id="${p.id}">${p.dashboardHtml}</div>`)
+    .join("\n");
   return page({
     title: "Command center",
     active: "/",
-    body: `<header class="page-header"><h1>Dashboard</h1><p class="dim">Daily tools in one place.</p></header><div class="panel-grid">${sections}</div>`,
-    script: `${activityDashboardScript()}${hobieDashboardScript()}${weatherDashboardScript()}${calendarDashboardScript()}${notesDashboardScript()}${feedsDashboardScript()}${briefingDashboardScript()}${todoistDashboardScript()}${hostHealthDashboardScript()}${githubDashboardScript()}${recallioDashboardScript()}`,
+    body: `<header class="page-header"><h1>Dashboard</h1><p class="dim">Daily tools in one place. Drag panel headers to rearrange; resize from the corner handle.</p></header>
+<div class="dashboard-toolbar">
+  <button type="button" class="ghost" id="dashboard-reset-layout">Reset layout</button>
+  <p class="dim">Layout is saved on this server.</p>
+</div>
+<div class="dashboard-grid" id="dashboard-grid">${sections}</div>`,
+    script: `${dashboardGridScript()}${activityDashboardScript()}${hobieDashboardScript()}${weatherDashboardScript()}${calendarDashboardScript()}${notesDashboardScript()}${feedsDashboardScript()}${briefingDashboardScript()}${todoistDashboardScript()}${hostHealthDashboardScript()}${githubDashboardScript()}${recallioDashboardScript()}`,
   });
 }
 

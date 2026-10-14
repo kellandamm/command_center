@@ -10,7 +10,8 @@ export const feedsPanel: PanelModule = {
   <div class="row"><h2 style="margin:0">News feeds</h2>
   <button type="button" class="ghost" id="feeds-refresh" style="margin-left:auto">Refresh now</button></div>
   <p class="dim" id="feeds-status">Loading…</p>
-  <div id="feeds-list"></div>
+  <div id="feeds-list" class="feeds-panel-scroll"></div>
+  <p class="feeds-full-link dim"><a href="/news">Open full tagged news view</a></p>
   <div class="row" style="margin-top:10px">
     <button type="button" class="ghost" id="feeds-mark-all">Mark all read</button>
   </div>

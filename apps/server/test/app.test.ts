@@ -56,7 +56,7 @@ async function harness(env: Record<string, string> = {}) {
   const aiSecurity = await AiSecurityService.open(dir);
   const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
   const notes = await NotesStore.open(dir);
-  const { panelUpdates, hobieQueue } = await openIntegrationStores(dir);
+  const { panelUpdates, hobieQueue, dashboardLayout } = await openIntegrationStores(dir);
   const server = createApp({
     cfg,
     auth: makeAuthenticator(cfg),
@@ -69,6 +69,7 @@ async function harness(env: Record<string, string> = {}) {
     notes,
     panelUpdates,
     hobieQueue,
+    dashboardLayout,
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
