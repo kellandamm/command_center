@@ -20,13 +20,13 @@ export function initSchema(db: DatabaseSync): { fts5: boolean } {
       name TEXT NOT NULL,
       sort_order INTEGER NOT NULL
     );
-    CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id);
   `);
   try {
     db.exec(`ALTER TABLE folders ADD COLUMN parent_id TEXT REFERENCES folders(id) ON DELETE SET NULL`);
   } catch {
     /* column exists */
   }
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id)`);
   db.exec(`
     CREATE TABLE IF NOT EXISTS feeds (
       id TEXT PRIMARY KEY,
