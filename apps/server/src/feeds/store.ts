@@ -6,7 +6,7 @@ import { readJson } from "../store";
 import { parseFeedList } from "./parse";
 import type { ParsedItem } from "./parse";
 import { HN_API_URL, HN_FEED_ID } from "./parse";
-import { feedIdFromUrl, folderIdFromName, type OpmlFeed, type OpmlFolder, parseOpml, exportOpml } from "./opml";
+import { feedIdFromUrl, folderIdFromPath, type OpmlFeed, type OpmlFolder, parseOpml, exportOpml } from "./opml";
 import { initSchema } from "./schema";
 import { POLL, RETENTION } from "./retention";
 import { SummaryStore } from "./summary-store";
@@ -43,6 +43,15 @@ export interface FeedRow {
   etag?: string;
   lastModified?: string;
   isHn: boolean;
+}
+
+export interface FolderTreeNode {
+  id: string;
+  name: string;
+  parentId: string | null;
+  unread: number;
+  feeds: Array<{ id: string; title: string; unread: number }>;
+  folders: FolderTreeNode[];
 }
 
 interface LegacyFeedsData {
@@ -174,24 +183,28 @@ export class FeedsStore {
     let folderCount = 0;
     let feedCount = 0;
     const now = Date.now();
-    const walk = (folders: OpmlFolder[], parentId: string | null, baseOrder: number) => {
+    const walk = (folders: OpmlFolder[], parentId: string | null, path: string[], baseOrder: number) => {
       folders.forEach((folder, fi) => {
-        const fid = folderIdFromName(folder.name);
+        const pathSegs = [...path, folder.name];
+        const fid = folderIdFromPath(pathSegs);
         this.db
           .prepare(
-            `INSERT INTO folders (id, name, sort_order) VALUES (?, ?, ?)
-             ON CONFLICT(id) DO UPDATE SET name = excluded.name, sort_order = excluded.sort_order`,
+            `INSERT INTO folders (id, parent_id, name, sort_order) VALUES (?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+               parent_id = excluded.parent_id,
+               name = excluded.name,
+               sort_order = excluded.sort_order`,
           )
-          .run(fid, folder.name, baseOrder + fi);
+          .run(fid, parentId, folder.name, baseOrder + fi);
         folderCount++;
         folder.feeds.forEach((f, j) => {
           this.addOpmlFeed(f, fid, j, now + feedCount);
           feedCount++;
         });
-        walk(folder.folders, fid, 0);
+        walk(folder.folders, fid, pathSegs, 0);
       });
     };
-    walk(doc.folders, null, 0);
+    walk(doc.folders, null, [], 0);
     doc.feeds.forEach((f, j) => {
       this.addOpmlFeed(f, null, j, now + feedCount);
       feedCount++;
@@ -203,21 +216,25 @@ export class FeedsStore {
   private addOpmlFeed(f: OpmlFeed, folderId: string | null, sortOrder: number, staggerIndex: number) {
     const id = f.xmlUrl.includes("hacker-news") && f.title.toLowerCase().includes("hacker") ? HN_FEED_ID : feedIdFromUrl(f.xmlUrl);
     const isHn = id === HN_FEED_ID;
-    this.upsertFeedRow({
-      id,
-      title: f.title,
-      xmlUrl: isHn ? HN_API_URL : f.xmlUrl,
-      htmlUrl: f.htmlUrl,
-      folderId,
-      isHn,
-      sortOrder,
-      nextPollAt: new Date(Date.now() + staggerMs(staggerIndex)).toISOString(),
-    });
+    this.upsertFeedRow(
+      {
+        id,
+        title: f.title,
+        xmlUrl: isHn ? HN_API_URL : f.xmlUrl,
+        htmlUrl: f.htmlUrl,
+        folderId,
+        isHn,
+        sortOrder,
+        nextPollAt: new Date(Date.now() + staggerMs(staggerIndex)).toISOString(),
+      },
+      { setFolder: true },
+    );
   }
 
   exportOpmlDocument(): string {
-    const folders = this.db.prepare("SELECT id, name, sort_order FROM folders ORDER BY sort_order, name").all() as Array<{
+    const folders = this.db.prepare("SELECT id, parent_id, name, sort_order FROM folders ORDER BY sort_order, name").all() as Array<{
       id: string;
+      parent_id: string | null;
       name: string;
     }>;
     const feeds = this.db.prepare("SELECT id, folder_id, title, xml_url, html_url, sort_order FROM feeds ORDER BY sort_order, title").all() as Array<{
@@ -227,50 +244,64 @@ export class FeedsStore {
       xml_url: string;
       html_url: string | null;
     }>;
+    const build = (parentId: string | null): OpmlFolder[] =>
+      folders
+        .filter((f) => (f.parent_id ?? null) === parentId)
+        .map((f) => ({
+          name: f.name,
+          feeds: feeds
+            .filter((x) => x.folder_id === f.id)
+            .map((x) => ({ title: x.title, xmlUrl: x.xml_url, htmlUrl: x.html_url ?? undefined })),
+          folders: build(f.id),
+        }));
     const tree = {
-      folders: folders.map((f) => ({
-        name: f.name,
-        feeds: feeds
-          .filter((x) => x.folder_id === f.id)
-          .map((x) => ({ title: x.title, xmlUrl: x.xml_url, htmlUrl: x.html_url ?? undefined })),
-        folders: [] as OpmlFolder[],
-      })),
+      folders: build(null),
       feeds: feeds.filter((x) => !x.folder_id).map((x) => ({ title: x.title, xmlUrl: x.xml_url, htmlUrl: x.html_url ?? undefined })),
     };
     return exportOpml(tree);
   }
 
-  upsertFeedRow(row: {
-    id: string;
-    title: string;
-    xmlUrl: string;
-    htmlUrl?: string;
-    folderId?: string | null;
-    isHn?: boolean;
-    sortOrder?: number;
-    nextPollAt: string;
-  }) {
-    this.db
-      .prepare(
-        `INSERT INTO feeds (id, folder_id, title, xml_url, html_url, sort_order, next_poll_at, is_hn)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
-           folder_id = COALESCE(excluded.folder_id, feeds.folder_id),
-           title = excluded.title,
-           xml_url = excluded.xml_url,
-           html_url = COALESCE(excluded.html_url, feeds.html_url),
-           sort_order = excluded.sort_order`,
-      )
-      .run(
-        row.id,
-        row.folderId ?? null,
-        row.title,
-        row.xmlUrl,
-        row.htmlUrl ?? null,
-        row.sortOrder ?? 0,
-        row.nextPollAt,
-        row.isHn ? 1 : 0,
-      );
+  upsertFeedRow(
+    row: {
+      id: string;
+      title: string;
+      xmlUrl: string;
+      htmlUrl?: string;
+      folderId?: string | null;
+      isHn?: boolean;
+      sortOrder?: number;
+      nextPollAt: string;
+    },
+    opts?: { setFolder?: boolean },
+  ) {
+    const setFolder = opts?.setFolder === true;
+    const folderId = row.folderId ?? null;
+    if (setFolder) {
+      this.db
+        .prepare(
+          `INSERT INTO feeds (id, folder_id, title, xml_url, html_url, sort_order, next_poll_at, is_hn)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET
+             folder_id = excluded.folder_id,
+             title = excluded.title,
+             xml_url = excluded.xml_url,
+             html_url = COALESCE(excluded.html_url, feeds.html_url),
+             sort_order = excluded.sort_order`,
+        )
+        .run(row.id, folderId, row.title, row.xmlUrl, row.htmlUrl ?? null, row.sortOrder ?? 0, row.nextPollAt, row.isHn ? 1 : 0);
+    } else {
+      this.db
+        .prepare(
+          `INSERT INTO feeds (id, folder_id, title, xml_url, html_url, sort_order, next_poll_at, is_hn)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET
+             title = excluded.title,
+             xml_url = excluded.xml_url,
+             html_url = COALESCE(excluded.html_url, feeds.html_url),
+             sort_order = excluded.sort_order`,
+        )
+        .run(row.id, folderId, row.title, row.xmlUrl, row.htmlUrl ?? null, row.sortOrder ?? 0, row.nextPollAt, row.isHn ? 1 : 0);
+    }
     this.dirty = true;
   }
 
@@ -293,6 +324,76 @@ export class FeedsStore {
     const r = this.db.prepare("DELETE FROM feeds WHERE id = ?").run(feedId);
     this.dirty = true;
     return Number(r.changes) > 0;
+  }
+
+  moveFeed(feedId: string, folderId: string | null): boolean {
+    const r = this.db.prepare("UPDATE feeds SET folder_id = ? WHERE id = ?").run(folderId, feedId);
+    this.dirty = true;
+    return Number(r.changes) > 0;
+  }
+
+  createFolder(name: string, parentId: string | null = null): { id: string } {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error("folder name required");
+    const path = parentId ? [...this.folderPathSegments(parentId), trimmed] : [trimmed];
+    const id = folderIdFromPath(path);
+    const orderRow = parentId
+      ? (this.db.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM folders WHERE parent_id = ?").get(parentId) as {
+          n: number;
+        })
+      : (this.db.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM folders WHERE parent_id IS NULL").get() as { n: number });
+    const order = Number(orderRow.n) || 0;
+    this.db
+      .prepare(`INSERT INTO folders (id, parent_id, name, sort_order) VALUES (?, ?, ?, ?)`)
+      .run(id, parentId, trimmed, order);
+    this.dirty = true;
+    return { id };
+  }
+
+  renameFolder(folderId: string, name: string): boolean {
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    const r = this.db.prepare("UPDATE folders SET name = ? WHERE id = ?").run(trimmed, folderId);
+    this.dirty = true;
+    return Number(r.changes) > 0;
+  }
+
+  deleteFolder(folderId: string): boolean {
+    const exists = this.db.prepare("SELECT 1 FROM folders WHERE id = ?").get(folderId);
+    if (!exists) return false;
+    this.db.prepare("UPDATE feeds SET folder_id = NULL WHERE folder_id = ?").run(folderId);
+    this.db.prepare("UPDATE folders SET parent_id = NULL WHERE parent_id = ?").run(folderId);
+    const r = this.db.prepare("DELETE FROM folders WHERE id = ?").run(folderId);
+    this.dirty = true;
+    return Number(r.changes) > 0;
+  }
+
+  private folderPathSegments(folderId: string): string[] {
+    const segments: string[] = [];
+    let current: string | null = folderId;
+    while (current) {
+      const row = this.db.prepare("SELECT id, parent_id, name FROM folders WHERE id = ?").get(current) as
+        | { id: string; parent_id: string | null; name: string }
+        | undefined;
+      if (!row) break;
+      segments.unshift(row.name);
+      current = row.parent_id;
+    }
+    return segments;
+  }
+
+  folderIdsWithDescendants(folderId: string): string[] {
+    const rows = this.db
+      .prepare(
+        `WITH RECURSIVE sub AS (
+           SELECT id FROM folders WHERE id = ?
+           UNION ALL
+           SELECT f.id FROM folders f INNER JOIN sub ON f.parent_id = sub.id
+         )
+         SELECT id FROM sub`,
+      )
+      .all(folderId) as Array<{ id: string }>;
+    return rows.map((r) => r.id);
   }
 
   dueFeeds(now: Date, limit: number): FeedRow[] {
@@ -467,8 +568,9 @@ export class FeedsStore {
       params.push(opts.feedId);
     }
     if (opts.folderId) {
-      where.push("f.folder_id = ?");
-      params.push(opts.folderId);
+      const ids = this.folderIdsWithDescendants(opts.folderId);
+      where.push(`f.folder_id IN (${ids.map(() => "?").join(",")})`);
+      params.push(...ids);
     }
     if (opts.starred) where.push("e.starred = 1");
     if (opts.q?.trim()) {
@@ -538,11 +640,13 @@ export class FeedsStore {
       return Number(r.changes);
     }
     if (scope?.folderId) {
+      const ids = this.folderIdsWithDescendants(scope.folderId);
+      const placeholders = ids.map(() => "?").join(",");
       const r = this.db
         .prepare(
-          `UPDATE entries SET read_at = ? WHERE read_at IS NULL AND feed_id IN (SELECT id FROM feeds WHERE folder_id = ?)`,
+          `UPDATE entries SET read_at = ? WHERE read_at IS NULL AND feed_id IN (SELECT id FROM feeds WHERE folder_id IN (${placeholders}))`,
         )
-        .run(now, scope.folderId);
+        .run(now, ...ids);
       this.dirty = true;
       return Number(r.changes);
     }
@@ -568,12 +672,17 @@ export class FeedsStore {
 
   tree(): {
     unreadTotal: number;
-    folders: Array<{ id: string; name: string; unread: number; feeds: Array<{ id: string; title: string; unread: number }> }>;
+    folders: FolderTreeNode[];
     rootFeeds: Array<{ id: string; title: string; unread: number }>;
+    folderOptions: Array<{ id: string; label: string }>;
   } {
     const unreadRow = this.db.prepare("SELECT COUNT(*) AS n FROM entries WHERE read_at IS NULL").get() as { n: number | bigint };
     const unreadTotal = Number(unreadRow.n);
-    const folders = this.db.prepare("SELECT id, name FROM folders ORDER BY sort_order, name").all() as Array<{ id: string; name: string }>;
+    const folders = this.db.prepare("SELECT id, parent_id, name FROM folders ORDER BY sort_order, name").all() as Array<{
+      id: string;
+      parent_id: string | null;
+      name: string;
+    }>;
     const feeds = this.db.prepare("SELECT id, folder_id, title FROM feeds ORDER BY sort_order, title").all() as Array<{
       id: string;
       folder_id: string | null;
@@ -585,17 +694,40 @@ export class FeedsStore {
       };
       return Number(row.n);
     };
+    const build = (parentId: string | null, depth: number): FolderTreeNode[] =>
+      folders
+        .filter((f) => (f.parent_id ?? null) === parentId)
+        .map((f) => {
+          const childFolders = build(f.id, depth + 1);
+          const directFeeds = feeds
+            .filter((x) => x.folder_id === f.id)
+            .map((x) => ({ id: x.id, title: x.title, unread: unreadFor(x.id) }));
+          const childUnread = childFolders.reduce((s, c) => s + c.unread, 0);
+          const feedUnread = directFeeds.reduce((s, x) => s + x.unread, 0);
+          return {
+            id: f.id,
+            name: f.name,
+            parentId: f.parent_id,
+            unread: feedUnread + childUnread,
+            feeds: directFeeds,
+            folders: childFolders,
+          };
+        });
+    const roots = build(null, 0);
+    const folderOptions: Array<{ id: string; label: string }> = [];
+    const walkOpts = (nodes: FolderTreeNode[], prefix: string) => {
+      for (const n of nodes) {
+        const label = prefix ? `${prefix} / ${n.name}` : n.name;
+        folderOptions.push({ id: n.id, label });
+        walkOpts(n.folders, label);
+      }
+    };
+    walkOpts(roots, "");
     return {
       unreadTotal,
-      folders: folders.map((f) => ({
-        id: f.id,
-        name: f.name,
-        unread: feeds.filter((x) => x.folder_id === f.id).reduce((s, x) => s + unreadFor(x.id), 0),
-        feeds: feeds
-          .filter((x) => x.folder_id === f.id)
-          .map((x) => ({ id: x.id, title: x.title, unread: unreadFor(x.id) })),
-      })),
+      folders: roots,
       rootFeeds: feeds.filter((x) => !x.folder_id).map((x) => ({ id: x.id, title: x.title, unread: unreadFor(x.id) })),
+      folderOptions,
     };
   }
 

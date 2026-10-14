@@ -20,7 +20,8 @@ export function newsPage(): string {
       <span class="dim" id="rss-unread-total"></span>
     </div>
     <div class="rss-tree" id="rss-tree"></div>
-    <div style="padding:.5rem .75rem;border-top:1px solid var(--border)">
+    <div style="padding:.5rem .75rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:.35rem">
+      <button type="button" class="ghost" id="rss-add-folder" style="width:100%">New folder</button>
       <button type="button" class="ghost" id="rss-add-feed" style="width:100%">Add feed</button>
     </div>
   </aside>
@@ -63,7 +64,9 @@ export function newsPage(): string {
 
 function newsPageScript(): string {
   return `
-var rssState={view:"dense",scope:{type:"all"},items:[],selected:null,tree:null,prefs:{mutedTags:[],focusTags:[]},tags:[]};
+var rssState={view:"dense",scope:{type:"all"},items:[],selected:null,tree:null,prefs:{mutedTags:[],focusTags:[]},tags:[],listMeta:{total:0,filtered:0}};
+function collapsedFolders(){try{return new Set(JSON.parse(localStorage.getItem("rss-tree-collapsed")||"[]"))}catch(e){return new Set()}}
+function setCollapsedFolders(set){localStorage.setItem("rss-tree-collapsed",JSON.stringify(Array.from(set)))}
 function tagLabel(id){var t=rssState.tags.find(function(x){return x.id===id});return t?t.label:id}
 function relAge(iso){if(!iso)return"";var s=Math.max(0,Math.floor((Date.now()-Date.parse(iso))/1000));if(s<60)return s+"m";if(s<3600)return Math.floor(s/60)+"m";if(s<86400)return Math.floor(s/3600)+"h";return Math.floor(s/86400)+"d"}
 function savePrefs(patch){
@@ -107,30 +110,74 @@ function filterTags(items){
   var muted=new Set(rssState.prefs.mutedTags||[]);
   var focus=rssState.prefs.focusTags.length?new Set(rssState.prefs.focusTags):null;
   return items.filter(function(it){
-    var visible=(it.tags||[]).filter(function(t){return !muted.has(t)});
+    var tags=it.tags||[];
+    if(!tags.length)return true;
+    var visible=tags.filter(function(t){return !muted.has(t)});
     if(!visible.length)return false;
     if(!focus)return true;
     return visible.some(function(t){return focus.has(t)});
   });
+}
+function feedMoveSelect(feedId){
+  var opts=rssState.tree&&rssState.tree.folderOptions?rssState.tree.folderOptions:[];
+  var html='<option value="">—</option>';
+  opts.forEach(function(o){html+='<option value="'+esc(o.id)+'">'+esc(o.label)+'</option>'});
+  return '<select class="tree-feed-move" data-feed="'+esc(feedId)+'" title="Move to folder">'+html+'</select>';
+}
+function renderFolderNode(f,depth){
+  var collapsed=collapsedFolders();
+  var isCollapsed=collapsed.has(f.id);
+  var pad=(depth*0.75+0.35)+"rem";
+  var on=rssState.scope.type==="folder"&&rssState.scope.id===f.id;
+  var html='<div class="tree-folder">';
+  html+='<div class="tree-folder-row" style="padding-left:'+pad+'">';
+  html+='<button type="button" class="tree-toggle" data-collapse="'+esc(f.id)+'">'+(isCollapsed?"▸":"▾")+'</button>';
+  html+='<button type="button" class="tree-item tree-folder-btn'+(on?" on":"")+'" data-scope="folder" data-id="'+esc(f.id)+'">'+esc(f.name)+' <span class="count">'+esc(f.unread)+'</span></button>';
+  html+='<button type="button" class="tree-gear" data-folder="'+esc(f.id)+'" title="Folder actions">⋯</button>';
+  html+='</div>';
+  if(!isCollapsed){
+    (f.feeds||[]).forEach(function(fd){html+=renderFeedRow(fd,depth+1)});
+    (f.folders||[]).forEach(function(ch){html+=renderFolderNode(ch,depth+1)});
+  }
+  html+='</div>';
+  return html;
+}
+function renderFeedRow(fd,depth){
+  var pad=(depth*0.75+0.75)+"rem";
+  var on=rssState.scope.type==="feed"&&rssState.scope.id===fd.id;
+  return '<div class="tree-feed-row" style="padding-left:'+pad+'"><button type="button" class="tree-item tree-feed'+(on?" on":"")+'" data-scope="feed" data-id="'+esc(fd.id)+'">'+esc(fd.title)+' <span class="count">'+esc(fd.unread)+'</span></button>'+feedMoveSelect(fd.id)+'</div>';
 }
 function renderTree(){
   var el=document.getElementById("rss-tree");
   var t=rssState.tree;if(!t){el.innerHTML="";return}
   document.getElementById("rss-unread-total").textContent=t.unreadTotal?t.unreadTotal+" unread":"";
   var html='<button type="button" class="tree-item'+(rssState.scope.type==="all"?" on":"")+'" data-scope="all">Newsfeed <span class="count">'+esc(t.unreadTotal)+'</span></button>';
-  t.folders.forEach(function(f){
-    html+='<button type="button" class="tree-item'+(rssState.scope.type==="folder"&&rssState.scope.id===f.id?" on":"")+'" data-scope="folder" data-id="'+esc(f.id)+'">'+esc(f.name)+' <span class="count">'+esc(f.unread)+'</span></button>';
-    f.feeds.forEach(function(fd){
-      html+='<button type="button" class="tree-item tree-feed'+(rssState.scope.type==="feed"&&rssState.scope.id===fd.id?" on":"")+'" data-scope="feed" data-id="'+esc(fd.id)+'">'+esc(fd.title)+' <span class="count">'+esc(fd.unread)+'</span></button>';
-    });
-  });
+  (t.folders||[]).forEach(function(f){html+=renderFolderNode(f,0)});
+  (t.rootFeeds||[]).forEach(function(fd){html+=renderFeedRow(fd,0)});
   el.innerHTML=html;
-  el.querySelectorAll(".tree-item").forEach(function(b){
+  el.querySelectorAll(".tree-toggle").forEach(function(btn){
+    btn.onclick=function(e){e.stopPropagation();var id=btn.dataset.collapse;var c=collapsedFolders();if(c.has(id))c.delete(id);else c.add(id);setCollapsedFolders(c);renderTree()};
+  });
+  el.querySelectorAll(".tree-gear").forEach(function(btn){
+    btn.onclick=function(e){e.stopPropagation();var id=btn.dataset.folder;var act=prompt("Folder: rename / delete / subfolder","rename");if(!act)return;
+      if(act==="delete"){if(confirm("Delete folder? Feeds become ungrouped."))api("/api/rss/folders/"+encodeURIComponent(id),"DELETE").then(refreshAll);return}
+      if(act==="subfolder"){var n=prompt("Subfolder name");if(!n)return;api("/api/rss/folders","POST",{name:n,parentId:id}).then(refreshAll);return}
+      var name=prompt("New folder name");if(name)api("/api/rss/folders/"+encodeURIComponent(id),"PATCH",{name:name}).then(refreshAll);
+    };
+  });
+  el.querySelectorAll(".tree-item[data-scope]").forEach(function(b){
     b.onclick=function(){
       var sc=b.dataset.scope;
       if(sc==="all")rssState.scope={type:"all"};
       else rssState.scope={type:sc,id:b.dataset.id};
       renderTree();loadArticles();
+    };
+  });
+  el.querySelectorAll(".tree-feed-move").forEach(function(sel){
+    sel.onchange=function(){
+      var feedId=sel.dataset.feed;
+      var folderId=sel.value||null;
+      api("/api/rss/feeds/"+encodeURIComponent(feedId),"PATCH",{folderId:folderId}).then(refreshAll);
     };
   });
 }
@@ -147,7 +194,10 @@ function articleQuery(){
 function renderArticles(){
   var list=document.getElementById("rss-articles");
   var dense=rssState.view==="dense";
-  list.innerHTML=filterTags(rssState.items).map(function(it){
+  var filtered=filterTags(rssState.items);
+  var hint="";
+  if(!filtered.length&&rssState.items.length)hint='<p class="dim" style="padding:1rem">No articles match your topic focus or mute filters. Clear focus chips or widen filters.</p>';
+  list.innerHTML=hint+filtered.map(function(it){
     var cls="rss-row"+(dense?"":" card-view")+(!it.read?" unread":"");
     var thumb=it.thumbUrl?'<img class="thumb" src="'+esc(it.thumbUrl)+'" alt=""/>':'<span class="thumb"></span>';
     var dur=it.durationSec?'<span class="rss-yt-badge">'+Math.floor(it.durationSec/60)+":"+String(it.durationSec%60).padStart(2,"0")+'</span>':"";
@@ -191,10 +241,14 @@ function openArticle(id){
 }
 function loadTree(){return api("/api/rss/tree").then(function(r){rssState.tree=r.tree;renderTree()})}
 function loadArticles(){
+  var list=document.getElementById("rss-articles");
+  list.innerHTML='<p class="dim" style="padding:1rem">Loading articles…</p>';
   return api("/api/news"+articleQuery()).then(function(r){
     rssState.tags=r.tags||[];rssState.prefs=r.prefs||{mutedTags:[],focusTags:[]};
-    rssState.items=r.items||[];renderChips();renderArticles();
-  });
+    rssState.items=r.items||[];
+    rssState.listMeta={total:r.total||rssState.items.length,filtered:rssState.items.length};
+    renderChips();renderArticles();
+  }).catch(function(e){list.innerHTML='<p class="bad" style="padding:1rem">'+esc(e.message||"Failed to load")+'</p>'});
 }
 function refreshAll(){return Promise.all([loadTree(),loadArticles()])}
 document.getElementById("rss-view-toggle").onclick=function(){
@@ -222,9 +276,15 @@ document.getElementById("rss-opml-file").onchange=function(ev){
   var f=ev.target.files[0];if(!f)return;
   f.text().then(function(xml){return api("/api/rss/opml/import","POST",{xml:xml,replace:false})}).then(refreshAll);
 };
+document.getElementById("rss-add-folder").onclick=function(){
+  var name=prompt("Folder name");if(!name)return;
+  var parentId=rssState.scope.type==="folder"?rssState.scope.id:null;
+  api("/api/rss/folders","POST",{name:name,parentId:parentId}).then(refreshAll).catch(function(e){alert(e.message)});
+};
 document.getElementById("rss-add-feed").onclick=function(){
   var url=prompt("Feed URL (RSS/Atom xmlUrl)");if(!url)return;
-  api("/api/rss/feeds","POST",{xmlUrl:url}).then(refreshAll).catch(function(e){alert(e.message)});
+  var folderId=rssState.scope.type==="folder"?rssState.scope.id:undefined;
+  api("/api/rss/feeds","POST",{xmlUrl:url,folderId:folderId}).then(refreshAll).catch(function(e){alert(e.message)});
 };
 document.getElementById("rss-star").onclick=function(){
   if(!rssState.selected)return;

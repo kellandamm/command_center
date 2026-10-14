@@ -17,16 +17,23 @@ async function main() {
   const store = await FeedsStore.open(dir);
   const xml = await readFile(opmlPath, "utf8");
   const stats = store.importOpml(xml, { replace: true });
+  const now = new Date();
+  const demoItems = (feedId: string, n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      title: `Demo article ${i + 1} for ${feedId.slice(0, 8)}`,
+      link: `https://example.com/${feedId}/${i}`,
+      guid: `${feedId}-${i}`,
+      summary: "Seeded unread item for grouped feed tree screenshots.",
+    }));
+  const walkFolders = (nodes: ReturnType<FeedsStore["tree"]>["folders"]) => {
+    for (const f of nodes) {
+      for (const fd of f.feeds.slice(0, 2)) store.ingestParsed(fd.id, demoItems(fd.id, 3), now);
+      walkFolders(f.folders);
+    }
+  };
+  walkFolders(store.tree().folders);
   const ytUrl = "https://www.youtube.com/feeds/videos.xml?channel_id=UCVc6AHfGw9b2zOE_ZGfmsnw";
   const ytId = feedIdFromUrl(ytUrl);
-  store.upsertFeedRow({
-    id: ytId,
-    title: "Make Anything // 3D Printing Channel",
-    xmlUrl: ytUrl,
-    folderId: undefined,
-    sortOrder: 0,
-    nextPollAt: new Date().toISOString(),
-  });
   store.ingestParsed(
     ytId,
     [
@@ -40,7 +47,7 @@ async function main() {
         contentHtml: "<p>Embedded reading pane content for screenshot verification.</p>",
       },
     ],
-    new Date(),
+    now,
   );
   await store.save();
   console.log(JSON.stringify({ dataDir: dir, ...stats, feedCount: store.feedCount(), entries: store.list({ limit: 5 }).length }, null, 2));
