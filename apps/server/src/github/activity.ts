@@ -32,8 +32,13 @@ export function openPrSearchQuery(username: string): string {
   return `author:${username} is:pr is:open`;
 }
 
-export function openIssueSearchQuery(username: string): string {
-  return `is:issue is:open (author:${username} OR assignee:${username})`;
+/** GitHub rejects unauthenticated `(author:… OR assignee:…)` searches with HTTP 422. */
+export function openIssueAuthorSearchQuery(username: string): string {
+  return `is:issue is:open author:${username}`;
+}
+
+export function openIssueAssigneeSearchQuery(username: string): string {
+  return `is:issue is:open assignee:${username}`;
 }
 
 type SearchItem = {
@@ -188,18 +193,26 @@ export async function fetchGithubActivity(opts: FetchGithubActivityOptions): Pro
   }
 
   try {
-    const issueRes = await githubGetJson<SearchResponse>(
-      `https://api.github.com/search/issues?q=${encodeURIComponent(openIssueSearchQuery(username))}&per_page=20&sort=updated`,
-      headers,
-    );
-    if (issueRes.ok && issueRes.data.items) {
-      issues = dedupeIssues(issueRes.data.items.map((i) => mapSearchItem(i)));
-      const w = rateLimitWarning(issueRes.status, authenticated);
-      if (w) warnings.push(w);
-      if (issueRes.data.incomplete_results) warnings.push("GitHub search returned incomplete issue results.");
-    } else if (!issueRes.ok) {
-      warnings.push(issueRes.error ?? `GitHub issue search failed (HTTP ${issueRes.status}).`);
+    const issueQueries: Array<{ q: string; role: GithubIssueRow["role"] }> = [
+      { q: openIssueAuthorSearchQuery(username), role: "author" },
+      { q: openIssueAssigneeSearchQuery(username), role: "assignee" },
+    ];
+    const issueRows: GithubIssueRow[] = [];
+    for (const { q, role } of issueQueries) {
+      const issueRes = await githubGetJson<SearchResponse>(
+        `https://api.github.com/search/issues?q=${encodeURIComponent(q)}&per_page=20&sort=updated`,
+        headers,
+      );
+      if (issueRes.ok && issueRes.data.items) {
+        issueRows.push(...issueRes.data.items.map((i) => mapSearchItem(i, role)));
+        const w = rateLimitWarning(issueRes.status, authenticated);
+        if (w) warnings.push(w);
+        if (issueRes.data.incomplete_results) warnings.push("GitHub search returned incomplete issue results.");
+      } else if (!issueRes.ok) {
+        warnings.push(issueRes.error ?? `GitHub issue search failed (HTTP ${issueRes.status}).`);
+      }
     }
+    issues = dedupeIssues(issueRows);
   } catch (err) {
     warnings.push(err instanceof Error ? err.message : String(err));
   }
