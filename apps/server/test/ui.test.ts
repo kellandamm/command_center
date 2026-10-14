@@ -43,9 +43,21 @@ test("ui: ai security page has archive and empty state", () => {
 test("ui: daily briefing page has source sections and nav link", () => {
   const html = dailyBriefingPage();
   assert.match(html, /href="\/briefing" class="on"/);
+  assert.match(html, /class="morning-briefing"/);
+  assert.match(html, /class="morning-masthead"/);
+  assert.match(html, /The Morning Briefing/);
+  assert.match(html, /Stories worth your time/);
+  assert.match(html, /class="briefing-rail"/);
+  assert.match(html, /The almanac/);
+  assert.match(html, /id="db-news"/);
+  assert.match(html, /id="db-ai"/);
+  assert.match(html, /id="db-calendar"/);
+  assert.match(html, /id="db-weather"/);
   assert.match(html, /id="db-todoist"/);
+  assert.match(html, /id="db-github"/);
   assert.match(html, /id="db-refresh"/);
   assert.match(html, /class="briefing-grid"/);
+  assert.match(html, /id="db-error"/);
 });
 
 test("ui: news reader has feed tree and article list", () => {
