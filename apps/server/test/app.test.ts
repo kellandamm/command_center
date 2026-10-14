@@ -103,6 +103,22 @@ test("settings API validates and persists feeds", async () => {
   }
 });
 
+test("http: github activity API returns JSON without crashing", async () => {
+  const h = await harness();
+  try {
+    const r = await fetch(`${h.base}/api/github/activity`, { headers: authz });
+    assert.equal(r.status, 200);
+    const j: any = await r.json();
+    assert.ok(j.activity);
+    assert.equal(typeof j.activity.username, "string");
+    assert.ok(Array.isArray(j.activity.pulls));
+    assert.ok(Array.isArray(j.activity.issues));
+    assert.ok(Array.isArray(j.activity.events));
+  } finally {
+    await h.close();
+  }
+});
+
 test("briefing generate without LLM returns graceful error", async () => {
   const h = await harness({ LLM_API_KEY: "", LLM_BASE_URL: "", LLM_MODEL: "" });
   try {
