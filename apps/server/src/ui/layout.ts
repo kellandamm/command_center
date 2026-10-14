@@ -53,7 +53,7 @@ code{font-size:.875em;background:var(--muted);padding:.1em .35em;border-radius:c
 .sidebar-nav a:hover{background:var(--sidebar-accent);color:var(--sidebar-accent-foreground)}
 .sidebar-nav a.on{background:var(--sidebar-accent);color:var(--sidebar-accent-foreground)}
 .sidebar-footer{padding:.5rem .25rem;border-top:1px solid var(--sidebar-border);margin-top:.5rem}
-.app-main{flex:1;min-width:0;display:flex;flex-direction:column}
+.app-main{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
 .page-content{flex:1;padding:1.5rem 1.25rem 2rem;width:100%;max-width:90rem;margin:0 auto}
 .page-header{margin-bottom:1.5rem}
 .page-header p{margin:.35rem 0 0;font-size:.875rem}

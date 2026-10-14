@@ -1,10 +1,7 @@
 import type { DashboardLayout, PanelLayoutEntry } from "./types";
 import { GRID_COLS, GRID_ROW_HEIGHT_PX, LAYOUT_VERSION } from "./types";
 
-/**
- * 14 equal tiles in 8 grid rows (32px rows + 6px gaps ≈ 298px) — fits 1280×800 with
- * header/toolbar and no page scroll when panel bodies use internal overflow.
- */
+/** 14 tiles in 8 logical rows; the UI scales row height to fill the viewport at default size. */
 export const DEFAULT_PANEL_LAYOUT: PanelLayoutEntry[] = [
   { id: "activity", x: 0, y: 0, w: 3, h: 2 },
   { id: "hobie", x: 3, y: 0, w: 3, h: 2 },

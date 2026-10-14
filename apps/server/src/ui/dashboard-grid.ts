@@ -3,18 +3,19 @@
 export const dashboardGridCss = `
 .dashboard-toolbar{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;margin-bottom:1rem}
 .dashboard-toolbar .dim{margin:0}
-.app-main:has(.dashboard-page){overflow:hidden;max-height:100vh}
-.page-content:has(.dashboard-page){max-height:100vh;overflow:hidden;padding-bottom:.75rem;box-sizing:border-box}
-.dashboard-page{overflow:hidden;max-height:100%}
-.dashboard-page .page-header{margin-bottom:.75rem}
+.app-shell:has(.dashboard-page){height:100vh;max-height:100vh;overflow:hidden}
+.page-content:has(.dashboard-page){
+  flex:1 1 0;min-height:0;display:flex;flex-direction:column;padding:1rem 1.25rem .75rem;box-sizing:border-box;
+  overflow-x:hidden;overflow-y:auto}
+.dashboard-page{flex:1 1 0;min-height:0;display:flex;flex-direction:column}
+.dashboard-page .page-header{margin-bottom:.5rem;flex-shrink:0}
 .dashboard-page .page-header p{margin:.2rem 0 0}
-.dashboard-page .dashboard-toolbar{margin-bottom:.5rem}
+.dashboard-page .dashboard-toolbar{margin-bottom:.5rem;flex-shrink:0}
 .dashboard-grid{
-  display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--dash-gap,6px);
-  grid-auto-rows:var(--dash-row,32px);position:relative;touch-action:none;
-  max-height:calc(100vh - 10.5rem);overflow:hidden}
+  flex:none;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));
+  gap:var(--dash-gap,6px);position:relative;touch-action:none}
 .dashboard-item{
-  min-width:0;min-height:0;max-height:100%;overflow:hidden;display:flex;flex-direction:column;position:relative;
+  min-width:0;min-height:0;overflow:hidden;display:flex;flex-direction:column;position:relative;
   grid-column:var(--gc-start)/span var(--gc-span);grid-row:var(--gr-start)/span var(--gr-span)}
 .dashboard-item.is-dragging{opacity:.92;z-index:30;box-shadow:0 8px 24px rgba(0,0,0,.12)}
 .dashboard-item.is-collapsed .dashboard-panel-body{display:none}
@@ -33,7 +34,7 @@ export const dashboardGridCss = `
 .dashboard-collapse{
   border:0;background:transparent;color:var(--muted-foreground);min-width:2rem;min-height:2rem;
   padding:.25rem;border-radius:calc(var(--radius) - 4px);font-size:1rem;line-height:1;cursor:pointer}
-.dashboard-panel-body{flex:1;min-height:0;overflow:hidden;padding:.5rem .65rem .65rem;display:flex;flex-direction:column;gap:.35rem}
+.dashboard-panel-body{flex:1;min-height:0;overflow:auto;padding:.5rem .65rem .65rem;display:flex;flex-direction:column;gap:.35rem}
 .dashboard-panel-body .panel-scroll-region{flex:1;min-height:0;overflow:auto}
 .dashboard-panel-body>.row:first-child{display:none}
 .dashboard-panel-body>h2:first-child{display:none}
@@ -53,8 +54,8 @@ export const dashboardGridCss = `
 details.feed-item[open] .feed-headline summary::before{content:"▾ "}
 .feed-item .feed-summary{margin:.25rem 0 .35rem;font-size:.8125rem}
 .feed-item .feed-meta{margin:0;font-size:.75rem}
-#panel-notes #notes-editor{min-height:0;max-height:4.5rem;resize:vertical;font-size:.8125rem}
-#panel-briefing #briefing-body{max-height:4.5rem;margin:0;font-size:.75rem}
+#panel-notes #notes-editor{min-height:3rem;flex:1;max-height:100%;resize:none;font-size:.8125rem}
+#panel-briefing #briefing-body{flex:1;min-height:0;max-height:none;margin:0;font-size:.75rem}
 #panel-notes .dim{font-size:.75rem;margin:0}
 #panel-feeds .feeds-full-link{margin:.25rem 0 0;font-size:.8125rem}
 #panel-feeds .feeds-full-link a{text-decoration:underline;text-underline-offset:2px}
@@ -70,9 +71,37 @@ export function dashboardGridScript(): string {
 (function(){
   var grid=document.getElementById("dashboard-grid");
   if(!grid)return;
-  var COLS=12,ROW=32,GAP=6,saveTimer=null,lastMovedId=null;
-  grid.style.setProperty("--dash-row",ROW+"px");
+  var COLS=12,LAYOUT_VERSION=2,GAP=6,REF_ROW=32,saveTimer=null,lastMovedId=null;
   grid.style.setProperty("--dash-gap",GAP+"px");
+  grid.style.setProperty("--dash-rows","8");
+  function layoutRowCount(panels){
+    var max=8;
+    (panels||[]).forEach(function(p){
+      var end=p.y+(p.collapsed?1:p.h);
+      if(end>max)max=end;
+    });
+    return max;
+  }
+  function syncGridRows(panels){
+    var rows=layoutRowCount(panels);
+    grid.style.setProperty("--dash-rows",String(rows));
+    var page=document.querySelector(".dashboard-page");
+    if(!page)return;
+    var top=page.getBoundingClientRect().top;
+    var avail=Math.max(200,window.innerHeight-top-10);
+    var rowH=Math.max(52,(avail-GAP*(rows-1))/rows);
+    grid.style.gridTemplateRows="repeat("+rows+", "+rowH+"px)";
+    grid.style.height=(rowH*rows+GAP*(rows-1))+"px";
+    grid.dataset.rowPx=String(rowH);
+  }
+  function gridMetrics(){
+    var rows=parseInt(grid.style.getPropertyValue("--dash-rows"),10)||parseInt(grid.dataset.rows||"8",10);
+    var rowH=parseFloat(grid.dataset.rowPx||"52")||52;
+    var r=grid.getBoundingClientRect();
+    if(r.height>0)rowH=(r.height-GAP*(rows-1))/rows;
+    var colW=COLS?(r.width-GAP*(COLS-1))/COLS:80;
+    return {rows:rows,rowH:rowH,colW:colW};
+  }
 
   function titleFor(id){
     var map={
@@ -115,7 +144,7 @@ export function dashboardGridScript(): string {
         collapsed:collapsed
       });
     });
-    return {version:1,cols:COLS,rowHeight:ROW,panels:panels};
+    return {version:LAYOUT_VERSION,cols:COLS,rowHeight:REF_ROW,panels:panels};
   }
 
   function effH(p){return p.collapsed?1:p.h}
@@ -144,6 +173,7 @@ export function dashboardGridScript(): string {
     return out;
   }
   function applyPanels(panels){
+    syncGridRows(panels);
     var byId={};
     panels.forEach(function(p){byId[p.id]=p});
     grid.querySelectorAll(".dashboard-item").forEach(function(el){
@@ -169,10 +199,10 @@ export function dashboardGridScript(): string {
   }
 
   function cellFromPoint(clientX,clientY){
+    var m=gridMetrics();
     var r=grid.getBoundingClientRect();
-    var colW=(r.width-GAP*(COLS-1))/COLS;
-    var x=Math.floor((clientX-r.left)/(colW+GAP));
-    var y=Math.floor((clientY-r.top)/(ROW+GAP));
+    var x=Math.floor((clientX-r.left)/(m.colW+GAP));
+    var y=Math.floor((clientY-r.top)/(m.rowH+GAP));
     return {x:Math.max(0,Math.min(COLS-1,x)),y:Math.max(0,y)};
   }
 
@@ -247,9 +277,9 @@ export function dashboardGridScript(): string {
         var startH=parseInt(item.style.getPropertyValue("--gr-span"),10)||3;
         var startX=ev.clientX,startY=ev.clientY;
         function move(e){
-          var colW=(grid.getBoundingClientRect().width-GAP*(COLS-1))/COLS;
-          var dw=Math.round((e.clientX-startX)/(colW+GAP));
-          var dh=Math.round((e.clientY-startY)/(ROW+GAP));
+          var m=gridMetrics();
+          var dw=Math.round((e.clientX-startX)/(m.colW+GAP));
+          var dh=Math.round((e.clientY-startY)/(m.rowH+GAP));
           var w=Math.max(2,Math.min(COLS,startW+dw));
           var h=Math.max(2,Math.min(24,startH+dh));
           var x=parseInt(item.style.getPropertyValue("--gc-start"),10)-1||0;
@@ -288,6 +318,7 @@ export function dashboardGridScript(): string {
   }
 
   function applyLayout(layout){
+    syncGridRows(layout.panels||[]);
     var byId={};
     (layout.panels||[]).forEach(function(p){byId[p.id]=p;});
     grid.querySelectorAll(".dashboard-item").forEach(function(el){
@@ -300,6 +331,8 @@ export function dashboardGridScript(): string {
   }
 
   setupChrome();
+  syncGridRows(readLayout().panels);
+  window.addEventListener("resize",function(){syncGridRows(readLayout().panels)});
   api("/api/dashboard-layout").then(function(r){applyLayout(r.layout||{});}).catch(function(){});
   var reset=document.getElementById("dashboard-reset-layout");
   if(reset)reset.addEventListener("click",function(){
