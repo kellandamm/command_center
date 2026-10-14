@@ -33,6 +33,9 @@ async function main() {
     { title: "Critical OpenSSL patch ships for embedded devices", link: "https://example.com/c", summary: "Vendors urge firmware updates within 48 hours." },
     { title: "AI agents now draft half of internal status updates", link: "https://example.com/d", summary: "Teams still review before posting to company wiki." },
     { title: "Rust 1.90 stabilizes async traits for library authors", link: "https://example.com/e", summary: "Migration guide highlights dyn compatibility changes." },
+    { title: "EU digital markets act enforcement enters second phase", link: "https://example.com/f", summary: "Gatekeepers face quarterly compliance reviews." },
+    { title: "PostgreSQL 18 beta improves parallel vacuum", link: "https://example.com/g", summary: "Large-table maintenance windows may shrink." },
+    { title: "Local transit agency pilots contactless fare caps", link: "https://example.com/h", summary: "Daily spend limits apply across bus and rail." },
   ], now);
   await feeds.save();
 

@@ -18,7 +18,13 @@ export const dashboardGridCss = `
   min-width:0;min-height:0;overflow:hidden;display:flex;flex-direction:column;position:relative;
   grid-column:var(--gc-start)/span var(--gc-span);grid-row:var(--gr-start)/span var(--gr-span)}
 .dashboard-item.is-dragging{opacity:.92;z-index:30;box-shadow:0 8px 24px rgba(0,0,0,.12)}
+.dashboard-item.is-collapsed{align-self:start;height:var(--dash-strip-h,30px)!important;max-height:var(--dash-strip-h,30px)}
 .dashboard-item.is-collapsed .dashboard-panel-body{display:none}
+.dashboard-item.is-collapsed>.card{flex:0 0 auto;height:100%;min-height:0}
+.dashboard-item.is-collapsed .dashboard-panel-chrome{padding:.28rem .45rem;border-bottom:0;min-height:0}
+.dashboard-item.is-collapsed .dashboard-panel-chrome h2{font-size:.8125rem;line-height:1.2}
+.dashboard-item.is-collapsed .dashboard-drag-handle,.dashboard-item.is-collapsed .dashboard-collapse{
+  min-height:auto;min-width:1.6rem;padding:.1rem .2rem}
 .dashboard-item>.card{
   flex:1;min-height:0;display:flex;flex-direction:column;margin:0;padding:0;overflow:hidden}
 .dashboard-panel-chrome{
@@ -62,7 +68,14 @@ details.feed-item[open] .feed-headline summary::before{content:"▾ "}
 #panel-feeds .feeds-full-link{margin:.25rem 0 0;font-size:.8125rem;flex-shrink:0}
 #panel-feeds .feeds-full-link a{text-decoration:underline;text-underline-offset:2px}
 #panel-feeds .row{flex-shrink:0}
-#panel-feeds #feeds-status{flex-shrink:0;margin:0}
+#panel-feeds #feeds-status{flex-shrink:0;margin:0;font-size:.8125rem}
+#panel-feeds .feeds-full-link,#panel-feeds .row:last-of-type{display:none}
+#panel-feeds .feed-item{margin:0;border-bottom:1px solid var(--border)}
+#panel-feeds .feed-item:last-child{border-bottom:0}
+#panel-feeds .feed-headline summary{font-size:.8125rem;font-weight:500;line-height:1.25}
+#panel-feeds .feed-meta{display:none}
+#panel-feeds .feed-item .feed-summary{display:none}
+#panel-feeds .feed-headline .ghost.mark-read{font-size:.6875rem;padding:.05rem .3rem;min-height:auto}
 @media(max-width:900px){
   .dashboard-grid{grid-template-columns:repeat(6,minmax(0,1fr))}
   .dashboard-item{grid-column:1/-1!important;grid-row:auto!important;height:auto!important}
@@ -75,38 +88,71 @@ export function dashboardGridScript(): string {
 (function(){
   var grid=document.getElementById("dashboard-grid");
   if(!grid)return;
-  var COLS=12,LAYOUT_VERSION=2,GAP=6,REF_ROW=32,saveTimer=null,lastMovedId=null;
+  var COLS=12,LAYOUT_VERSION=2,GAP=6,REF_ROW=32,STRIP_H=30,saveTimer=null,lastMovedId=null;
   grid.style.setProperty("--dash-gap",GAP+"px");
+  grid.style.setProperty("--dash-strip-h",STRIP_H+"px");
   grid.style.setProperty("--dash-rows","8");
-  function layoutRowCount(panels){
-    var max=8;
+  function layoutMaxEnd(panels){
+    var max=1;
     (panels||[]).forEach(function(p){
       var end=p.y+(p.collapsed?1:p.h);
       if(end>max)max=end;
     });
     return max;
   }
+  function effH(p){return p.collapsed?1:p.h}
+  function panelCoversRow(p,row){
+    var end=p.y+effH(p);
+    return p.y<=row&&row<end;
+  }
+  function rowIsStripOnly(panels,row){
+    var hits=(panels||[]).filter(function(p){return panelCoversRow(p,row)});
+    return hits.length>0&&hits.every(function(p){return p.collapsed});
+  }
   function syncGridRows(panels){
-    var rows=layoutRowCount(panels);
-    grid.style.setProperty("--dash-rows",String(rows));
+    var maxEnd=layoutMaxEnd(panels);
+    grid.style.setProperty("--dash-rows",String(maxEnd));
     var page=document.querySelector(".dashboard-page");
     if(!page)return;
     var header=page.querySelector(".page-header");
     var toolbar=page.querySelector(".dashboard-toolbar");
-    var chrome=(header?header.offsetHeight:0)+(toolbar?toolbar.offsetHeight:0)+6;
-    var avail=Math.max(160,page.clientHeight-chrome);
-    var rowH=Math.max(44,(avail-GAP*(rows-1))/rows);
-    grid.style.gridTemplateRows="repeat("+rows+", "+rowH+"px)";
-    grid.style.height=(rowH*rows+GAP*(rows-1))+"px";
+    var chrome=(header?header.offsetHeight:0)+(toolbar?toolbar.offsetHeight:0)+10;
+    var avail=Math.max(160,page.clientHeight-chrome-6);
+    var stripRows=0,flexRows=0;
+    for(var r=0;r<maxEnd;r++){
+      if(rowIsStripOnly(panels,r)){stripRows++}else{flexRows++}
+    }
+    var gapTotal=GAP*(maxEnd-1);
+    var rowH=flexRows?Math.max(42,Math.floor((avail-stripRows*STRIP_H-gapTotal)/flexRows)):STRIP_H;
+    var tracks=[];
+    for(var ri=0;ri<maxEnd;ri++){
+      tracks.push(rowIsStripOnly(panels,ri)?STRIP_H+"px":rowH+"px");
+    }
+    var totalH=stripRows*STRIP_H+flexRows*rowH+gapTotal;
+    grid.style.gridTemplateRows=tracks.join(" ");
+    grid.style.height=totalH+"px";
+    grid.style.maxHeight=avail+"px";
     grid.dataset.rowPx=String(rowH);
+    grid.dataset.stripPx=String(STRIP_H);
+    grid.dataset.maxEnd=String(maxEnd);
   }
   function gridMetrics(){
-    var rows=parseInt(grid.style.getPropertyValue("--dash-rows"),10)||parseInt(grid.dataset.rows||"8",10);
+    var maxEnd=parseInt(grid.dataset.maxEnd||"8",10)||8;
+    var strip=parseFloat(grid.dataset.stripPx||"0")||0;
     var rowH=parseFloat(grid.dataset.rowPx||"52")||52;
     var r=grid.getBoundingClientRect();
-    if(r.height>0)rowH=(r.height-GAP*(rows-1))/rows;
     var colW=COLS?(r.width-GAP*(COLS-1))/COLS:80;
-    return {rows:rows,rowH:rowH,colW:colW};
+    return {rows:maxEnd,rowH:rowH,strip:strip,colW:colW};
+  }
+  function rowIndexFromY(clientY,gridTop,m){
+    var y=clientY-gridTop;
+    var maxEnd=parseInt(grid.dataset.maxEnd||"8",10)||8;
+    for(var r=0;r<maxEnd;r++){
+      var h=rowIsStripOnly(readLayout().panels,r)?m.strip:m.rowH;
+      if(y<h)return r;
+      y-=h+GAP;
+    }
+    return Math.max(0,maxEnd-1);
   }
 
   function titleFor(id){
@@ -153,7 +199,6 @@ export function dashboardGridScript(): string {
     return {version:LAYOUT_VERSION,cols:COLS,rowHeight:REF_ROW,panels:panels};
   }
 
-  function effH(p){return p.collapsed?1:p.h}
   function overlaps(a,b){
     return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+effH(b)&&a.y+effH(a)>b.y;
   }
@@ -208,7 +253,7 @@ export function dashboardGridScript(): string {
     var m=gridMetrics();
     var r=grid.getBoundingClientRect();
     var x=Math.floor((clientX-r.left)/(m.colW+GAP));
-    var y=Math.floor((clientY-r.top)/(m.rowH+GAP));
+    var y=rowIndexFromY(clientY,r.top,m);
     return {x:Math.max(0,Math.min(COLS-1,x)),y:Math.max(0,y)};
   }
 
@@ -242,6 +287,7 @@ export function dashboardGridScript(): string {
         var btn=this;
         btn.setAttribute("aria-expanded",collapsed?"false":"true");
         btn.textContent=collapsed?"+":"−";
+        syncGridRows(readLayout().panels);
         lastMovedId=id;
         scheduleSave();
       });

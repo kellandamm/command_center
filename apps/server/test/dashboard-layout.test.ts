@@ -83,9 +83,11 @@ test("dashboard layout: v1 saved file maps positions into v2 grid", () => {
 test("dashboard layout: default collapses low-priority panels and enlarges feeds", () => {
   const layout = defaultDashboardLayout(PANEL_IDS);
   const feeds = layout.panels.find((p) => p.id === "feeds")!;
-  assert.ok(feeds.w >= 7 && feeds.h >= 4);
+  assert.ok(feeds.w >= 8 && feeds.h >= 5);
   assert.equal(layout.panels.find((p) => p.id === "calendar")?.collapsed, true);
-  assert.equal(layout.panels.find((p) => p.id === "todoist")?.collapsed, true);
+  assert.equal(layout.panels.find((p) => p.id === "notes")?.collapsed, true);
+  const maxEnd = layout.panels.reduce((m, p) => Math.max(m, p.y + (p.collapsed ? 1 : p.h)), 0);
+  assert.ok(maxEnd <= 8, "default layout should fit in eight grid rows");
 });
 
 test("dashboard layout: normalize adds missing panels and drops unknown ids", () => {
