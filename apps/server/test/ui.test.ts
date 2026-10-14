@@ -10,20 +10,27 @@ import { hobiePage } from "../src/ui/hobie-page";
 import { notesPage } from "../src/ui/notes-page";
 import { dashboardPage, settingsPage } from "../src/ui/pages";
 
-test("ui: dashboard uses shadcn-style shell and draggable grid", () => {
+test("ui: dashboard shows concise status summaries with links to full pages", () => {
   const html = dashboardPage();
   assert.match(html, /class="app-shell"/);
   assert.match(html, /class="sidebar-nav"/);
-  assert.match(html, /id="dashboard-grid"/);
-  assert.match(html, /id="dashboard-reset-layout"/);
+  assert.match(html, /class="dashboard-overview"/);
+  assert.match(html, /Needs attention/);
+  assert.match(html, /Pending Hobie tasks/);
+  assert.match(html, /Unread news/);
+  assert.match(html, /Next up/);
+  assert.match(html, /Today's briefing/);
+  assert.match(html, /Recent agent activity/);
   assert.match(html, /id="theme-toggle"/);
-  assert.match(html, /id="panel-weather"/);
-  assert.match(html, /data-panel-id="feeds"/);
-  assert.match(html, /data-panel-id="tagged-news"/);
-  assert.match(html, /data-panel-id="daily-briefing"/);
-  assert.match(html, /data-panel-id="ai-security"/);
-  assert.match(html, /data-panel-id="activity"/);
-  assert.match(html, /data-panel-id="hobie"/);
+  assert.match(html, /href="\/hobie"/);
+  assert.match(html, /href="\/news"/);
+  assert.match(html, /href="\/calendar"/);
+  assert.match(html, /href="\/briefing"/);
+  assert.match(html, /href="\/activity"/);
+  assert.match(html, /\/api\/feeds/);
+  assert.match(html, /\/api\/calendar\?horizonDays=7/);
+  assert.match(html, /\/api\/daily-briefing/);
+  assert.doesNotMatch(html, /dashboard-grid|dashboard-reset-layout|data-panel-id=/);
 });
 
 test("ui: ai security page has archive and empty state", () => {

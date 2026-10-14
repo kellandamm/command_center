@@ -1,4 +1,3 @@
-import { dashboardGridCss } from "./dashboard-grid";
 import { DEFAULT_SIDEBAR_TABS, visibleNavTabs, type SidebarTab } from "../nav-tabs";
 
 export const esc = (s: unknown) =>
@@ -175,15 +174,22 @@ pre.briefing.bad{color:var(--destructive);background:transparent;border-color:co
 @media(max-width:900px){.cal-week-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .cal-day{border:1px solid var(--border);border-radius:calc(var(--radius) - 2px);padding:.5rem;min-height:5rem}
 .cal-ev{margin-bottom:.5rem;font-size:.8125rem}
-.dashboard-panel-chrome h2 a{text-decoration:none;color:inherit}
-.dashboard-panel-chrome h2 a:hover{text-decoration:underline}
 .settings-tabs{display:flex;gap:.35rem;margin-bottom:1rem;flex-wrap:wrap}
 .settings-tabs button.ghost.on{background:var(--sidebar-accent)}
 .settings-tab-panel{display:none}.settings-tab-panel.on{display:block}
 .scope-folder-grid{
   margin:.35rem 0 0 1.25rem;font-size:.8125rem;max-height:11rem;overflow:auto;
   display:grid;grid-template-columns:repeat(auto-fill,minmax(13rem,1fr));gap:.1rem .65rem;align-content:start}
-${dashboardGridCss}
+.dashboard-overview{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));gap:1rem;align-items:stretch}
+.dashboard-overview-card{display:flex;flex-direction:column;align-items:flex-start;min-height:10rem}
+.dashboard-overview-card h2{margin-bottom:.5rem}
+.dashboard-overview-card .dashboard-summary{margin:.35rem 0 1rem;line-height:1.5}
+.dashboard-attention-card{grid-column:1/-1}
+.dashboard-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;width:100%}
+.dashboard-metric{display:flex;flex-direction:column;gap:.15rem;padding:.75rem;border:1px solid var(--border);border-radius:calc(var(--radius) - 2px)}
+.dashboard-metric:hover,.dashboard-card-link:hover{text-decoration:underline;text-underline-offset:2px}
+.dashboard-metric strong{font-size:1.5rem;line-height:1.25}
+.dashboard-card-link{margin-top:auto;color:var(--muted-foreground);font-size:.8125rem;font-weight:500}
 @media(max-width:768px){
   .app-shell{flex-direction:column}
   .sidebar{width:100%;height:auto;position:relative;border-right:0;border-bottom:1px solid var(--sidebar-border);padding:.5rem .75rem}
@@ -193,6 +199,7 @@ ${dashboardGridCss}
   .theme-toggle{width:auto}
   .page-content{padding:1rem .75rem 1.5rem}
 }
+@media(max-width:480px){.dashboard-metrics{grid-template-columns:1fr}}
 `;
 
 export type NavLink = { href: string; label: string };
