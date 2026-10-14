@@ -70,8 +70,8 @@ test("rss: conditional GET 304 does not ingest items", async () => {
     const res = await fetchFeedItems(row, http);
     assert.equal(res.notModified, true);
     assert.equal(res.items.length, 0);
-    const added = store.ingestParsed(row.id, [], new Date());
-    assert.equal(added, 0);
+    const ingested = store.ingestParsed(row.id, [], new Date());
+    assert.equal(ingested.added, 0);
     store.recordFetchSuccess(row.id, new Date(), { notModified: true, etag: "abc" });
     assert.equal(store.list().length, 0);
   } finally {
@@ -92,6 +92,8 @@ test("rss: retention prunes excess per-feed and old unread", async () => {
         new Date(now.getTime() + i * 1000),
       );
     }
+    const bulk = store.ingestParsed("f1", [{ title: "x", link: "https://example.com/x", guid: "x" }], now);
+    assert.ok(bulk.added >= 0);
     assert.ok(store.list({ limit: 500 }).length > RETENTION.perFeed);
     store.runRetention(new Date("2026-12-01T12:00:00Z"));
     assert.ok(store.list({ limit: 500 }).length <= RETENTION.perFeed);

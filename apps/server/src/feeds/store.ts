@@ -9,6 +9,7 @@ import { HN_API_URL, HN_FEED_ID } from "./parse";
 import { feedIdFromUrl, folderIdFromName, type OpmlFeed, type OpmlFolder, parseOpml, exportOpml } from "./opml";
 import { initSchema } from "./schema";
 import { POLL, RETENTION } from "./retention";
+import { SummaryStore } from "./summary-store";
 
 export interface StoredItem {
   id: string;
@@ -58,14 +59,21 @@ function staggerMs(index: number): number {
   return (index % 60) * 60_000;
 }
 
+export interface IngestResult {
+  added: number;
+  ids: string[];
+}
+
 export class FeedsStore {
   private db: DatabaseSync;
   private fts5: boolean;
   private dirty = false;
+  readonly summaries: SummaryStore;
 
   constructor(private dir: string, db: DatabaseSync, fts5: boolean) {
     this.db = db;
     this.fts5 = fts5;
+    this.summaries = new SummaryStore(db, fts5, (id) => Boolean(this.db.prepare("SELECT 1 FROM entries WHERE id = ?").get(id)));
   }
 
   static async open(dir: string, opts?: { settingsFeeds?: string }): Promise<FeedsStore> {
@@ -75,6 +83,14 @@ export class FeedsStore {
     const store = new FeedsStore(dir, db, fts5);
     await store.migrateLegacyIfNeeded(opts?.settingsFeeds);
     return store;
+  }
+
+  feedContext(feedId: string): { feedTitle: string | null; folderId: string | null; folderName: string | null } {
+    const row = this.db.prepare("SELECT f.title, f.folder_id, fo.name AS folder_name FROM feeds f LEFT JOIN folders fo ON fo.id = f.folder_id WHERE f.id = ?").get(feedId) as
+      | { title: string; folder_id: string | null; folder_name: string | null }
+      | undefined;
+    if (!row) return { feedTitle: null, folderId: null, folderName: null };
+    return { feedTitle: row.title, folderId: row.folder_id, folderName: row.folder_name };
   }
 
   async save(): Promise<void> {
@@ -322,7 +338,7 @@ export class FeedsStore {
     this.dirty = true;
   }
 
-  ingestParsed(feedId: string, incoming: ParsedItem[], now: Date): number {
+  ingestParsed(feedId: string, incoming: ParsedItem[], now: Date): IngestResult {
     if (!this.db.prepare("SELECT 1 FROM feeds WHERE id = ?").get(feedId)) {
       const isHn = feedId === HN_FEED_ID;
       this.upsertFeedRow({
@@ -336,6 +352,7 @@ export class FeedsStore {
     }
     const nowIso = now.toISOString();
     let added = 0;
+    const ids: string[] = [];
     for (const raw of incoming) {
       if (!raw.title) continue;
       const id = itemId(feedId, raw.link, raw.title);
@@ -369,9 +386,10 @@ export class FeedsStore {
         );
       }
       added++;
+      ids.push(id);
     }
     this.dirty = true;
-    return added;
+    return { added, ids };
   }
 
   private insertEntry(feedId: string, raw: { title: string; link?: string; guid?: string; summary?: string; date?: string }, firstSeenAt: string, read: boolean) {
@@ -389,7 +407,7 @@ export class FeedsStore {
       feedId,
       incoming.map((x) => ({ ...x, guid: x.link || x.title })),
       now,
-    );
+    ).added;
   }
 
   setFeedError(feedId: string, message: string, now: Date): void {

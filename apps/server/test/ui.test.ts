@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { aiSecurityPage } from "../src/ui/ai-security-page";
 import { dailyBriefingPage } from "../src/ui/daily-briefing-page";
 import { newsPage } from "../src/ui/news-page";
+import { summariesPage } from "../src/ui/summaries-page";
 import { dashboardPage, settingsPage } from "../src/ui/pages";
 
 test("ui: dashboard uses shadcn-style shell and draggable grid", () => {
@@ -43,6 +44,13 @@ test("ui: news reader has feed tree and article list", () => {
   assert.match(html, /id="rss-tree"/);
   assert.match(html, /id="rss-articles"/);
   assert.match(html, /id="rss-read-pane"/);
+});
+
+test("ui: summaries page has search and auto settings", () => {
+  const html = summariesPage();
+  assert.match(html, /href="\/summaries" class="on"/);
+  assert.match(html, /id="sum-list"/);
+  assert.match(html, /id="sum-auto-star"/);
 });
 
 test("ui: settings page wraps form in card", () => {

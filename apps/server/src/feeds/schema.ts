@@ -54,6 +54,22 @@ export function initSchema(db: DatabaseSync): { fts5: boolean } {
     CREATE INDEX IF NOT EXISTS idx_feeds_next_poll ON feeds(next_poll_at);
   `);
   const fts5 = tryEnableFts5(db);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS summaries (
+      id TEXT PRIMARY KEY,
+      entry_id TEXT,
+      dedupe_key TEXT NOT NULL UNIQUE,
+      url TEXT,
+      title TEXT NOT NULL,
+      feed_name TEXT,
+      folder_name TEXT,
+      summary TEXT NOT NULL,
+      model TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_summaries_created ON summaries(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_summaries_entry ON summaries(entry_id);
+  `);
   if (fts5) {
     db.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS entry_fts USING fts5(
@@ -61,6 +77,14 @@ export function initSchema(db: DatabaseSync): { fts5: boolean } {
         title,
         snippet,
         feed_title,
+        tokenize='porter'
+      );
+      CREATE VIRTUAL TABLE IF NOT EXISTS summary_fts USING fts5(
+        summary_id UNINDEXED,
+        title,
+        summary,
+        feed_name,
+        folder_name,
         tokenize='porter'
       );
     `);

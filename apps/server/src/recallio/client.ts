@@ -34,6 +34,58 @@ export function recallioSearchUrl(baseUrl: string): string {
   return `${base}/api/search`;
 }
 
+export function recallioMemoryUrl(baseUrl: string): string {
+  const base = baseUrl.replace(/\/+$/, "");
+  return `${base}/api/memories`;
+}
+
+export interface RecallioSaveInput {
+  title: string;
+  content: string;
+  url?: string | null;
+}
+
+export interface RecallioSaveOutcome {
+  configured: boolean;
+  ok: boolean;
+  error: string | null;
+}
+
+export async function saveToRecallio(cfg: Config, input: RecallioSaveInput): Promise<RecallioSaveOutcome> {
+  const base = blank(cfg.recallioUrl);
+  if (!base) {
+    return { configured: false, ok: false, error: "Recallio not configured — set RECALLIO_URL on the server." };
+  }
+  const title = input.title.trim().slice(0, 500);
+  const content = input.content.trim().slice(0, 50_000);
+  if (!title || !content) {
+    return { configured: true, ok: false, error: "Title and content are required." };
+  }
+  const url = recallioMemoryUrl(base);
+  try {
+    const res = await safeFetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...recallioAccessHeaders(cfg) },
+      body: JSON.stringify({
+        title,
+        content,
+        url: input.url ?? undefined,
+        source: "command-center-news",
+      }),
+      timeoutMs: 20_000,
+      maxBytes: 500_000,
+    });
+    if (res.status < 200 || res.status >= 300) {
+      const hint = res.status === 401 || res.status === 403 ? " Check CF Access service token or Recallio credentials." : "";
+      return { configured: true, ok: false, error: `Recallio save failed (HTTP ${res.status}).${hint}` };
+    }
+    return { configured: true, ok: true, error: null };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Recallio request failed";
+    return { configured: true, ok: false, error: msg };
+  }
+}
+
 /** Normalize Recallio / compatible JSON into dashboard hits. */
 export function parseRecallioSearchBody(raw: string, contentType: string): RecallioHit[] {
   const trimmed = raw.trim();

@@ -7,9 +7,15 @@ export interface NewsPrefs {
   mutedTags: string[];
   /** Tag ids to focus on; empty means all non-muted tags. */
   focusTags: string[];
+  /** Auto-summarize when an article is starred. */
+  summarizeAutoStarred?: boolean;
+  /** Folder ids to auto-summarize new articles from. */
+  summarizeFolderIds?: string[];
+  /** Max LLM summaries per rolling hour (default 10). */
+  summarizeMaxPerHour?: number;
 }
 
-const DEFAULT: NewsPrefs = { mutedTags: [], focusTags: [] };
+const DEFAULT: NewsPrefs = { mutedTags: [], focusTags: [], summarizeAutoStarred: false, summarizeFolderIds: [], summarizeMaxPerHour: 10 };
 
 export class NewsPrefsStore {
   private data: NewsPrefs = { ...DEFAULT };
@@ -24,11 +30,17 @@ export class NewsPrefsStore {
   }
 
   get(): NewsPrefs {
-    return { mutedTags: [...this.data.mutedTags], focusTags: [...this.data.focusTags] };
+    return {
+      mutedTags: [...this.data.mutedTags],
+      focusTags: [...this.data.focusTags],
+      summarizeAutoStarred: this.data.summarizeAutoStarred,
+      summarizeFolderIds: [...(this.data.summarizeFolderIds ?? [])],
+      summarizeMaxPerHour: this.data.summarizeMaxPerHour,
+    };
   }
 
-  async update(patch: Partial<NewsPrefs>): Promise<NewsPrefs> {
-    const next = normalizePrefs({ ...this.data, ...patch });
+  async update(patch: Partial<NewsPrefs> & Record<string, unknown>): Promise<NewsPrefs> {
+    const next = normalizePrefs({ ...this.data, ...patch } as NewsPrefs);
     this.data = next;
     await writeFileAtomic(this.path, JSON.stringify(next, null, 2));
     return this.get();
@@ -39,7 +51,18 @@ function normalizePrefs(raw: NewsPrefs): NewsPrefs {
   const mutedTags = uniqStrings(raw.mutedTags, "mutedTags");
   const focusTags = uniqStrings(raw.focusTags, "focusTags");
   const muted = new Set(mutedTags);
-  return { mutedTags, focusTags: focusTags.filter((t) => !muted.has(t)) };
+  const summarizeFolderIds = raw.summarizeFolderIds ? uniqStrings(raw.summarizeFolderIds, "summarizeFolderIds") : [];
+  let summarizeMaxPerHour = raw.summarizeMaxPerHour ?? 10;
+  if (!Number.isInteger(summarizeMaxPerHour) || summarizeMaxPerHour < 0 || summarizeMaxPerHour > 60) {
+    throw new ValidationError("summarizeMaxPerHour must be 0–60");
+  }
+  return {
+    mutedTags,
+    focusTags: focusTags.filter((t) => !muted.has(t)),
+    summarizeAutoStarred: Boolean(raw.summarizeAutoStarred),
+    summarizeFolderIds,
+    summarizeMaxPerHour,
+  };
 }
 
 function uniqStrings(v: unknown, field: string): string[] {

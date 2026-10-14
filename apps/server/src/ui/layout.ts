@@ -169,6 +169,7 @@ const NAV = [
   ["/ai-security", "AI Security"],
   ["/briefing", "Daily Briefing"],
   ["/news", "News"],
+  ["/summaries", "Summaries"],
   ["/settings", "Settings"],
 ] as const;
 

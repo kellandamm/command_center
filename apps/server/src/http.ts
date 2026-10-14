@@ -30,6 +30,9 @@ import type { NewsPrefsStore } from "./feeds/news-prefs";
 import type { DashboardLayoutStore } from "./dashboard-layout/storage";
 import { dashboardPage, settingsPage } from "./ui/pages";
 import { newsPage } from "./ui/news-page";
+import { summariesPage } from "./ui/summaries-page";
+import { handleArticleActionRoutes } from "./feeds/article-actions-routes";
+import { SummaryService } from "./feeds/summary-service";
 
 export interface App {
   cfg: Config;
@@ -155,6 +158,7 @@ export function createApp(app: App): Server {
       if (get && path === "/ai-security") return send(res, 200, aiSecurityPage(), undefined, extra);
       if (get && path === "/briefing") return send(res, 200, dailyBriefingPage(), undefined, extra);
       if (get && path === "/news") return send(res, 200, newsPage(), undefined, extra);
+      if (get && path === "/summaries") return send(res, 200, summariesPage(), undefined, extra);
       if (get && path === "/settings") return send(res, 200, settingsPage(), undefined, extra);
 
       if (get && path === "/api/state") {
@@ -188,7 +192,10 @@ export function createApp(app: App): Server {
 
       if (await handleAiSecurityRoutes(app.aiSecurity, req, res, path, readBody)) return;
       if (await handleDailyBriefingRoutes(app, app.dailyBriefing, req, res, path)) return;
-      if (await handleRssRoutes(app.feeds, req, res, path, (r) => readBody(r, path === "/api/rss/opml/import" ? 8_000_000 : 200_000))) return;
+      const summarySvc = new SummaryService(app.cfg, app.feeds, app.feeds.summaries);
+      const rssOpts = { cfg: app.cfg, prefs: app.newsPrefs, summaries: summarySvc };
+      if (await handleArticleActionRoutes(app.cfg, app.feeds, app.newsPrefs, summarySvc, req, res, path, readBody)) return;
+      if (await handleRssRoutes(app.feeds, req, res, path, (r) => readBody(r, path === "/api/rss/opml/import" ? 8_000_000 : 200_000), rssOpts)) return;
       if (await handleNewsRoutes(app.feeds, app.newsPrefs, req, res, path, readBody)) return;
 
       for (const panel of panels) {
