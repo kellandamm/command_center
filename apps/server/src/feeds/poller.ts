@@ -67,7 +67,12 @@ export async function fetchFeedItems(row: FeedRow, http: FeedHttpFn = defaultFee
   return { notModified: false, items, etag: res.etag, lastModified: res.lastModified };
 }
 
-export async function pollDueFeeds(store: FeedsStore, now = new Date(), http: FeedHttpFn = defaultFeedHttp): Promise<Array<{ feedId: string; added: number; error?: string }>> {
+export async function pollDueFeeds(
+  store: FeedsStore,
+  now = new Date(),
+  http: FeedHttpFn = defaultFeedHttp,
+  onNewEntries?: (entryIds: string[], feedId: string) => void | Promise<void>,
+): Promise<Array<{ feedId: string; added: number; error?: string }>> {
   const due = store.dueFeeds(now, POLL.dueBatchSize);
   const out: Array<{ feedId: string; added: number; error?: string }> = [];
   let i = 0;
@@ -76,9 +81,10 @@ export async function pollDueFeeds(store: FeedsStore, now = new Date(), http: Fe
       const row = due[i++]!;
       try {
         const fetched = await fetchFeedItems(row, http);
-        const added = fetched.notModified ? 0 : store.ingestParsed(row.id, fetched.items, now);
+        const ingested = fetched.notModified ? { added: 0, ids: [] as string[] } : store.ingestParsed(row.id, fetched.items, now);
+        if (ingested.ids.length && onNewEntries) await onNewEntries(ingested.ids, row.id);
         store.recordFetchSuccess(row.id, now, { etag: fetched.etag, lastModified: fetched.lastModified, notModified: fetched.notModified });
-        out.push({ feedId: row.id, added });
+        out.push({ feedId: row.id, added: ingested.added });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         store.recordFetchError(row.id, message, now);

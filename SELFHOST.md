@@ -101,6 +101,8 @@ The private **kellan-damm/Recallio** repo was not available from this environmen
 
 `POST {RECALLIO_URL}/api/search` with JSON body `{ "q": "<query>", "limit": 10 }`
 
+**Save article from News:** `POST {RECALLIO_URL}/api/memories` with JSON `{ "title", "content", "url", "source": "command-center-news" }` (same Cloudflare Access service-token headers as search when `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` are set).
+
 and accepts JSON either as an array of hits or as `{ results | items | memories | data: [...] }`. Each item may use Recallio-style fields (`content`, `similarityScore`) or generic ones (`title`, `snippet`, `url`, `score`). If your instance uses a different path or method, adjust `apps/server/src/recallio/client.ts` or open an issue with the expected contract.
 
 ## Data layout (`/data`)

@@ -39,13 +39,20 @@ export function newsPage(): string {
       <div class="rss-articles" id="rss-articles"></div>
     </section>
     <section class="rss-read-pane hidden" id="rss-read-pane" aria-label="Reading pane">
-      <div class="rss-read-head">
+      <div class="rss-read-head row" style="flex-wrap:wrap">
         <button type="button" class="ghost" id="rss-close-read">Close</button>
-        <button type="button" class="ghost" id="rss-star">Save</button>
+        <button type="button" class="ghost" id="rss-star">Star</button>
+        <button type="button" class="ghost" id="rss-summarize" disabled>Summarize</button>
+        <button type="button" class="ghost" id="rss-recallio" disabled>Save to Recallio</button>
         <a id="rss-open-ext" href="#" target="_blank" rel="noopener" class="btn ghost">Open original</a>
+        <span class="dim" id="rss-action-status" style="font-size:.75rem;flex:1 1 100%"></span>
       </div>
       <div class="rss-read-head" id="rss-read-title"></div>
       <div class="rss-read-body" id="rss-read-body"></div>
+      <div class="rss-read-head" id="rss-ai-summary" style="display:none;border-top:1px solid var(--border)">
+        <h3 style="margin:0;font-size:.8125rem">AI summary</h3>
+        <p id="rss-ai-summary-text" style="margin:.5rem 0 0;font-size:.875rem"></p>
+      </div>
     </section>
   </div>
 </div>
@@ -153,8 +160,16 @@ function renderArticles(){
     row.onclick=function(){openArticle(row.dataset.id)};
   });
 }
+function setActionStatus(msg,isErr){var el=document.getElementById("rss-action-status");el.textContent=msg||"";el.className=isErr?"bad":"dim";}
+function showAiSummary(text){
+  var box=document.getElementById("rss-ai-summary");
+  if(!text){box.style.display="none";return;}
+  box.style.display="block";
+  document.getElementById("rss-ai-summary-text").textContent=text;
+}
 function openArticle(id){
   rssState.selected=id;
+  setActionStatus("");
   document.getElementById("rss-list-pane").classList.add("with-reader");
   var pane=document.getElementById("rss-read-pane");
   pane.classList.remove("hidden");
@@ -163,7 +178,14 @@ function openArticle(id){
     document.getElementById("rss-read-title").innerHTML="<h2 style='margin:0;font-size:1rem'>"+esc(it.title)+"</h2><p class='dim' style='margin:.35rem 0 0;font-size:.75rem'>"+esc(it.feedTitle||"")+"</p>";
     document.getElementById("rss-read-body").innerHTML=it.contentHtml||("<p>"+esc(it.summary||"")+"</p>");
     document.getElementById("rss-open-ext").href=it.link||"#";
-    document.getElementById("rss-star").textContent=it.starred?"Saved":"Save";
+    document.getElementById("rss-star").textContent=it.starred?"Starred":"Star";
+    var sumBtn=document.getElementById("rss-summarize");
+    var recBtn=document.getElementById("rss-recallio");
+    sumBtn.disabled=!r.llmEnabled;
+    sumBtn.title=r.llmEnabled?"":"LLM not configured";
+    recBtn.disabled=!r.recallioEnabled;
+    recBtn.title=r.recallioEnabled?"":"Recallio not configured";
+    showAiSummary(r.summary?r.summary.summary:"");
     if(!it.read)api("/api/rss/read","POST",{ids:[it.id]}).then(loadArticles);
   });
 }
@@ -208,6 +230,25 @@ document.getElementById("rss-star").onclick=function(){
   if(!rssState.selected)return;
   api("/api/rss/star","POST",{id:rssState.selected,starred:true}).then(function(){openArticle(rssState.selected)});
 };
+document.getElementById("rss-summarize").onclick=function(){
+  if(!rssState.selected)return;
+  var btn=document.getElementById("rss-summarize");btn.disabled=true;setActionStatus("Summarizing…");
+  api("/api/rss/summarize","POST",{entryId:rssState.selected}).then(function(r){
+    if(!r.ok)throw new Error(r.error||"failed");
+    showAiSummary(r.text||"");setActionStatus(r.duplicate?"Already summarized":"Summary saved");
+  }).catch(function(e){setActionStatus(e.message,true)}).finally(function(){btn.disabled=false;openArticle(rssState.selected)});
+};
+document.getElementById("rss-recallio").onclick=function(){
+  if(!rssState.selected)return;
+  var btn=document.getElementById("rss-recallio");btn.disabled=true;setActionStatus("Saving to Recallio…");
+  api("/api/rss/recallio","POST",{entryId:rssState.selected}).then(function(r){
+    if(!r.configured){setActionStatus("Recallio not configured",true);return;}
+    if(!r.ok)throw new Error(r.error||"save failed");
+    setActionStatus("Saved to Recallio");
+  }).catch(function(e){setActionStatus(e.message,true)}).finally(function(){btn.disabled=false;openArticle(rssState.selected)});
+};
+var openId=sessionStorage.getItem("rss-open");
+if(openId){sessionStorage.removeItem("rss-open");setTimeout(function(){openArticle(openId)},400);}
 loadTree().then(loadArticles);
 `;
 }

@@ -8,6 +8,7 @@ import { NewsPrefsStore } from "./feeds/news-prefs";
 import { FeedsStore } from "./feeds/store";
 import { createApp } from "./http";
 import { Scheduler } from "./scheduler";
+import { SummaryService } from "./feeds/summary-service";
 import { SettingsStore } from "./settings";
 import { NotesStore } from "./notes/store";
 import { HobieQueueStore } from "./stores/hobie-queue";
@@ -36,7 +37,8 @@ async function main() {
   const hobieQueue = await HobieQueueStore.open(cfg.dataDir);
   const dashboardLayout = await DashboardLayoutStore.open(cfg.dataDir, panels.map((p) => p.id));
 
-  const scheduler = new Scheduler({ cfg, settings, kv, feeds, briefing, dailyBriefing });
+  const summaryService = new SummaryService(cfg, feeds, feeds.summaries);
+  const scheduler = new Scheduler({ cfg, settings, kv, feeds, briefing, dailyBriefing, newsPrefs, summaryService });
   const server = createApp({
     cfg,
     auth: makeAuthenticator(cfg),

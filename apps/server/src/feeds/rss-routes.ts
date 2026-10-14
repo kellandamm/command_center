@@ -1,6 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { Config } from "../config";
+import { llmConfigured } from "../config";
+import { recallioConfigured } from "../recallio/client";
 import { assertPublicUrl, BlockedUrlError } from "../ssrf";
+import type { NewsPrefsStore } from "./news-prefs";
 import { pollDueFeeds } from "./poller";
+import type { SummaryService } from "./summary-service";
 import type { FeedsStore } from "./store";
 import { ValidationError } from "../settings";
 
@@ -15,6 +20,7 @@ export async function handleRssRoutes(
   res: ServerResponse,
   path: string,
   readBody: (req: IncomingMessage) => Promise<unknown>,
+  opts?: { cfg?: Config; prefs?: NewsPrefsStore; summaries?: SummaryService },
 ): Promise<boolean> {
   if (path === "/api/rss/tree" && req.method === "GET") {
     json(res, 200, { tree: feeds.tree(), searchMode: feeds.usesFts5() ? "fts5" : "like" });
@@ -41,7 +47,13 @@ export async function handleRssRoutes(
       json(res, 404, { error: "not found" });
       return true;
     }
-    json(res, 200, { item });
+    const summary = feeds.summaries.findByEntryId(item.id);
+    json(res, 200, {
+      item,
+      summary: summary ?? null,
+      recallioEnabled: opts?.cfg ? recallioConfigured(opts.cfg) : false,
+      llmEnabled: opts?.cfg ? llmConfigured(opts.cfg) : false,
+    });
     return true;
   }
 
@@ -64,7 +76,11 @@ export async function handleRssRoutes(
   if (path === "/api/rss/star" && req.method === "POST") {
     const body = (await readBody(req)) as { id?: string; starred?: boolean };
     if (!body.id) throw new ValidationError("id required");
-    const ok = feeds.setStarred(body.id, body.starred !== false);
+    const starred = body.starred !== false;
+    const ok = feeds.setStarred(body.id, starred);
+    if (ok && starred && opts?.summaries && opts.prefs) {
+      await opts.summaries.maybeAutoSummarize(body.id, opts.prefs.get());
+    }
     await feeds.save();
     json(res, 200, { ok });
     return true;
@@ -113,7 +129,14 @@ export async function handleRssRoutes(
   }
 
   if (path === "/api/rss/poll" && req.method === "POST") {
-    const results = await pollDueFeeds(feeds);
+    const onNew =
+      opts?.summaries && opts.prefs
+        ? async (ids: string[]) => {
+            const p = opts.prefs!.get();
+            for (const id of ids) await opts.summaries!.maybeAutoSummarize(id, p);
+          }
+        : undefined;
+    const results = await pollDueFeeds(feeds, new Date(), undefined, onNew);
     await feeds.save();
     json(res, 200, { results });
     return true;

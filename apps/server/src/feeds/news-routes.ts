@@ -58,11 +58,12 @@ export async function handleNewsRoutes(
 
   if (path === "/api/news/prefs" && req.method === "PUT") {
     const body = (await readBody(req)) as Record<string, unknown>;
-    const patch: { mutedTags?: string[]; focusTags?: string[] } = {};
-    if (body.mutedTags !== undefined) patch.mutedTags = body.mutedTags as string[];
-    if (body.focusTags !== undefined) patch.focusTags = body.focusTags as string[];
-    if (!patch.mutedTags && !patch.focusTags) throw new ValidationError("provide mutedTags and/or focusTags");
-    const next = await prefs.update(patch);
+    const patch: Record<string, unknown> = {};
+    for (const key of ["mutedTags", "focusTags", "summarizeAutoStarred", "summarizeFolderIds", "summarizeMaxPerHour"] as const) {
+      if (body[key] !== undefined) patch[key] = body[key];
+    }
+    if (!Object.keys(patch).length) throw new ValidationError("provide prefs fields to update");
+    const next = await prefs.update(patch as Parameters<NewsPrefsStore["update"]>[0]);
     json(res, 200, { prefs: next });
     return true;
   }
