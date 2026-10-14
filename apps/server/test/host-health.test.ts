@@ -7,6 +7,7 @@ import type { AddressInfo } from "node:net";
 import { assertReadOnlyDockerPath } from "../src/docker/read-client";
 import { formatBytes, memoryUsedPercent, sampleCpuUsedPercent } from "../src/host/metrics";
 import { BriefingService } from "../src/briefing/service";
+import { DailyBriefingService } from "../src/daily-briefing/service";
 import { loadConfig } from "../src/config";
 import { makeAuthenticator } from "../src/auth";
 import { FeedsStore } from "../src/feeds/store";
@@ -44,8 +45,9 @@ test("http: host-health API returns host metrics and disabled docker without soc
   await settings.load();
   const feeds = await FeedsStore.open(dir);
   const briefing = await BriefingService.open(dir, cfg.tz);
+  const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
   const notes = await NotesStore.open(dir);
-  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, feeds, briefing, notes });
+  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, feeds, briefing, dailyBriefing, notes });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   try {
