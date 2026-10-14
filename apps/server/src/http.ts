@@ -2,6 +2,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { BriefingService } from "./briefing/service";
 import type { DailyBriefingService } from "./daily-briefing/service";
 import { handleDailyBriefingRoutes } from "./daily-briefing/routes";
+import { handleAiSecurityRoutes } from "./ai-security/routes";
+import type { AiSecurityService } from "./ai-security/service";
 import { llmConfigured, type Config } from "./config";
 import { recallioConfigured } from "./recallio/client";
 import type { Authenticator } from "./auth";
@@ -15,6 +17,7 @@ import type { SettingsStore } from "./settings";
 import { ValidationError } from "./settings";
 import { MANIFEST, SERVICE_WORKER, iconPng } from "./pwa";
 import { dailyBriefingPage } from "./ui/daily-briefing-page";
+import { aiSecurityPage } from "./ui/ai-security-page";
 import { dashboardPage, settingsPage } from "./ui/pages";
 
 export interface App {
@@ -24,6 +27,7 @@ export interface App {
   feeds: FeedsStore;
   briefing: BriefingService;
   dailyBriefing: DailyBriefingService;
+  aiSecurity: AiSecurityService;
   notes: NotesStore;
 }
 
@@ -89,6 +93,7 @@ export function createApp(app: App): Server {
 
       if (get && path === "/") return send(res, 200, dashboardPage(), undefined, extra);
       if (get && path === "/briefing") return send(res, 200, dailyBriefingPage(), undefined, extra);
+      if (get && path === "/ai-security") return send(res, 200, aiSecurityPage(), undefined, extra);
       if (get && path === "/settings") return send(res, 200, settingsPage(), undefined, extra);
 
       if (get && path === "/api/state") {
@@ -111,6 +116,7 @@ export function createApp(app: App): Server {
       }
 
       if (await handleDailyBriefingRoutes(app, app.dailyBriefing, req, res, path)) return;
+      if (await handleAiSecurityRoutes(app.aiSecurity, req, res, path, readBody)) return;
 
       for (const panel of panels) {
         if (panel.handle && (await panel.handle(ctx(), req, res, path))) return;

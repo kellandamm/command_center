@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { aiSecurityPage } from "../src/ui/ai-security-page";
 import { dailyBriefingPage } from "../src/ui/daily-briefing-page";
 import { dashboardPage, settingsPage } from "../src/ui/pages";
 
@@ -18,6 +19,13 @@ test("ui: daily briefing page has source sections and nav link", () => {
   assert.match(html, /id="db-todoist"/);
   assert.match(html, /id="db-refresh"/);
   assert.match(html, /class="briefing-grid"/);
+});
+
+test("ui: ai security page has archive and empty state", () => {
+  const html = aiSecurityPage();
+  assert.match(html, /href="\/ai-security" class="on"/);
+  assert.match(html, /id="as-empty"/);
+  assert.match(html, /id="as-archive"/);
 });
 
 test("ui: settings page wraps form in card", () => {

@@ -114,6 +114,7 @@ pre.briefing.bad{color:var(--destructive);background:transparent;border-color:co
 const NAV = [
   ["/", "Dashboard"],
   ["/briefing", "Daily Briefing"],
+  ["/ai-security", "AI Security"],
   ["/settings", "Settings"],
 ] as const;
 
