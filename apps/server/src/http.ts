@@ -10,6 +10,12 @@ import type { Authenticator } from "./auth";
 import { csrfOk, tokenEquals } from "./auth";
 import type { FeedsStore } from "./feeds/store";
 import type { NotesStore } from "./notes/store";
+import { handlePowerAutomateWebhook } from "./integrations/power-automate";
+import { handleHobieAgentRoutes } from "./mcp/hobie-routes";
+import { handleMcpRoute } from "./mcp/handler";
+import type { IntegrationDeps } from "./mcp/actions";
+import type { HobieQueueStore } from "./stores/hobie-queue";
+import type { PanelUpdatesStore } from "./stores/panel-updates";
 import { parseFeedList } from "./feeds/parse";
 import { panels } from "./panels/registry";
 import type { PanelContext } from "./panels/types";
@@ -33,6 +39,8 @@ export interface App {
   dailyBriefing: DailyBriefingService;
   newsPrefs: NewsPrefsStore;
   notes: NotesStore;
+  panelUpdates: PanelUpdatesStore;
+  hobieQueue: HobieQueueStore;
 }
 
 const SECURITY: Record<string, string> = {
@@ -68,7 +76,11 @@ const icons = new Map<string, Buffer>();
 const icon = (name: string, size: number, maskable = false) => icons.get(name) ?? (icons.set(name, iconPng(size, maskable)), icons.get(name)!);
 
 function bearerToken(req: IncomingMessage): string | undefined {
-  return req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+  const authorization = req.headers.authorization;
+  if (!authorization || authorization.slice(0, 6).toLowerCase() !== "bearer") return undefined;
+  let tokenStart = 6;
+  while (authorization[tokenStart] === " " || authorization[tokenStart] === "\t") tokenStart++;
+  return tokenStart > 6 && tokenStart < authorization.length ? authorization.slice(tokenStart) : undefined;
 }
 
 /** POST /api/ai-security/roundups may use AI_SECURITY_TOKEN instead of dashboard session auth. */
@@ -80,12 +92,21 @@ export function aiSecurityPublishAuthorized(cfg: Config, req: IncomingMessage, p
 }
 
 export function createApp(app: App): Server {
+  const integrationDeps = (): IntegrationDeps => ({
+    cfg: app.cfg,
+    notes: app.notes,
+    panelUpdates: app.panelUpdates,
+    hobieQueue: app.hobieQueue,
+  });
+
   const ctx = (): PanelContext => ({
     cfg: app.cfg,
     settings: app.settings,
     feeds: app.feeds,
     briefing: app.briefing,
     notes: app.notes,
+    panelUpdates: app.panelUpdates,
+    hobieQueue: app.hobieQueue,
   });
 
   return createServer(async (req, res) => {
@@ -95,6 +116,24 @@ export function createApp(app: App): Server {
       const method = req.method ?? "GET";
 
       if (path === "/healthz") return json(res, 200, { ok: true, version: app.cfg.version });
+
+      if (path === "/mcp") {
+        const body = req.method === "POST" ? await readBody(req, 1_000_000) : undefined;
+        await handleMcpRoute(integrationDeps(), req, res, body);
+        return;
+      }
+
+      if (path === "/api/webhooks/power-automate") {
+        const body = await readBody(req);
+        await handlePowerAutomateWebhook(integrationDeps(), req, res, body);
+        return;
+      }
+
+      if (path === "/api/hobie/tasks" || path === "/api/hobie/claim") {
+        const body = req.method === "POST" ? await readBody(req) : undefined;
+        await handleHobieAgentRoutes(app.cfg, app.hobieQueue, req, res, path, body);
+        return;
+      }
 
       const publishOnly = aiSecurityPublishAuthorized(app.cfg, req, path, method);
       const who = publishOnly ? { ok: true as const, who: "ai-security-publish" } : await app.auth(req, url);

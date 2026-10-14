@@ -30,8 +30,17 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 | `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | Optional **outbound** Cloudflare Access service token. Sent as `CF-Access-Client-Id` / `CF-Access-Client-Secret` when the server calls Recallio behind Access. Set both if Recallio requires them; omit if Recallio is reachable without a service token. |
 | `WEATHER_LAT`, `WEATHER_LON` | Optional. Open-Meteo coordinates for the **Weather** panel (no API key). Default **Chicago** (`41.8781`, `-87.6298`) when unset. |
 | `ICS_URLS` | Optional. Comma-separated **https** iCal feed URLs for the **Calendar** panel. When unset, the panel explains how to enable it. Feeds are fetched server-side with the same SSRF rules as RSS. |
+| `MCP_CF_CLIENT_MAP` | **Required** for `/mcp` and the Power Automate webhook. Non-empty JSON: MCP client id → service token id (must match verified JWT `common_name`). If unset, empty, or unknown id → **403**. Invalid JSON prevents startup. |
+| `MCP_APP_TOKENS` | JSON map of MCP client id → bearer token (≥ 24 chars). Used with `/mcp` after CF client id checks. |
+| `WEBHOOK_SECRET` | ≥ 24 chars. Webhook requires **`X-Webhook-Secret`** plus a verified **`Cf-Access-Jwt-Assertion`** (Access injects this for service tokens). `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD` must be set. |
+| `HOBIE_POLL_TOKEN` | Optional bearer for Hobie to `GET /api/hobie/tasks` and `POST /api/hobie/claim`. Admin or MCP tokens also work. |
+| `MCP_MAX_HOBIE_PENDING` | Max pending Hobie tasks (default 20). |
 
 `/healthz` is unauthenticated and returns `{ ok, version }` only.
+
+### MCP and webhooks
+
+External agents connect to **`/mcp`** (Streamable HTTP) through Cloudflare Access. The server verifies **`Cf-Access-Jwt-Assertion`** against your team JWKS (`CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD`), reads the service token id from JWT **`common_name`**, maps it via **`MCP_CF_CLIENT_MAP`**, then checks the matching **`MCP_APP_TOKENS`** bearer. The raw `CF-Access-Client-Id` header is **not** trusted. Webhooks use the same JWT checks plus **`X-Webhook-Secret`**. Tools: `notes_read`, `notes_append`, `panel_post_update`, `todoist_add_task`, `hobie_queue_task`.
 
 ### Server health panel (optional Docker socket)
 
@@ -102,6 +111,8 @@ and accepts JSON either as an array of hits or as `{ results | items | memories 
 - `briefing.json` — latest briefing and short history
 - `state.json` — scheduler timestamps
 - `notes.md` — dashboard **Notes** panel (plain markdown)
+- `panel-updates.json` — **Activity** panel (agent updates via MCP/webhook)
+- `hobie-queue.json` — **Hobie queue** (tasks for the owner assistant)
 - `ai-security/` — weekly AI Security roundups (`YYYY-MM-DD.json`, keyed by `weekOf`)
 
 Back up the volume to keep feeds, read state, and briefings.

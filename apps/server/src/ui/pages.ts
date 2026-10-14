@@ -1,5 +1,7 @@
 import { panels } from "../panels/registry";
+import { activityDashboardScript } from "../panels/activity";
 import { briefingDashboardScript } from "../panels/briefing";
+import { hobieDashboardScript } from "../panels/hobie";
 import { calendarDashboardScript } from "../panels/calendar";
 import { feedsDashboardScript } from "../panels/feeds";
 import { githubDashboardScript } from "../panels/github";
@@ -16,7 +18,7 @@ export function dashboardPage(): string {
     title: "Command center",
     active: "/",
     body: `<header class="page-header"><h1>Dashboard</h1><p class="dim">Daily tools in one place.</p></header><div class="panel-grid">${sections}</div>`,
-    script: `${weatherDashboardScript()}${calendarDashboardScript()}${notesDashboardScript()}${feedsDashboardScript()}${briefingDashboardScript()}${todoistDashboardScript()}${hostHealthDashboardScript()}${githubDashboardScript()}${recallioDashboardScript()}`,
+    script: `${activityDashboardScript()}${hobieDashboardScript()}${weatherDashboardScript()}${calendarDashboardScript()}${notesDashboardScript()}${feedsDashboardScript()}${briefingDashboardScript()}${todoistDashboardScript()}${hostHealthDashboardScript()}${githubDashboardScript()}${recallioDashboardScript()}`,
   });
 }
 

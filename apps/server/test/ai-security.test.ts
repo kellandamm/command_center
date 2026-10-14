@@ -16,6 +16,7 @@ import { FeedsStore } from "../src/feeds/store";
 import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
+import { openIntegrationStores } from "./helpers";
 
 const ADMIN = "a".repeat(32);
 const PUBLISH = "p".repeat(32);
@@ -70,7 +71,20 @@ test("ai security API: publish, list, and reject invalid payload", async () => {
   const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
   const aiSecurity = await AiSecurityService.open(dir);
   const notes = await NotesStore.open(dir);
-  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, feeds, briefing, aiSecurity, dailyBriefing, newsPrefs, notes });
+  const { panelUpdates, hobieQueue } = await openIntegrationStores(dir);
+  const server = createApp({
+    cfg,
+    auth: makeAuthenticator(cfg),
+    settings,
+    feeds,
+    briefing,
+    aiSecurity,
+    dailyBriefing,
+    newsPrefs,
+    notes,
+    panelUpdates,
+    hobieQueue,
+  });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const authz = { authorization: `Bearer ${ADMIN}`, "content-type": "application/json", "x-ah": "1" };

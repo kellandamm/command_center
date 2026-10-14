@@ -10,6 +10,8 @@ import { createApp } from "./http";
 import { Scheduler } from "./scheduler";
 import { SettingsStore } from "./settings";
 import { NotesStore } from "./notes/store";
+import { HobieQueueStore } from "./stores/hobie-queue";
+import { PanelUpdatesStore } from "./stores/panel-updates";
 import { FileKV, ensureDirs } from "./store";
 
 async function main() {
@@ -28,9 +30,23 @@ async function main() {
   const aiSecurity = await AiSecurityService.open(cfg.dataDir);
   const dailyBriefing = await DailyBriefingService.open(cfg.dataDir, cfg.tz);
   const notes = await NotesStore.open(cfg.dataDir);
+  const panelUpdates = await PanelUpdatesStore.open(cfg.dataDir);
+  const hobieQueue = await HobieQueueStore.open(cfg.dataDir);
 
   const scheduler = new Scheduler({ cfg, settings, kv, feeds, briefing, dailyBriefing });
-  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, feeds, briefing, aiSecurity, dailyBriefing, newsPrefs, notes });
+  const server = createApp({
+    cfg,
+    auth: makeAuthenticator(cfg),
+    settings,
+    feeds,
+    briefing,
+    aiSecurity,
+    dailyBriefing,
+    newsPrefs,
+    notes,
+    panelUpdates,
+    hobieQueue,
+  });
   server.listen(cfg.port, cfg.host, () => {
     console.log(`command-center ${cfg.version} listening on ${cfg.host}:${cfg.port} (tz ${cfg.tz})`);
     console.log(llmConfigured(cfg) ? "LLM: configured" : "LLM: not set (briefing disabled)");
