@@ -1,3 +1,5 @@
+import { dashboardGridCss } from "./dashboard-grid";
+
 export const esc = (s: unknown) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
@@ -116,6 +118,7 @@ pre.briefing{
 .status-pill.dim{opacity:.85}
 pre.briefing.bad{color:var(--destructive);background:transparent;border-color:color-mix(in srgb,var(--destructive) 30%,var(--border))}
 .theme-toggle{width:100%;justify-content:flex-start}
+${dashboardGridCss}
 @media(max-width:768px){
   .app-shell{flex-direction:column}
   .sidebar{width:100%;height:auto;position:relative;border-right:0;border-bottom:1px solid var(--sidebar-border);padding:.5rem .75rem}

@@ -26,6 +26,7 @@ import { aiSecurityPage } from "./ui/ai-security-page";
 import { dailyBriefingPage } from "./ui/daily-briefing-page";
 import { handleNewsRoutes } from "./feeds/news-routes";
 import type { NewsPrefsStore } from "./feeds/news-prefs";
+import type { DashboardLayoutStore } from "./dashboard-layout/storage";
 import { dashboardPage, settingsPage } from "./ui/pages";
 import { newsPage } from "./ui/news-page";
 
@@ -41,6 +42,7 @@ export interface App {
   notes: NotesStore;
   panelUpdates: PanelUpdatesStore;
   hobieQueue: HobieQueueStore;
+  dashboardLayout: DashboardLayoutStore;
 }
 
 const SECURITY: Record<string, string> = {
@@ -166,6 +168,16 @@ export function createApp(app: App): Server {
           briefing: app.briefing.get() ?? null,
         });
       }
+      if (get && path === "/api/dashboard-layout") return json(res, 200, { layout: app.dashboardLayout.get() });
+      if (req.method === "PUT" && path === "/api/dashboard-layout") {
+        const layout = await app.dashboardLayout.update(await readBody(req));
+        return json(res, 200, { layout });
+      }
+      if (req.method === "POST" && path === "/api/dashboard-layout/reset") {
+        const layout = await app.dashboardLayout.reset();
+        return json(res, 200, { layout });
+      }
+
       if (get && path === "/api/settings") return json(res, 200, { settings: app.settings.get() });
       if (req.method === "PUT" && path === "/api/settings") {
         const next = await app.settings.update(await readBody(req));

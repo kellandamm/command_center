@@ -5,13 +5,15 @@ import { dailyBriefingPage } from "../src/ui/daily-briefing-page";
 import { newsPage } from "../src/ui/news-page";
 import { dashboardPage, settingsPage } from "../src/ui/pages";
 
-test("ui: dashboard uses shadcn-style shell and panel grid", () => {
+test("ui: dashboard uses shadcn-style shell and draggable grid", () => {
   const html = dashboardPage();
   assert.match(html, /class="app-shell"/);
   assert.match(html, /class="sidebar-nav"/);
-  assert.match(html, /class="panel-grid"/);
+  assert.match(html, /id="dashboard-grid"/);
+  assert.match(html, /id="dashboard-reset-layout"/);
   assert.match(html, /id="theme-toggle"/);
   assert.match(html, /id="panel-weather"/);
+  assert.match(html, /data-panel-id="feeds"/);
 });
 
 test("ui: ai security page has archive and empty state", () => {

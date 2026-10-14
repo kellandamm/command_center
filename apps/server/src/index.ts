@@ -12,6 +12,8 @@ import { SettingsStore } from "./settings";
 import { NotesStore } from "./notes/store";
 import { HobieQueueStore } from "./stores/hobie-queue";
 import { PanelUpdatesStore } from "./stores/panel-updates";
+import { DashboardLayoutStore } from "./dashboard-layout/storage";
+import { panels } from "./panels/registry";
 import { FileKV, ensureDirs } from "./store";
 
 async function main() {
@@ -32,6 +34,7 @@ async function main() {
   const notes = await NotesStore.open(cfg.dataDir);
   const panelUpdates = await PanelUpdatesStore.open(cfg.dataDir);
   const hobieQueue = await HobieQueueStore.open(cfg.dataDir);
+  const dashboardLayout = await DashboardLayoutStore.open(cfg.dataDir, panels.map((p) => p.id));
 
   const scheduler = new Scheduler({ cfg, settings, kv, feeds, briefing, dailyBriefing });
   const server = createApp({
@@ -46,6 +49,7 @@ async function main() {
     notes,
     panelUpdates,
     hobieQueue,
+    dashboardLayout,
   });
   server.listen(cfg.port, cfg.host, () => {
     console.log(`command-center ${cfg.version} listening on ${cfg.host}:${cfg.port} (tz ${cfg.tz})`);
