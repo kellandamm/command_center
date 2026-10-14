@@ -43,9 +43,9 @@ test("dashboard layout: pack pushes overlapping panels down", () => {
 
 test("dashboard layout: missing panels append below saved layout", () => {
   const raw = {
-    version: 1,
+    version: 2,
     cols: 12,
-    rowHeight: 36,
+    rowHeight: 32,
     panels: [{ id: "weather", x: 0, y: 0, w: 3, h: 3 }],
   };
   const next = normalizeDashboardLayout(raw, PANEL_IDS);
@@ -59,11 +59,28 @@ test("dashboard layout: missing panels append below saved layout", () => {
   }
 });
 
-test("dashboard layout: normalize adds missing panels and drops unknown ids", () => {
+test("dashboard layout: v1 saved file migrates to v2 compact default", () => {
   const raw = {
     version: 1,
     cols: 12,
     rowHeight: 36,
+    panels: [
+      { id: "feeds", x: 0, y: 0, w: 12, h: 12 },
+      { id: "weather", x: 0, y: 0, w: 3, h: 3, collapsed: true },
+    ],
+  };
+  const next = normalizeDashboardLayout(raw, PANEL_IDS);
+  assert.equal(next.version, 2);
+  assert.equal(next.panels.length, PANEL_IDS.length);
+  assert.equal(next.panels.find((p) => p.id === "weather")?.collapsed, true);
+  assert.equal(next.panels.find((p) => p.id === "feeds")?.h, 2);
+});
+
+test("dashboard layout: normalize adds missing panels and drops unknown ids", () => {
+  const raw = {
+    version: 2,
+    cols: 12,
+    rowHeight: 32,
     panels: [{ id: "weather", x: 1, y: 2, w: 3, h: 4, collapsed: true }],
   };
   const next = normalizeDashboardLayout(raw, PANEL_IDS);

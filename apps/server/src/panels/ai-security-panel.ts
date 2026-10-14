@@ -6,7 +6,7 @@ export const aiSecurityPanel: PanelModule = {
   dashboardHtml: `
 <section class="card" id="panel-ai-security">
   <p class="dim" id="as-dash-meta">Loading…</p>
-  <div id="as-dash-body" class="dashboard-panel-scroll"></div>
+  <div id="as-dash-body" class="panel-scroll-region"></div>
   <p class="feeds-full-link dim"><a href="/ai-security">Open AI Security roundup</a></p>
 </section>`,
 };

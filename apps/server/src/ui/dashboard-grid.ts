@@ -3,11 +3,18 @@
 export const dashboardGridCss = `
 .dashboard-toolbar{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;margin-bottom:1rem}
 .dashboard-toolbar .dim{margin:0}
+.app-main:has(.dashboard-page){overflow:hidden;max-height:100vh}
+.page-content:has(.dashboard-page){max-height:100vh;overflow:hidden;padding-bottom:.75rem;box-sizing:border-box}
+.dashboard-page{overflow:hidden;max-height:100%}
+.dashboard-page .page-header{margin-bottom:.75rem}
+.dashboard-page .page-header p{margin:.2rem 0 0}
+.dashboard-page .dashboard-toolbar{margin-bottom:.5rem}
 .dashboard-grid{
-  display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--dash-gap,8px);
-  grid-auto-rows:var(--dash-row,36px);position:relative;min-height:12rem;touch-action:none}
+  display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--dash-gap,6px);
+  grid-auto-rows:var(--dash-row,32px);position:relative;touch-action:none;
+  max-height:calc(100vh - 10.5rem);overflow:hidden}
 .dashboard-item{
-  min-width:0;min-height:0;display:flex;flex-direction:column;position:relative;
+  min-width:0;min-height:0;max-height:100%;overflow:hidden;display:flex;flex-direction:column;position:relative;
   grid-column:var(--gc-start)/span var(--gc-span);grid-row:var(--gr-start)/span var(--gr-span)}
 .dashboard-item.is-dragging{opacity:.92;z-index:30;box-shadow:0 8px 24px rgba(0,0,0,.12)}
 .dashboard-item.is-collapsed .dashboard-panel-body{display:none}
@@ -26,7 +33,8 @@ export const dashboardGridCss = `
 .dashboard-collapse{
   border:0;background:transparent;color:var(--muted-foreground);min-width:2rem;min-height:2rem;
   padding:.25rem;border-radius:calc(var(--radius) - 4px);font-size:1rem;line-height:1;cursor:pointer}
-.dashboard-panel-body{flex:1;min-height:0;overflow:auto;padding:.75rem 1rem 1rem;display:flex;flex-direction:column;gap:.5rem}
+.dashboard-panel-body{flex:1;min-height:0;overflow:hidden;padding:.5rem .65rem .65rem;display:flex;flex-direction:column;gap:.35rem}
+.dashboard-panel-body .panel-scroll-region{flex:1;min-height:0;overflow:auto}
 .dashboard-panel-body>.row:first-child{display:none}
 .dashboard-panel-body>h2:first-child{display:none}
 .dashboard-resize{
@@ -36,10 +44,18 @@ export const dashboardGridCss = `
   content:"";position:absolute;right:2px;bottom:2px;width:10px;height:10px;
   border-right:2px solid var(--muted-foreground);border-bottom:2px solid var(--muted-foreground);opacity:.7}
 .dashboard-item.is-collapsed .dashboard-resize{display:none}
-.dashboard-panel-scroll,.dashboard-panel-body #tn-list,.dashboard-panel-body #pdb-body,.dashboard-panel-body #as-dash-body{
-  flex:1;min-height:0;overflow:auto}
-#panel-feeds .feeds-panel-scroll,#panel-tagged-news .feeds-panel-scroll{max-height:9.5rem;border:1px solid var(--border);
-  border-radius:calc(var(--radius) - 2px);padding:0 .75rem}
+.feeds-panel-scroll{flex:1;min-height:0;overflow:auto;border:1px solid var(--border);
+  border-radius:calc(var(--radius) - 2px);padding:0 .5rem}
+.feed-headline{display:flex;gap:.35rem;align-items:flex-start;justify-content:space-between}
+.feed-headline summary{cursor:pointer;list-style:none;font-weight:600}
+.feed-headline summary::-webkit-details-marker{display:none}
+.feed-headline summary::before{content:"▸ ";font-size:.7rem;color:var(--muted-foreground)}
+details.feed-item[open] .feed-headline summary::before{content:"▾ "}
+.feed-item .feed-summary{margin:.25rem 0 .35rem;font-size:.8125rem}
+.feed-item .feed-meta{margin:0;font-size:.75rem}
+#panel-notes #notes-editor{min-height:0;max-height:4.5rem;resize:vertical;font-size:.8125rem}
+#panel-briefing #briefing-body{max-height:4.5rem;margin:0;font-size:.75rem}
+#panel-notes .dim{font-size:.75rem;margin:0}
 #panel-feeds .feeds-full-link{margin:.25rem 0 0;font-size:.8125rem}
 #panel-feeds .feeds-full-link a{text-decoration:underline;text-underline-offset:2px}
 @media(max-width:900px){
@@ -54,7 +70,7 @@ export function dashboardGridScript(): string {
 (function(){
   var grid=document.getElementById("dashboard-grid");
   if(!grid)return;
-  var COLS=12,ROW=36,GAP=8,saveTimer=null,lastMovedId=null;
+  var COLS=12,ROW=32,GAP=6,saveTimer=null,lastMovedId=null;
   grid.style.setProperty("--dash-row",ROW+"px");
   grid.style.setProperty("--dash-gap",GAP+"px");
 

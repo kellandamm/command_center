@@ -1,7 +1,7 @@
-export const LAYOUT_VERSION = 1;
+export const LAYOUT_VERSION = 2;
 export const GRID_COLS = 12;
-export const GRID_ROW_HEIGHT_PX = 36;
-export const GRID_GAP_PX = 8;
+export const GRID_ROW_HEIGHT_PX = 32;
+export const GRID_GAP_PX = 6;
 
 export interface PanelLayoutEntry {
   id: string;

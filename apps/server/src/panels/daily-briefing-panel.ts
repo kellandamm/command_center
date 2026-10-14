@@ -6,7 +6,7 @@ export const dailyBriefingPanel: PanelModule = {
   dashboardHtml: `
 <section class="card" id="panel-daily-briefing">
   <p class="dim" id="pdb-meta">Loading…</p>
-  <div id="pdb-body" class="dashboard-panel-scroll"></div>
+  <div id="pdb-body" class="panel-scroll-region"></div>
   <p class="feeds-full-link dim"><a href="/briefing">Open full daily briefing</a></p>
 </section>`,
 };

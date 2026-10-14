@@ -2,8 +2,8 @@ import type { DashboardLayout, PanelLayoutEntry } from "./types";
 import { GRID_COLS, GRID_ROW_HEIGHT_PX, LAYOUT_VERSION } from "./types";
 
 /**
- * Compact mosaic for 14 panels (~9 grid rows). Fits above the fold on 1280×800 with
- * header/toolbar when panels use internal scroll (row height 36px + 8px gaps ≈ 388px grid).
+ * 14 equal tiles in 8 grid rows (32px rows + 6px gaps ≈ 298px) — fits 1280×800 with
+ * header/toolbar and no page scroll when panel bodies use internal overflow.
  */
 export const DEFAULT_PANEL_LAYOUT: PanelLayoutEntry[] = [
   { id: "activity", x: 0, y: 0, w: 3, h: 2 },
@@ -18,8 +18,8 @@ export const DEFAULT_PANEL_LAYOUT: PanelLayoutEntry[] = [
   { id: "daily-briefing", x: 3, y: 4, w: 3, h: 2 },
   { id: "ai-security", x: 6, y: 4, w: 3, h: 2 },
   { id: "notes", x: 9, y: 4, w: 3, h: 2 },
-  { id: "feeds", x: 0, y: 6, w: 6, h: 3 },
-  { id: "briefing", x: 6, y: 6, w: 6, h: 3 },
+  { id: "feeds", x: 0, y: 6, w: 6, h: 2 },
+  { id: "briefing", x: 6, y: 6, w: 6, h: 2 },
 ];
 
 const DEFAULT_BY_ID = new Map(DEFAULT_PANEL_LAYOUT.map((p) => [p.id, p]));

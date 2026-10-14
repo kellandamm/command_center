@@ -6,7 +6,7 @@ export const taggedNewsPanel: PanelModule = {
   dashboardHtml: `
 <section class="card" id="panel-tagged-news">
   <p class="dim" id="tn-status">Loading…</p>
-  <div id="tn-list" class="feeds-panel-scroll"></div>
+  <div id="tn-list" class="feeds-panel-scroll panel-scroll-region"></div>
   <p class="feeds-full-link dim"><a href="/news">Open full tagged news view</a></p>
 </section>`,
 };

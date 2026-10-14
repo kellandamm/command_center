@@ -1,8 +1,8 @@
 import { ValidationError } from "../settings";
-import { defaultEntryForPanel } from "./defaults";
+import { defaultDashboardLayout, defaultEntryForPanel } from "./defaults";
 import { maxOccupiedRow } from "./pack";
 import type { DashboardLayout, PanelLayoutEntry } from "./types";
-import { GRID_COLS, LAYOUT_VERSION } from "./types";
+import { GRID_COLS, GRID_ROW_HEIGHT_PX, LAYOUT_VERSION } from "./types";
 
 function clampInt(n: number, min: number, max: number, field: string): number {
   if (!Number.isFinite(n) || Math.floor(n) !== n) throw new ValidationError(`${field} must be an integer`);
@@ -31,7 +31,18 @@ function normalizeEntry(raw: PanelLayoutEntry, knownIds: Set<string>): PanelLayo
 export function normalizeDashboardLayout(raw: unknown, panelIds: readonly string[]): DashboardLayout {
   if (!raw || typeof raw !== "object") throw new ValidationError("layout must be an object");
   const body = raw as DashboardLayout;
-  if (body.version !== LAYOUT_VERSION) throw new ValidationError("unsupported layout version");
+  if (body.version !== LAYOUT_VERSION) {
+    const fresh = defaultDashboardLayout(panelIds);
+    if (!Array.isArray(body.panels)) return fresh;
+    const collapsed = new Map<string, boolean>();
+    for (const entry of body.panels) {
+      if (entry && typeof entry === "object" && typeof (entry as PanelLayoutEntry).id === "string") {
+        if ((entry as PanelLayoutEntry).collapsed) collapsed.set((entry as PanelLayoutEntry).id, true);
+      }
+    }
+    fresh.panels = fresh.panels.map((p) => (collapsed.get(p.id) ? { ...p, collapsed: true } : p));
+    return fresh;
+  }
   if (!Array.isArray(body.panels)) throw new ValidationError("layout.panels must be an array");
 
   const known = new Set(panelIds);
@@ -57,7 +68,7 @@ export function normalizeDashboardLayout(raw: unknown, panelIds: readonly string
   return {
     version: LAYOUT_VERSION,
     cols: GRID_COLS,
-    rowHeight: typeof body.rowHeight === "number" && body.rowHeight > 0 ? body.rowHeight : 36,
+    rowHeight: typeof body.rowHeight === "number" && body.rowHeight > 0 ? body.rowHeight : GRID_ROW_HEIGHT_PX,
     panels,
   };
 }
