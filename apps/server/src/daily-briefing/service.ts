@@ -168,11 +168,10 @@ export class DailyBriefingService {
       const weather = await fetchOpenMeteo(cfg.weatherLat, cfg.weatherLon, cfg.tz, fetchFn);
       return block("ok", { weather, lat: cfg.weatherLat, lon: cfg.weatherLon });
     } catch (err) {
-      return block(
-        "error",
-        undefined,
-        err instanceof Error ? err.message : "Weather fetch failed",
-      );
+      return {
+        status: "error",
+        message: err instanceof Error ? err.message : "Weather fetch failed",
+      };
     }
   }
 
@@ -198,11 +197,10 @@ export class DailyBriefingService {
       }
       return block("ok", { activity });
     } catch (err) {
-      return block(
-        "error",
-        undefined,
-        err instanceof Error ? err.message : "GitHub request failed",
-      );
+      return {
+        status: "error",
+        message: err instanceof Error ? err.message : "GitHub request failed",
+      };
     }
   }
 }
