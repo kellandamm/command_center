@@ -97,6 +97,7 @@ and accepts JSON either as an array of hits or as `{ results | items | memories 
 
 - `settings.json` — feed list, fetch interval, briefing time
 - `feeds.json` — cached items and per-feed fetch status
+- `news-prefs.json` — tagged news view: muted topics and focus chips
 - `briefing.json` — latest briefing and short history
 - `state.json` — scheduler timestamps
 - `notes.md` — dashboard **Notes** panel (plain markdown)

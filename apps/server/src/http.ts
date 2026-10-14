@@ -12,7 +12,10 @@ import type { PanelContext } from "./panels/types";
 import type { SettingsStore } from "./settings";
 import { ValidationError } from "./settings";
 import { MANIFEST, SERVICE_WORKER, iconPng } from "./pwa";
+import { handleNewsRoutes } from "./feeds/news-routes";
+import type { NewsPrefsStore } from "./feeds/news-prefs";
 import { dashboardPage, settingsPage } from "./ui/pages";
+import { newsPage } from "./ui/news-page";
 
 export interface App {
   cfg: Config;
@@ -20,6 +23,7 @@ export interface App {
   settings: SettingsStore;
   feeds: FeedsStore;
   briefing: BriefingService;
+  newsPrefs: NewsPrefsStore;
   notes: NotesStore;
 }
 
@@ -84,6 +88,7 @@ export function createApp(app: App): Server {
       if (get && path === "/icon-maskable-512.png") return send(res, 200, icon("m512", 512, true), "image/png", extra);
 
       if (get && path === "/") return send(res, 200, dashboardPage(), undefined, extra);
+      if (get && path === "/news") return send(res, 200, newsPage(), undefined, extra);
       if (get && path === "/settings") return send(res, 200, settingsPage(), undefined, extra);
 
       if (get && path === "/api/state") {
@@ -104,6 +109,8 @@ export function createApp(app: App): Server {
         const parsed = parseFeedList(next.feeds);
         return json(res, 200, { settings: next, feedCount: parsed.feeds.length, feedErrors: parsed.errors });
       }
+
+      if (await handleNewsRoutes(app.feeds, app.newsPrefs, req, res, path, readBody)) return;
 
       for (const panel of panels) {
         if (panel.handle && (await panel.handle(ctx(), req, res, path))) return;
