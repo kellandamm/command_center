@@ -22,8 +22,62 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 | `TZ` | Feed fetch schedule, briefing day boundary, and settings times use this zone. |
 | `HOST_PORT` | Compose publish port on loopback. |
 | `DATA_DIR` | Default `/data` (Docker volume). |
+| `DOCKER_SOCKET` | Optional. Unix path to the Docker Engine API socket (e.g. `/var/run/docker.sock`). When set and readable, the **Server health** panel lists containers (read-only). When unset, host CPU/memory/disk still work; the container section explains that Docker is not configured. |
 
 `/healthz` is unauthenticated and returns `{ ok, version }` only.
+
+### Server health panel (optional Docker socket)
+
+Host metrics (CPU load and utilization estimate, memory, disk use on `DATA_DIR`) work without Docker.
+
+To show **container status** on the same machine as the dashboard, mount the Engine socket **read-only** and set `DOCKER_SOCKET`:
+
+```yaml
+environment:
+  DOCKER_SOCKET: /var/run/docker.sock
+volumes:
+  - homepage-data:/data
+  - /var/run/docker.sock:/var/run/docker.sock:ro
+```
+
+The server only issues **GET** requests to `/containers/json` and `/version`. There is no start/stop/restart UI or API.
+
+**Security trade-off:** A read-only *filesystem* mount on the socket does **not** make the Docker API read-only. Any process that can talk to `docker.sock` can typically control containers and often the host. Treat socket access like root on the Docker host. Prefer running the dashboard on a trusted admin host and keep auth (Cloudflare Access / `ADMIN_TOKEN`) strict.
+
+**Recommended (optional): [docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy)** — not enabled in the default `compose.yml`. When you want container status without giving the app the raw Engine socket, add a sidecar and point `DOCKER_SOCKET` at the proxy’s HTTP-over-Unix socket:
+
+```yaml
+services:
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      INFO: 1
+      # Leave everything else at 0 (default) — no POST/start/stop/exec.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [internal]
+
+  homepage:
+    # …existing homepage service…
+    environment:
+      DOCKER_SOCKET: /var/run/docker.sock
+    volumes:
+      - homepage-data:/data
+      - docker-socket:/var/run/docker.sock
+    depends_on: [docker-socket-proxy]
+    networks: [internal]
+
+volumes:
+  homepage-data:
+  docker-socket:
+
+networks:
+  internal:
+```
+
+Mount the proxy’s socket into the homepage container (exact path depends on how you wire the shared volume; some setups use a TCP URL to the proxy instead). The server only issues **GET** `/containers/json` and `/version`; the proxy should deny all mutating routes.
 
 ## Data layout (`/data`)
 

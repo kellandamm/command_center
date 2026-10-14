@@ -1,6 +1,7 @@
 import { panels } from "../panels/registry";
 import { briefingDashboardScript } from "../panels/briefing";
 import { feedsDashboardScript } from "../panels/feeds";
+import { hostHealthDashboardScript } from "../panels/host-health";
 import { todoistDashboardScript } from "../panels/todoist";
 import { page } from "./layout";
 
@@ -10,7 +11,7 @@ export function dashboardPage(): string {
     title: "Command center",
     active: "/",
     body: `<h1>Command center</h1><p class="dim">Daily tools in one place.</p>${sections}`,
-    script: `${feedsDashboardScript()}${briefingDashboardScript()}${todoistDashboardScript()}`,
+    script: `${feedsDashboardScript()}${briefingDashboardScript()}${todoistDashboardScript()}${hostHealthDashboardScript()}`,
   });
 }
 
