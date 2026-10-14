@@ -3,6 +3,7 @@ import { briefingDashboardScript } from "../panels/briefing";
 import { feedsDashboardScript } from "../panels/feeds";
 import { githubDashboardScript } from "../panels/github";
 import { hostHealthDashboardScript } from "../panels/host-health";
+import { recallioDashboardScript } from "../panels/recallio";
 import { todoistDashboardScript } from "../panels/todoist";
 import { page } from "./layout";
 
@@ -12,7 +13,7 @@ export function dashboardPage(): string {
     title: "Command center",
     active: "/",
     body: `<h1>Command center</h1><p class="dim">Daily tools in one place.</p>${sections}`,
-    script: `${feedsDashboardScript()}${briefingDashboardScript()}${todoistDashboardScript()}${hostHealthDashboardScript()}${githubDashboardScript()}`,
+    script: `${feedsDashboardScript()}${briefingDashboardScript()}${todoistDashboardScript()}${hostHealthDashboardScript()}${githubDashboardScript()}${recallioDashboardScript()}`,
   });
 }
 

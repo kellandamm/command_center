@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { BriefingService } from "./briefing/service";
 import { llmConfigured, type Config } from "./config";
+import { recallioConfigured } from "./recallio/client";
 import type { Authenticator } from "./auth";
 import { csrfOk } from "./auth";
 import type { FeedsStore } from "./feeds/store";
@@ -88,6 +89,7 @@ export function createApp(app: App): Server {
           version: app.cfg.version,
           tz: app.cfg.tz,
           llmEnabled: llmConfigured(app.cfg),
+          recallioEnabled: recallioConfigured(app.cfg),
           unread: app.feeds.list({ unreadOnly: true }).length,
           feedCount: parsed.feeds.length,
           briefing: app.briefing.get() ?? null,

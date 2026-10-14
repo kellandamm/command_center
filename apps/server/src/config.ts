@@ -15,6 +15,11 @@ export interface Config {
   /** GitHub login for the activity panel (open issues/PRs and public events). */
   githubUsername: string;
   todoistApiToken: string | null;
+  /** Base URL for Recallio search (e.g. https://recall.gobison.io). */
+  recallioUrl: string | null;
+  /** Outbound Cloudflare Access service token (Recallio behind Access). */
+  cfAccessClientId: string | null;
+  cfAccessClientSecret: string | null;
   cfTeamDomain: string | null;
   cfAud: string | null;
   adminToken: string | null;
@@ -60,6 +65,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     githubToken: blank(env.GITHUB_TOKEN),
     githubUsername: blank(env.GITHUB_USERNAME) ?? "kellandamm",
     todoistApiToken: blank(env.TODOIST_API_TOKEN),
+    recallioUrl: blank(env.RECALLIO_URL)?.replace(/\/+$/, "") ?? null,
+    cfAccessClientId: blank(env.CF_ACCESS_CLIENT_ID),
+    cfAccessClientSecret: blank(env.CF_ACCESS_CLIENT_SECRET),
     cfTeamDomain,
     cfAud,
     adminToken,

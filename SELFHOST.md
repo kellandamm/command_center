@@ -25,6 +25,8 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 | `HOST_PORT` | Compose publish port on loopback. |
 | `DATA_DIR` | Default `/data` (Docker volume). |
 | `DOCKER_SOCKET` | Optional. Unix path to the Docker Engine API socket (e.g. `/var/run/docker.sock`). When set and readable, the **Server health** panel lists containers (read-only). When unset, host CPU/memory/disk still work; the container section explains that Docker is not configured. |
+| `RECALLIO_URL` | Optional. Base URL for the **Recallio search** panel (e.g. `https://recall.gobison.io`). Without it the panel shows a disabled message; the rest of the dashboard is unchanged. |
+| `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | Optional **outbound** Cloudflare Access service token. Sent as `CF-Access-Client-Id` / `CF-Access-Client-Secret` when the server calls Recallio behind Access. Set both if Recallio requires them; omit if Recallio is reachable without a service token. |
 
 `/healthz` is unauthenticated and returns `{ ok, version }` only.
 
@@ -80,6 +82,14 @@ networks:
 ```
 
 Mount the proxy’s socket into the homepage container (exact path depends on how you wire the shared volume; some setups use a TCP URL to the proxy instead). The server only issues **GET** `/containers/json` and `/version`; the proxy should deny all mutating routes.
+
+### Recallio API assumption
+
+The private **kellan-damm/Recallio** repo was not available from this environment, so the panel calls:
+
+`GET {RECALLIO_URL}/api/search?q={query}&limit=10`
+
+and accepts JSON either as an array of hits or as `{ results | items | memories | data: [...] }`. Each item may use Recallio-style fields (`content`, `similarityScore`) or generic ones (`title`, `snippet`, `url`, `score`). If your instance uses a different path or method, adjust `apps/server/src/recallio/client.ts` or open an issue with the expected contract.
 
 ## Data layout (`/data`)
 
