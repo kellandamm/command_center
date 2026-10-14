@@ -22,7 +22,7 @@ import { SettingsStore } from "../src/settings";
 const TOKEN = "t".repeat(32);
 
 test("recallio: URL builder and CF Access outbound headers", () => {
-  assert.equal(recallioSearchUrl("https://recall.example/", "hello world", 5), "https://recall.example/api/search?q=hello+world&limit=5");
+  assert.equal(recallioSearchUrl("https://recall.example/"), "https://recall.example/api/search");
   const cfg = loadConfig({
     ADMIN_TOKEN: TOKEN,
     RECALLIO_URL: "https://recall.example",

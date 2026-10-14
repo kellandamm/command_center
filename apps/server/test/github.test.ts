@@ -5,13 +5,15 @@ import {
   describeEvent,
   issueKey,
   mapSearchItem,
-  openIssueSearchQuery,
+  openIssueAssigneeSearchQuery,
+  openIssueAuthorSearchQuery,
   openPrSearchQuery,
 } from "../src/github/activity";
 
 test("github: search queries target open PRs and issues for a user", () => {
   assert.equal(openPrSearchQuery("kellandamm"), "author:kellandamm is:pr is:open");
-  assert.equal(openIssueSearchQuery("alice"), "is:issue is:open (author:alice OR assignee:alice)");
+  assert.equal(openIssueAuthorSearchQuery("alice"), "is:issue is:open author:alice");
+  assert.equal(openIssueAssigneeSearchQuery("alice"), "is:issue is:open assignee:alice");
 });
 
 test("github: dedupe issues by repo and number", () => {

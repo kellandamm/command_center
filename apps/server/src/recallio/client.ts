@@ -29,12 +29,9 @@ export function recallioAccessHeaders(cfg: Config): Record<string, string> {
   return { "cf-access-client-id": id, "cf-access-client-secret": secret };
 }
 
-export function recallioSearchUrl(baseUrl: string, query: string, limit = 10): string {
+export function recallioSearchUrl(baseUrl: string): string {
   const base = baseUrl.replace(/\/+$/, "");
-  const u = new URL(`${base}/api/search`);
-  u.searchParams.set("q", query);
-  u.searchParams.set("limit", String(limit));
-  return u.href;
+  return `${base}/api/search`;
 }
 
 /** Normalize Recallio / compatible JSON into dashboard hits. */
@@ -106,10 +103,12 @@ export async function searchRecallio(cfg: Config, query: string, limit = 10): Pr
   if (q.length > 500) {
     return { configured: true, ok: false, error: "Query is too long (max 500 characters).", results: [] };
   }
-  const url = recallioSearchUrl(base, q, limit);
+  const url = recallioSearchUrl(base);
   try {
     const res = await safeFetch(url, {
-      headers: recallioAccessHeaders(cfg),
+      method: "POST",
+      headers: { "content-type": "application/json", ...recallioAccessHeaders(cfg) },
+      body: JSON.stringify({ q, limit }),
       timeoutMs: 15_000,
       maxBytes: 1_500_000,
     });

@@ -89,7 +89,7 @@ Mount the proxy’s socket into the homepage container (exact path depends on ho
 
 The private **kellan-damm/Recallio** repo was not available from this environment, so the panel calls:
 
-`GET {RECALLIO_URL}/api/search?q={query}&limit=10`
+`POST {RECALLIO_URL}/api/search` with JSON body `{ "q": "<query>", "limit": 10 }`
 
 and accepts JSON either as an array of hits or as `{ results | items | memories | data: [...] }`. Each item may use Recallio-style fields (`content`, `similarityScore`) or generic ones (`title`, `snippet`, `url`, `score`). If your instance uses a different path or method, adjust `apps/server/src/recallio/client.ts` or open an issue with the expected contract.
 

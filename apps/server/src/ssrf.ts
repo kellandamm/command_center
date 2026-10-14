@@ -70,13 +70,22 @@ export async function assertPublicUrl(
  */
 export async function safeFetch(
   url: string,
-  opts: { headers?: Record<string, string>; timeoutMs?: number; maxBytes?: number; maxRedirects?: number } = {},
+  opts: {
+    headers?: Record<string, string>;
+    timeoutMs?: number;
+    maxBytes?: number;
+    maxRedirects?: number;
+    method?: string;
+    body?: string;
+  } = {},
 ): Promise<{ finalUrl: string; status: number; contentType: string; body: string }> {
   const maxBytes = opts.maxBytes ?? 3_000_000;
   let current = url;
   for (let hop = 0; hop <= (opts.maxRedirects ?? 5); hop++) {
     await assertPublicUrl(current);
     const res = await fetch(current, {
+      method: opts.method ?? "GET",
+      body: opts.body,
       redirect: "manual",
       headers: { "user-agent": "ai-homepage-server/1.0 (+self-hosted)", accept: "*/*", ...opts.headers },
       signal: AbortSignal.timeout(opts.timeoutMs ?? 20_000),
