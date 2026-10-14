@@ -18,7 +18,7 @@ export async function handleMcpRoute(
   res: ServerResponse,
   parsedBody?: unknown,
 ): Promise<void> {
-  const auth = authenticateMcp(deps.cfg, req);
+  const auth = await authenticateMcp(deps.cfg, req);
   if (!auth.ok) {
     res.writeHead(auth.status, { "content-type": "application/json", ...SECURITY });
     res.end(JSON.stringify({ error: auth.reason }));

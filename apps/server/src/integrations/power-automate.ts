@@ -20,7 +20,7 @@ export async function handlePowerAutomateWebhook(
   res: ServerResponse,
   body: unknown,
 ): Promise<void> {
-  const auth = authenticateWebhook(deps.cfg, req);
+  const auth = await authenticateWebhook(deps.cfg, req);
   if (!auth.ok) {
     res.writeHead(auth.status, { "content-type": "application/json" });
     res.end(JSON.stringify({ error: auth.reason }));

@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -13,6 +13,8 @@ import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
 import { openIntegrationStores } from "./helpers";
+import { createTestCfAccessJwt, TEST_CF_AUD, TEST_CF_TEAM } from "./cf-access-jwt";
+import { setIntegrationCfAccessVerifier } from "../src/mcp/auth";
 
 const TOKEN = "t".repeat(32);
 const MCP_TOKEN = "m".repeat(32);
@@ -20,8 +22,18 @@ const CF_SERVICE_CLIENT_ID = "cf-service-copilot-test-id";
 const mcpIntegrationEnv = {
   MCP_APP_TOKENS: JSON.stringify({ copilot: MCP_TOKEN }),
   MCP_CF_CLIENT_MAP: JSON.stringify({ copilot: CF_SERVICE_CLIENT_ID }),
+  CF_ACCESS_TEAM_DOMAIN: TEST_CF_TEAM,
+  CF_ACCESS_AUD: TEST_CF_AUD,
 };
-const cfAccess = { "cf-access-client-id": CF_SERVICE_CLIENT_ID };
+
+afterEach(() => setIntegrationCfAccessVerifier(undefined));
+
+async function accessJwtHeaders(commonName = CF_SERVICE_CLIENT_ID) {
+  const keys = await createTestCfAccessJwt();
+  setIntegrationCfAccessVerifier(keys.verifier);
+  const jwt = await keys.signServiceTokenJwt(commonName);
+  return { "cf-access-jwt-assertion": jwt };
+}
 
 async function harness(env: Record<string, string> = {}) {
   const dir = await mkdtemp(join(tmpdir(), "cc-"));
@@ -168,11 +180,15 @@ test("notes API round-trip", async () => {
 });
 
 test("mcp: rejects when MCP_CF_CLIENT_MAP is missing (fail closed)", async () => {
-  const h = await harness({ MCP_APP_TOKENS: JSON.stringify({ copilot: MCP_TOKEN }) });
+  const h = await harness({
+    MCP_APP_TOKENS: JSON.stringify({ copilot: MCP_TOKEN }),
+    CF_ACCESS_TEAM_DOMAIN: TEST_CF_TEAM,
+    CF_ACCESS_AUD: TEST_CF_AUD,
+  });
   try {
     const r = await fetch(`${h.base}/mcp`, {
       method: "POST",
-      headers: { authorization: `Bearer ${MCP_TOKEN}`, ...cfAccess },
+      headers: { authorization: `Bearer ${MCP_TOKEN}`, ...(await accessJwtHeaders()) },
       body: "{}",
     });
     assert.equal(r.status, 403);
@@ -183,22 +199,61 @@ test("mcp: rejects when MCP_CF_CLIENT_MAP is missing (fail closed)", async () =>
   }
 });
 
-test("integrations: unknown CF-Access-Client-Id is rejected on mcp and webhook", async () => {
+test("integrations: unknown service token in JWT common_name is rejected", async () => {
   const secret = "w".repeat(32);
   const h = await harness({ ...mcpIntegrationEnv, WEBHOOK_SECRET: secret });
   try {
+    const jwtHdr = await accessJwtHeaders("not-registered-service-id");
     const mcp = await fetch(`${h.base}/mcp`, {
       method: "POST",
-      headers: { authorization: `Bearer ${MCP_TOKEN}`, "cf-access-client-id": "not-registered", "content-type": "application/json" },
+      headers: { authorization: `Bearer ${MCP_TOKEN}`, ...jwtHdr, "content-type": "application/json" },
       body: "{}",
     });
     assert.equal(mcp.status, 403);
     const wh = await fetch(`${h.base}/api/webhooks/power-automate`, {
       method: "POST",
-      headers: { "x-webhook-secret": secret, "cf-access-client-id": "not-registered", "content-type": "application/json" },
+      headers: { "x-webhook-secret": secret, ...jwtHdr, "content-type": "application/json" },
       body: JSON.stringify({ action: "notes_read" }),
     });
     assert.equal(wh.status, 403);
+  } finally {
+    await h.close();
+  }
+});
+
+test("integrations: CF-Access-Client-Id header alone cannot bypass JWT checks", async () => {
+  const h = await harness(mcpIntegrationEnv);
+  try {
+    const r = await fetch(`${h.base}/mcp`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${MCP_TOKEN}`,
+        "cf-access-client-id": CF_SERVICE_CLIENT_ID,
+        "content-type": "application/json",
+      },
+      body: "{}",
+    });
+    assert.equal(r.status, 403);
+    const j: any = await r.json();
+    assert.match(j.error, /Jwt-Assertion/i);
+  } finally {
+    await h.close();
+  }
+});
+
+test("integrations: expired Access JWT is rejected", async () => {
+  const h = await harness(mcpIntegrationEnv);
+  try {
+    const keys = await createTestCfAccessJwt();
+    setIntegrationCfAccessVerifier(keys.verifier);
+    const jwt = await keys.signServiceTokenJwt(CF_SERVICE_CLIENT_ID, { expiresAt: Math.floor(Date.now() / 1000) - 120 });
+    const r = await fetch(`${h.base}/mcp`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${MCP_TOKEN}`, "cf-access-jwt-assertion": jwt },
+      body: "{}",
+    });
+    assert.equal(r.status, 403);
+    assert.match((await r.json()).error, /Invalid or expired/i);
   } finally {
     await h.close();
   }
@@ -219,7 +274,7 @@ test("webhook: rejects webhook secret without CF service token when map unset", 
   }
 });
 
-test("mcp: rejects bearer without CF-Access-Client-Id", async () => {
+test("mcp: rejects bearer without Cf-Access-Jwt-Assertion", async () => {
   const h = await harness(mcpIntegrationEnv);
   try {
     assert.equal(
@@ -235,9 +290,10 @@ test("webhook and hobie queue persist under data dir", async () => {
   const secret = "w".repeat(32);
   const h = await harness({ ...mcpIntegrationEnv, WEBHOOK_SECRET: secret });
   try {
+    const jwtHdr = await accessJwtHeaders();
     const wh = await fetch(`${h.base}/api/webhooks/power-automate`, {
       method: "POST",
-      headers: { "x-webhook-secret": secret, ...cfAccess, "content-type": "application/json" },
+      headers: { "x-webhook-secret": secret, ...jwtHdr, "content-type": "application/json" },
       body: JSON.stringify({ action: "hobie_queue_task", title: "Ship it", body: "Please review", urgent: true }),
     });
     assert.equal(wh.status, 200);
@@ -256,7 +312,7 @@ test("webhook and hobie queue persist under data dir", async () => {
 
     const act = await fetch(`${h.base}/api/webhooks/power-automate`, {
       method: "POST",
-      headers: { "x-webhook-secret": secret, ...cfAccess, "content-type": "application/json" },
+      headers: { "x-webhook-secret": secret, ...jwtHdr, "content-type": "application/json" },
       body: JSON.stringify({ action: "panel_post_update", panel: "activity", markdown: "Copilot checked in" }),
     });
     assert.equal(act.status, 200);
@@ -271,10 +327,11 @@ test("webhook and hobie queue persist under data dir", async () => {
 test("mcp: notes_append round-trip via SDK client", async () => {
   const h = await harness(mcpIntegrationEnv);
   try {
+    const jwtHdr = await accessJwtHeaders();
     const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
     const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
     const transport = new StreamableHTTPClientTransport(new URL(`${h.base}/mcp`), {
-      requestInit: { headers: { authorization: `Bearer ${MCP_TOKEN}`, ...cfAccess } },
+      requestInit: { headers: { authorization: `Bearer ${MCP_TOKEN}`, ...jwtHdr } },
     });
     const client = new Client({ name: "test", version: "1.0.0" });
     await client.connect(transport);

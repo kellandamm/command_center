@@ -1,7 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import { timingSafeEqual, createHash } from "node:crypto";
-import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { Config } from "./config";
+import { accessJwtFromRequest, createCfAccessRemoteJwtVerifier } from "./cf-access";
 
 export type AuthResult = { ok: true; who: string; setCookie?: string } | { ok: false; status: 401 | 403; reason: string };
 
@@ -20,22 +20,21 @@ export type Authenticator = (req: IncomingMessage, url: URL) => Promise<AuthResu
 
 export function makeAuthenticator(cfg: Config, verifyJwt?: (token: string) => Promise<string>): Authenticator {
   let verify = verifyJwt;
-  if (!verify && cfg.cfTeamDomain && cfg.cfAud) {
-    const issuer = `https://${cfg.cfTeamDomain}`;
-    const jwks = createRemoteJWKSet(new URL(`${issuer}/cdn-cgi/access/certs`));
-    const aud = cfg.cfAud;
-    verify = async (token) => {
-      const { payload } = await jwtVerify(token, jwks, { issuer, audience: aud });
-      return String(payload.email ?? payload.sub ?? "access-user");
-    };
+  if (!verify) {
+    const remote = createCfAccessRemoteJwtVerifier(cfg);
+    if (remote) {
+      verify = async (token) => {
+        const payload = await remote(token);
+        return String(payload.email ?? payload.sub ?? "access-user");
+      };
+    }
   }
 
   return async (req, url) => {
     if (cfg.allowInsecureNoAuth && !verify && !cfg.adminToken) return { ok: true, who: "anonymous" };
 
     if (verify) {
-      const jwt = req.headers["cf-access-jwt-assertion"];
-      const token = (Array.isArray(jwt) ? jwt[0] : jwt) ?? cookie(req, "CF_Authorization");
+      const token = accessJwtFromRequest(req.headers) ?? cookie(req, "CF_Authorization");
       if (token) {
         try {
           return { ok: true, who: await verify(token) };

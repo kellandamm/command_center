@@ -1,25 +1,61 @@
 import type { IncomingMessage } from "node:http";
 import { tokenEquals } from "../auth";
+import type { CfAccessJwtVerifier } from "../cf-access";
+import {
+  accessJwtFromRequest,
+  cfAccessConfigured,
+  createCfAccessRemoteJwtVerifier,
+  serviceTokenClientIdFromPayload,
+} from "../cf-access";
 import type { Config } from "../config";
 import { mcpClientIdForCfAccessClientId, mcpConfigured, resolveMcpClientFromBearer } from "../config";
 
 export type McpAuthResult = { ok: true; clientId: string } | { ok: false; status: 401 | 403; reason: string };
 
-/** Integrations always require a non-empty MCP_CF_CLIENT_MAP and a known inbound service token. */
-export function requireCfServiceClient(cfg: Config, req: IncomingMessage): McpAuthResult {
+let integrationJwtVerifier: CfAccessJwtVerifier | null | undefined;
+
+/** Override JWT verification in tests (local JWKS). Production uses remote team certs. */
+export function setIntegrationCfAccessVerifier(verifier: CfAccessJwtVerifier | null | undefined): void {
+  integrationJwtVerifier = verifier;
+}
+
+function resolveIntegrationVerifier(cfg: Config): CfAccessJwtVerifier | null {
+  if (integrationJwtVerifier !== undefined) return integrationJwtVerifier;
+  return createCfAccessRemoteJwtVerifier(cfg);
+}
+
+/** Integrations: non-empty map, team/AUD config, verified Access JWT, common_name → MCP client id. */
+export async function requireCfServiceClient(cfg: Config, req: IncomingMessage): Promise<McpAuthResult> {
   if (Object.keys(cfg.mcpCfClientMap).length === 0) {
     return { ok: false, status: 403, reason: "MCP_CF_CLIENT_MAP is required for integrations" };
   }
-  const cfId = req.headers["cf-access-client-id"];
-  const presented = (Array.isArray(cfId) ? cfId[0] : cfId)?.trim();
-  if (!presented) return { ok: false, status: 403, reason: "CF-Access-Client-Id required" };
-  const mapped = mcpClientIdForCfAccessClientId(cfg, presented);
+  if (!cfAccessConfigured(cfg)) {
+    return { ok: false, status: 403, reason: "CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD are required for integrations" };
+  }
+
+  const token = accessJwtFromRequest(req.headers);
+  if (!token) return { ok: false, status: 403, reason: "Cf-Access-Jwt-Assertion required" };
+
+  const verify = resolveIntegrationVerifier(cfg);
+  if (!verify) return { ok: false, status: 403, reason: "Cloudflare Access JWT verification is not configured" };
+
+  let payload;
+  try {
+    payload = await verify(token);
+  } catch {
+    return { ok: false, status: 403, reason: "Invalid or expired Cloudflare Access JWT" };
+  }
+
+  const serviceId = serviceTokenClientIdFromPayload(payload);
+  if (!serviceId) return { ok: false, status: 403, reason: "Access JWT missing common_name" };
+
+  const mapped = mcpClientIdForCfAccessClientId(cfg, serviceId);
   if (!mapped) return { ok: false, status: 403, reason: "Unknown Cloudflare Access service token" };
   return { ok: true, clientId: mapped };
 }
 
-export function authenticateMcp(cfg: Config, req: IncomingMessage): McpAuthResult {
-  const cf = requireCfServiceClient(cfg, req);
+export async function authenticateMcp(cfg: Config, req: IncomingMessage): Promise<McpAuthResult> {
+  const cf = await requireCfServiceClient(cfg, req);
   if (!cf.ok) return cf;
 
   if (!mcpConfigured(cfg)) {
@@ -37,8 +73,8 @@ export function authenticateMcp(cfg: Config, req: IncomingMessage): McpAuthResul
   return { ok: true, clientId: cf.clientId };
 }
 
-export function authenticateWebhook(cfg: Config, req: IncomingMessage): McpAuthResult {
-  const cf = requireCfServiceClient(cfg, req);
+export async function authenticateWebhook(cfg: Config, req: IncomingMessage): Promise<McpAuthResult> {
+  const cf = await requireCfServiceClient(cfg, req);
   if (!cf.ok) return cf;
 
   if (!cfg.webhookSecret) return { ok: false, status: 403, reason: "Webhook is not configured" };
