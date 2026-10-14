@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import { BriefingService } from "../src/briefing/service";
+import { AiSecurityService } from "../src/ai-security/service";
+import { DailyBriefingService } from "../src/daily-briefing/service";
 import { loadConfig, assertAuthConfigured, llmConfigured } from "../src/config";
 import { makeAuthenticator } from "../src/auth";
 import { NewsPrefsStore } from "../src/feeds/news-prefs";
@@ -51,9 +53,23 @@ async function harness(env: Record<string, string> = {}) {
   const feeds = await FeedsStore.open(dir);
   const newsPrefs = await NewsPrefsStore.open(dir);
   const briefing = await BriefingService.open(dir, cfg.tz);
+  const aiSecurity = await AiSecurityService.open(dir);
+  const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
   const notes = await NotesStore.open(dir);
   const { panelUpdates, hobieQueue } = await openIntegrationStores(dir);
-  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, feeds, briefing, newsPrefs, notes, panelUpdates, hobieQueue });
+  const server = createApp({
+    cfg,
+    auth: makeAuthenticator(cfg),
+    settings,
+    feeds,
+    briefing,
+    aiSecurity,
+    dailyBriefing,
+    newsPrefs,
+    notes,
+    panelUpdates,
+    hobieQueue,
+  });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const close = async () => {
@@ -340,6 +356,22 @@ test("mcp: notes_append round-trip via SDK client", async () => {
     const nj: any = await notes.json();
     assert.match(nj.content, /hello from mcp/);
     await client.close();
+  } finally {
+    await h.close();
+  }
+});
+
+test("daily briefing API lists days and returns null before first run", async () => {
+  const h = await harness();
+  try {
+    const days = await fetch(`${h.base}/api/daily-briefing/days`, { headers: authz });
+    assert.equal(days.status, 200);
+    assert.deepEqual((await days.json()).days, []);
+    const today = await fetch(`${h.base}/api/daily-briefing`, { headers: authz });
+    assert.equal(today.status, 200);
+    const j: any = await today.json();
+    assert.equal(j.briefing, null);
+    assert.match(j.day, /^\d{4}-\d{2}-\d{2}$/);
   } finally {
     await h.close();
   }

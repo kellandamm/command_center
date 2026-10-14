@@ -2,6 +2,8 @@ import { join } from "node:path";
 import { assertAuthConfigured, llmConfigured, loadConfig } from "./config";
 import { makeAuthenticator } from "./auth";
 import { BriefingService } from "./briefing/service";
+import { AiSecurityService } from "./ai-security/service";
+import { DailyBriefingService } from "./daily-briefing/service";
 import { NewsPrefsStore } from "./feeds/news-prefs";
 import { FeedsStore } from "./feeds/store";
 import { createApp } from "./http";
@@ -25,17 +27,21 @@ async function main() {
   const feeds = await FeedsStore.open(cfg.dataDir);
   const newsPrefs = await NewsPrefsStore.open(cfg.dataDir);
   const briefing = await BriefingService.open(cfg.dataDir, cfg.tz);
+  const aiSecurity = await AiSecurityService.open(cfg.dataDir);
+  const dailyBriefing = await DailyBriefingService.open(cfg.dataDir, cfg.tz);
   const notes = await NotesStore.open(cfg.dataDir);
   const panelUpdates = await PanelUpdatesStore.open(cfg.dataDir);
   const hobieQueue = await HobieQueueStore.open(cfg.dataDir);
 
-  const scheduler = new Scheduler({ cfg, settings, kv, feeds, briefing });
+  const scheduler = new Scheduler({ cfg, settings, kv, feeds, briefing, dailyBriefing });
   const server = createApp({
     cfg,
     auth: makeAuthenticator(cfg),
     settings,
     feeds,
     briefing,
+    aiSecurity,
+    dailyBriefing,
     newsPrefs,
     notes,
     panelUpdates,

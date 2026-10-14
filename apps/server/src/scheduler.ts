@@ -1,3 +1,4 @@
+import type { DailyBriefingService } from "./daily-briefing/service";
 import type { BriefingService } from "./briefing/service";
 import { llmConfig, type Config } from "./config";
 import { parseFeedList } from "./feeds/parse";
@@ -88,6 +89,7 @@ export class Scheduler {
       settings: SettingsStore;
       kv: KVLike;
       feeds: FeedsStore;
+      dailyBriefing: DailyBriefingService;
       briefing: BriefingService;
       now?: () => Date;
     },
@@ -120,22 +122,33 @@ export class Scheduler {
       }
 
       const slot = dueBriefingSlot(state, s.briefingTime, now, this.d.cfg.tz);
-      if (slot && llmConfig(this.d.cfg)) {
-        const since = new Date(now.getTime() - 24 * 60 * 60_000).toISOString();
-        const rec = await this.d.briefing.generate({
-          llm: llmConfig(this.d.cfg),
+      if (slot) {
+        const rec = await this.d.dailyBriefing.generate({
+          cfg: this.d.cfg,
           feeds: this.d.feeds,
-          sinceIso: since,
           trigger: "schedule",
           now,
         });
+        let failed = rec.sources.ai.status === "error";
+        const llm = llmConfig(this.d.cfg);
+        if (llm) {
+          const since = new Date(now.getTime() - 24 * 60 * 60_000).toISOString();
+          const briefing = await this.d.briefing.generate({
+            llm,
+            feeds: this.d.feeds,
+            sinceIso: since,
+            trigger: "schedule",
+            now,
+          });
+          failed ||= Boolean(briefing.error);
+        }
         const attempts = state.slot === slot ? (state.attempts ?? 0) + 1 : 1;
         state = {
           ...state,
           slot,
           attempts,
           lastAt: now.toISOString(),
-          lastStatus: rec.error ? "failed" : "ok",
+          lastStatus: failed ? "failed" : "ok",
         };
         await this.d.kv.set(KEY, state);
       }

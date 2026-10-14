@@ -20,6 +20,7 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 | `GITHUB_USERNAME` | GitHub login for open issues/PRs and public events. Default `kellandamm`. |
 | `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` | Cloudflare Access JWT on every request (`Cf-Access-Jwt-Assertion`). Set both or neither. |
 | `ADMIN_TOKEN` | ≥ 24 chars. `Authorization: Bearer …`, or `/?token=…` once (HttpOnly cookie; needs HTTPS). |
+| `AI_SECURITY_TOKEN` | Optional. ≥ 24 chars. **Publish-only** credential for `POST /api/ai-security/roundups` (`Authorization: Bearer …` plus `x-ah: 1`). Does not grant dashboard or settings access. `ADMIN_TOKEN` still works for publish (backward compatibility for scripts that already use it). |
 | `ALLOW_INSECURE_NO_AUTH=1` | Localhost only. Without any auth setting the server refuses to start. |
 | `TZ` | Feed fetch schedule, briefing day boundary, and settings times use this zone. |
 | `HOST_PORT` | Compose publish port on loopback. |
@@ -112,12 +113,13 @@ and accepts JSON either as an array of hits or as `{ results | items | memories 
 - `notes.md` — dashboard **Notes** panel (plain markdown)
 - `panel-updates.json` — **Activity** panel (agent updates via MCP/webhook)
 - `hobie-queue.json` — **Hobie queue** (tasks for the owner assistant)
+- `ai-security/` — weekly AI Security roundups (`YYYY-MM-DD.json`, keyed by `weekOf`)
 
 Back up the volume to keep feeds, read state, and briefings.
 
 ## Security
 
-- Auth on every route except `/healthz`; writes need same-origin `Origin` and `x-ah: 1` (CSRF).
+- Auth on every route except `/healthz`; writes need same-origin `Origin` and `x-ah: 1` (CSRF). The AI Security publish endpoint also accepts `AI_SECURITY_TOKEN` (or `ADMIN_TOKEN`) in `Authorization` without a browser session.
 - Feed URLs are fetched server-side with SSRF checks (public IPs only, DNS re-checked).
 - Container runs as non-root with capabilities dropped (`compose.yml`).
 

@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { aiSecurityPage } from "../src/ui/ai-security-page";
+import { dailyBriefingPage } from "../src/ui/daily-briefing-page";
 import { newsPage } from "../src/ui/news-page";
 import { dashboardPage, settingsPage } from "../src/ui/pages";
 
@@ -10,6 +12,21 @@ test("ui: dashboard uses shadcn-style shell and panel grid", () => {
   assert.match(html, /class="panel-grid"/);
   assert.match(html, /id="theme-toggle"/);
   assert.match(html, /id="panel-weather"/);
+});
+
+test("ui: ai security page has archive and empty state", () => {
+  const html = aiSecurityPage();
+  assert.match(html, /href="\/ai-security" class="on"/);
+  assert.match(html, /id="as-empty"/);
+  assert.match(html, /id="as-archive"/);
+});
+
+test("ui: daily briefing page has source sections and nav link", () => {
+  const html = dailyBriefingPage();
+  assert.match(html, /href="\/briefing" class="on"/);
+  assert.match(html, /id="db-todoist"/);
+  assert.match(html, /id="db-refresh"/);
+  assert.match(html, /class="briefing-grid"/);
 });
 
 test("ui: tagged news page has chip bar and compact list", () => {

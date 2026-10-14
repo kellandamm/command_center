@@ -81,6 +81,16 @@ input,select,textarea{
 input:focus,select:focus,textarea:focus{outline:2px solid var(--ring);outline-offset:1px}
 textarea{font-family:ui-monospace,Menlo,monospace;font-size:.8125rem;min-height:9em}
 .settings-card{max-width:42rem}
+.briefing-toolbar{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;margin-bottom:1rem}
+.briefing-toolbar select{max-width:12rem}
+.briefing-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,20rem),1fr));gap:1rem;align-items:start}
+.briefing-section{min-height:6rem}
+.briefing-section .section-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.5rem}
+.briefing-section h2{margin:0}
+.status-pill{font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:.2em .5em;border-radius:999px;border:1px solid var(--border);color:var(--muted-foreground)}
+.status-pill.ok{border-color:color-mix(in srgb,var(--ok) 40%,var(--border));color:var(--ok)}
+.status-pill.bad{border-color:color-mix(in srgb,var(--destructive) 40%,var(--border));color:var(--destructive)}
+.status-pill.dim{opacity:.85}
 .feed-item{border-top:1px solid var(--border);padding:.75rem 0}.feed-item:first-child{border-top:0}
 .tag-chip-bar{display:flex;flex-wrap:wrap;gap:.5rem}
 .tag-chip{
@@ -98,6 +108,13 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:.8125rem;min-height:
 pre.briefing{
   white-space:pre-wrap;font:inherit;font-size:.8125rem;background:var(--muted);color:var(--foreground);
   padding:.75rem;border-radius:calc(var(--radius) - 2px);border:1px solid var(--border);max-height:420px;overflow:auto}
+.briefing-toolbar{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;margin-bottom:1rem}
+.briefing-toolbar select{max-width:12rem}
+.status-pill{font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:.2em .5em;border-radius:999px;border:1px solid var(--border);color:var(--muted-foreground)}
+.status-pill.ok{border-color:color-mix(in srgb,var(--ok) 40%,var(--border));color:var(--ok)}
+.status-pill.bad{border-color:color-mix(in srgb,var(--destructive) 40%,var(--border));color:var(--destructive)}
+.status-pill.dim{opacity:.85}
+pre.briefing.bad{color:var(--destructive);background:transparent;border-color:color-mix(in srgb,var(--destructive) 30%,var(--border))}
 .theme-toggle{width:100%;justify-content:flex-start}
 @media(max-width:768px){
   .app-shell{flex-direction:column}
@@ -112,6 +129,8 @@ pre.briefing{
 
 const NAV = [
   ["/", "Dashboard"],
+  ["/ai-security", "AI Security"],
+  ["/briefing", "Daily Briefing"],
   ["/news", "Tagged news"],
   ["/settings", "Settings"],
 ] as const;
