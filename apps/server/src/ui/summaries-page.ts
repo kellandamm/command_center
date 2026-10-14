@@ -65,10 +65,15 @@ function renderList(items){
 }
 function loadSummaries(){
   var q=document.getElementById("sum-search").value.trim();
-  var path="/api/summaries"+(q?"?q="+encodeURIComponent(q):"");
+  var path="/api/summaries?limit="+summaryLimit+(q?"&q="+encodeURIComponent(q):"");
   return api(path).then(function(r){renderList(r.items)});
 }
+var summaryLimit=80;
 document.getElementById("sum-search").onkeydown=function(e){if(e.key==="Enter")loadSummaries()};
-loadPrefs();loadSummaries();
+loadPrefs();
+window.viewPreferencesReady.then(function(prefs){
+  summaryLimit=prefs&&prefs.summaries&&prefs.summaries.limit||80;
+  loadSummaries();
+});
 `;
 }

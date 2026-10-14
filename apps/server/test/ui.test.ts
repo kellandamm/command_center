@@ -37,6 +37,10 @@ test("ui: ai security page has archive and empty state", () => {
   const html = aiSecurityPage();
   assert.match(html, /href="\/ai-security" class="on"/);
   assert.match(html, /id="as-empty"/);
+  assert.match(html, /id="as-empty-title">No editions yet/);
+  assert.match(html, /weekly AI Security roundup will appear here when the first edition is published/);
+  assert.match(html, /Couldn't load roundups/);
+  assert.doesNotMatch(html, /Publish the first edition|AI_SECURITY_TOKEN|Authorization: Bearer/);
   assert.match(html, /id="as-archive"/);
 });
 
@@ -81,8 +85,14 @@ test("ui: settings page has schedule and tabs sections", () => {
   assert.match(html, /settings-card settings-tab-panel/);
   assert.match(html, /href="\/settings" class="on"/);
   assert.match(html, /id="tab-schedule"/);
+  assert.match(html, /id="tab-views"/);
   assert.match(html, /id="tab-tabs"/);
   assert.match(html, /id="scope-all"/);
+  assert.match(html, /data-pref="dashboard.hobie"/);
+  assert.match(html, /data-pref="briefing.github"/);
+  assert.match(html, /data-pref="calendar.weekStartsOn"/);
+  assert.match(html, /data-pref="activity.limit"/);
+  assert.match(html, /id="views-save"/);
 });
 
 test("ui: full sidebar pages render", () => {

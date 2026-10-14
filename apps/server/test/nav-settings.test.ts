@@ -32,6 +32,7 @@ test("settings: legacy feeds field migrates out of persisted settings", async ()
     assert.equal(store.consumeLegacyFeeds()?.includes("hn"), true);
     assert.equal("feeds" in store.get(), false);
     assert.equal(store.get().fetchIntervalMinutes, 15);
+    assert.equal(store.get().viewPreferences.calendar.weekStartsOn, "monday");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -65,4 +66,23 @@ test("settings: applySettings validates feed scope and tabs rename", () => {
   });
   assert.equal(next.feedScope.mode, "folders");
   assert.equal(next.sidebarTabs.find((t) => t.id === "news")!.label, "Reader");
+});
+
+test("settings: view preferences customize page defaults and retain other defaults", () => {
+  const next = applySettings(DEFAULT_SETTINGS, {
+    viewPreferences: {
+      density: "compact",
+      calendar: { weekStartsOn: "sunday" },
+      activity: { limit: 50 },
+    },
+  });
+  assert.equal(next.viewPreferences.density, "compact");
+  assert.equal(next.viewPreferences.calendar.weekStartsOn, "sunday");
+  assert.equal(next.viewPreferences.activity.limit, 50);
+  assert.equal(next.viewPreferences.news.layout, "dense");
+  assert.equal(next.viewPreferences.dashboard.hobie, true);
+  assert.throws(
+    () => applySettings(DEFAULT_SETTINGS, { viewPreferences: { calendar: { weekStartsOn: "friday" } } }),
+    /viewPreferences\.calendar\.weekStartsOn is invalid/,
+  );
 });

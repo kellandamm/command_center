@@ -177,6 +177,24 @@ pre.briefing.bad{color:var(--destructive);background:transparent;border-color:co
 .settings-tabs{display:flex;gap:.35rem;margin-bottom:1rem;flex-wrap:wrap}
 .settings-tabs button.ghost.on{background:var(--sidebar-accent)}
 .settings-tab-panel{display:none}.settings-tab-panel.on{display:block}
+.settings-options-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr));gap:.75rem}
+.settings-option{min-width:0;margin:0;padding:.75rem;border:1px solid var(--border);border-radius:var(--radius)}
+.settings-option legend{padding:0 .25rem;font-size:.875rem;font-weight:600}
+.settings-option>label:first-child{margin:.1rem 0 .35rem;font-size:.875rem;font-weight:600}
+.settings-option>p{margin:.25rem 0 0;font-size:.75rem}
+.settings-option label.choice-row{font-size:.8125rem}
+.settings-options-grid select{max-width:100%}
+.settings-card#tab-views{max-width:70rem}
+.compact .page-content{padding:1rem}
+.compact .page-header{margin-bottom:.85rem}
+.compact .card{padding:.85rem}
+.compact .panel-grid,.compact .briefing-grid{gap:.65rem}
+.compact .feed-item,.compact .todoist-item{padding:.4rem 0}
+.compact .rss-row{padding:.3rem .5rem}
+.compact .rss-row.card-view{padding:.5rem}
+.notes-size-small{font-size:.75rem}
+.notes-size-medium{font-size:.875rem}
+.notes-size-large{font-size:1rem}
 .scope-folder-grid{
   margin:.35rem 0 0 1.25rem;font-size:.8125rem;max-height:11rem;overflow:auto;
   display:grid;grid-template-columns:repeat(auto-fill,minmax(13rem,1fr));gap:.1rem .65rem;align-content:start}
@@ -320,6 +338,11 @@ export function page(opts: { title: string; body: string; active?: string; scrip
 ${THEME_SCRIPT}
 if("serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch(function(){});
 window.api=function(path,method,body){return fetch(path,{method:method||"GET",headers:{"x-ah":"1","content-type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)}).then(function(r){return r.json().catch(function(){return{}}).then(function(j){if(!r.ok)throw new Error(j.error||("HTTP "+r.status));return j})})};
+window.viewPreferencesReady=api("/api/settings").then(function(r){
+  var prefs=r.settings&&r.settings.viewPreferences||{};
+  document.documentElement.classList.toggle("compact",prefs.density==="compact");
+  return prefs;
+}).catch(function(err){console.error("Could not load view preferences",err);return null});
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 ${opts.script ?? ""}
 </script></body></html>`;
