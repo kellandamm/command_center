@@ -21,7 +21,7 @@ export const DEFAULT_FEEDS = [
 export const DEFAULT_SETTINGS: Settings = {
   feeds: DEFAULT_FEEDS,
   fetchIntervalMinutes: 30,
-  briefingTime: "07:00",
+  briefingTime: "06:00",
 };
 
 export class ValidationError extends Error {}
