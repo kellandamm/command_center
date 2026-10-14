@@ -1,6 +1,8 @@
 import { panels } from "../panels/registry";
 import { activityDashboardScript } from "../panels/activity";
+import { aiSecurityDashboardScript } from "../panels/ai-security-panel";
 import { briefingDashboardScript } from "../panels/briefing";
+import { dailyBriefingDashboardScript } from "../panels/daily-briefing-panel";
 import { hobieDashboardScript } from "../panels/hobie";
 import { calendarDashboardScript } from "../panels/calendar";
 import { feedsDashboardScript } from "../panels/feeds";
@@ -8,6 +10,7 @@ import { githubDashboardScript } from "../panels/github";
 import { hostHealthDashboardScript } from "../panels/host-health";
 import { notesDashboardScript } from "../panels/notes";
 import { recallioDashboardScript } from "../panels/recallio";
+import { taggedNewsDashboardScript } from "../panels/tagged-news";
 import { todoistDashboardScript } from "../panels/todoist";
 import { weatherDashboardScript } from "../panels/weather";
 import { dashboardGridScript } from "./dashboard-grid";
@@ -26,7 +29,7 @@ export function dashboardPage(): string {
   <p class="dim">Layout is saved on this server.</p>
 </div>
 <div class="dashboard-grid" id="dashboard-grid">${sections}</div>`,
-    script: `${dashboardGridScript()}${activityDashboardScript()}${hobieDashboardScript()}${weatherDashboardScript()}${calendarDashboardScript()}${notesDashboardScript()}${feedsDashboardScript()}${briefingDashboardScript()}${todoistDashboardScript()}${hostHealthDashboardScript()}${githubDashboardScript()}${recallioDashboardScript()}`,
+    script: `${dashboardGridScript()}${activityDashboardScript()}${hobieDashboardScript()}${taggedNewsDashboardScript()}${dailyBriefingDashboardScript()}${aiSecurityDashboardScript()}${weatherDashboardScript()}${calendarDashboardScript()}${notesDashboardScript()}${feedsDashboardScript()}${briefingDashboardScript()}${todoistDashboardScript()}${hostHealthDashboardScript()}${githubDashboardScript()}${recallioDashboardScript()}`,
   });
 }
 

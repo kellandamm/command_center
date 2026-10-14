@@ -9,6 +9,7 @@ import { BriefingService } from "../src/briefing/service";
 import { DailyBriefingService } from "../src/daily-briefing/service";
 import { defaultDashboardLayout } from "../src/dashboard-layout/defaults";
 import { normalizeDashboardLayout } from "../src/dashboard-layout/normalize";
+import { packAfterMove, rectanglesOverlap } from "../src/dashboard-layout/pack";
 import { DashboardLayoutStore } from "../src/dashboard-layout/storage";
 import { loadConfig } from "../src/config";
 import { makeAuthenticator } from "../src/auth";
@@ -26,6 +27,36 @@ const PANEL_IDS = panels.map((p) => p.id);
 test("dashboard layout: default includes every registered panel", () => {
   const layout = defaultDashboardLayout(PANEL_IDS);
   assert.deepEqual(layout.panels.map((p) => p.id), PANEL_IDS);
+});
+
+test("dashboard layout: pack pushes overlapping panels down", () => {
+  const panels = [
+    { id: "activity", x: 0, y: 0, w: 6, h: 4 },
+    { id: "hobie", x: 0, y: 2, w: 3, h: 3 },
+  ];
+  const packed = packAfterMove(panels, "activity");
+  const a = packed.find((p) => p.id === "activity")!;
+  const b = packed.find((p) => p.id === "hobie")!;
+  assert.equal(!rectanglesOverlap(a, b), true);
+  assert.ok(b.y >= a.y + a.h);
+});
+
+test("dashboard layout: missing panels append below saved layout", () => {
+  const raw = {
+    version: 1,
+    cols: 12,
+    rowHeight: 36,
+    panels: [{ id: "weather", x: 0, y: 0, w: 3, h: 3 }],
+  };
+  const next = normalizeDashboardLayout(raw, PANEL_IDS);
+  assert.ok(next.panels.find((p) => p.id === "tagged-news"));
+  assert.ok(next.panels.find((p) => p.id === "daily-briefing"));
+  assert.ok(next.panels.find((p) => p.id === "ai-security"));
+  const weatherBottom = 3;
+  for (const id of ["tagged-news", "daily-briefing", "ai-security"]) {
+    const p = next.panels.find((x) => x.id === id)!;
+    assert.ok(p.y >= weatherBottom, `${id} should append below saved panels`);
+  }
 });
 
 test("dashboard layout: normalize adds missing panels and drops unknown ids", () => {

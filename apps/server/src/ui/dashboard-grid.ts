@@ -36,7 +36,9 @@ export const dashboardGridCss = `
   content:"";position:absolute;right:2px;bottom:2px;width:10px;height:10px;
   border-right:2px solid var(--muted-foreground);border-bottom:2px solid var(--muted-foreground);opacity:.7}
 .dashboard-item.is-collapsed .dashboard-resize{display:none}
-#panel-feeds .feeds-panel-scroll{flex:1;min-height:0;max-height:9.5rem;overflow:auto;border:1px solid var(--border);
+.dashboard-panel-scroll,.dashboard-panel-body #tn-list,.dashboard-panel-body #pdb-body,.dashboard-panel-body #as-dash-body{
+  flex:1;min-height:0;overflow:auto}
+#panel-feeds .feeds-panel-scroll,#panel-tagged-news .feeds-panel-scroll{max-height:9.5rem;border:1px solid var(--border);
   border-radius:calc(var(--radius) - 2px);padding:0 .75rem}
 #panel-feeds .feeds-full-link{margin:.25rem 0 0;font-size:.8125rem}
 #panel-feeds .feeds-full-link a{text-decoration:underline;text-underline-offset:2px}
@@ -52,14 +54,15 @@ export function dashboardGridScript(): string {
 (function(){
   var grid=document.getElementById("dashboard-grid");
   if(!grid)return;
-  var COLS=12,ROW=36,GAP=8,saveTimer=null;
+  var COLS=12,ROW=36,GAP=8,saveTimer=null,lastMovedId=null;
   grid.style.setProperty("--dash-row",ROW+"px");
   grid.style.setProperty("--dash-gap",GAP+"px");
 
   function titleFor(id){
     var map={
-      activity:"Activity",hobie:"Hobie queue",weather:"Weather",calendar:"Calendar",notes:"Notes",
-      feeds:"News feeds",briefing:"Daily briefing",todoist:"Todoist","host-health":"Host health",
+      activity:"Activity",hobie:"Hobie queue","tagged-news":"Tagged news","daily-briefing":"Daily briefing",
+      "ai-security":"AI Security",weather:"Weather",calendar:"Calendar",notes:"Notes",
+      feeds:"News feeds",briefing:"AI briefing",todoist:"Todoist","host-health":"Host health",
       github:"GitHub",recallio:"Recallio"
     };
     return map[id]||id;
@@ -99,10 +102,53 @@ export function dashboardGridScript(): string {
     return {version:1,cols:COLS,rowHeight:ROW,panels:panels};
   }
 
+  function effH(p){return p.collapsed?1:p.h}
+  function overlaps(a,b){
+    return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+effH(b)&&a.y+effH(a)>b.y;
+  }
+  function packAfterMove(panels,anchorId){
+    var out=panels.map(function(p){return Object.assign({},p)});
+    var anchor=out.find(function(p){return p.id===anchorId});
+    if(!anchor)return out;
+    var queue=[anchor],seen={};
+    seen[anchorId]=1;
+    while(queue.length){
+      var cur=queue.shift();
+      out.forEach(function(other){
+        if(other.id===cur.id)return;
+        if(!overlaps(cur,other))return;
+        var needY=cur.y+effH(cur);
+        if(other.y<needY){
+          other.y=needY;
+          if(other.x+other.w>COLS)other.x=Math.max(0,COLS-other.w);
+          if(!seen[other.id]){seen[other.id]=1;queue.push(other);}
+        }
+      });
+    }
+    return out;
+  }
+  function applyPanels(panels){
+    var byId={};
+    panels.forEach(function(p){byId[p.id]=p});
+    grid.querySelectorAll(".dashboard-item").forEach(function(el){
+      var id=el.getAttribute("data-panel-id");
+      var entry=byId[id];
+      if(!entry)return;
+      el.dataset.fullH=String(entry.h);
+      applyEntry(el,entry);
+    });
+  }
   function scheduleSave(){
     if(saveTimer)clearTimeout(saveTimer);
     saveTimer=setTimeout(function(){
-      api("/api/dashboard-layout","PUT",readLayout()).catch(function(){});
+      var layout=readLayout();
+      if(lastMovedId){
+        layout.panels=packAfterMove(layout.panels,lastMovedId);
+        applyPanels(layout.panels);
+      }
+      api("/api/dashboard-layout","PUT",layout).then(function(r){
+        if(r.layout)applyLayout(r.layout);
+      }).catch(function(){});
     },400);
   }
 
@@ -144,6 +190,7 @@ export function dashboardGridScript(): string {
         var btn=this;
         btn.setAttribute("aria-expanded",collapsed?"false":"true");
         btn.textContent=collapsed?"+":"−";
+        lastMovedId=id;
         scheduleSave();
       });
 
@@ -169,6 +216,7 @@ export function dashboardGridScript(): string {
           drag.releasePointerCapture(ev.pointerId);
           drag.removeEventListener("pointermove",move);
           drag.removeEventListener("pointerup",up);
+          lastMovedId=id;
           scheduleSave();
         }
         drag.addEventListener("pointermove",move);
@@ -198,6 +246,7 @@ export function dashboardGridScript(): string {
           resize.releasePointerCapture(ev.pointerId);
           resize.removeEventListener("pointermove",move);
           resize.removeEventListener("pointerup",up);
+          lastMovedId=id;
           scheduleSave();
         }
         resize.addEventListener("pointermove",move);
@@ -216,6 +265,7 @@ export function dashboardGridScript(): string {
         if(ev.key==="ArrowDown")y=y+1;
         item.style.setProperty("--gc-start",x+1);
         item.style.setProperty("--gr-start",y+1);
+        lastMovedId=id;
         scheduleSave();
       });
     });

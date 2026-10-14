@@ -1,9 +1,8 @@
 import { ValidationError } from "../settings";
-import { DEFAULT_PANEL_LAYOUT } from "./defaults";
+import { defaultEntryForPanel } from "./defaults";
+import { maxOccupiedRow } from "./pack";
 import type { DashboardLayout, PanelLayoutEntry } from "./types";
 import { GRID_COLS, LAYOUT_VERSION } from "./types";
-
-const DEFAULT_BY_ID = new Map(DEFAULT_PANEL_LAYOUT.map((p) => [p.id, p]));
 
 function clampInt(n: number, min: number, max: number, field: string): number {
   if (!Number.isFinite(n) || Math.floor(n) !== n) throw new ValidationError(`${field} must be an integer`);
@@ -49,9 +48,9 @@ export function normalizeDashboardLayout(raw: unknown, panelIds: readonly string
 
   for (const id of panelIds) {
     if (byId.has(id)) continue;
-    const fallback = DEFAULT_BY_ID.get(id);
-    if (fallback) byId.set(id, { ...fallback });
-    else byId.set(id, { id, x: 0, y: 0, w: 4, h: 3 });
+    const entry = defaultEntryForPanel(id);
+    const y = maxOccupiedRow(Array.from(byId.values()));
+    byId.set(id, { ...entry, x: 0, y });
   }
 
   const panels = panelIds.map((id) => byId.get(id)!);
