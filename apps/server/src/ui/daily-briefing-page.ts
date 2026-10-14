@@ -179,6 +179,12 @@ refreshBtn.onclick=function(){
     });
   }).catch(function(err){briefingError(err.message||"Could not refresh the briefing.")}).finally(function(){refreshBtn.disabled=false});
 };
+window.viewPreferencesReady.then(function(prefs){
+  var sections=prefs&&prefs.briefing||{};
+  [["news","news"],["ai","ai"],["todoist","todoist"],["weather","weather"],["calendar","calendar"],["github","github"]].forEach(function(pair){
+    if(sections[pair[0]]===false)document.getElementById("db-"+pair[1]).hidden=true;
+  });
+});
 initDays();
 `;
 }

@@ -33,7 +33,12 @@ function renderHobieFull(rows){
     api("/api/hobie/queue/"+encodeURIComponent(b.dataset.id),"DELETE").then(loadHobieFull);
   }});
 }
-function loadHobieFull(){return api("/api/hobie/queue").then(function(r){renderHobieFull(r.tasks)})}
+function loadHobieFull(){
+  return window.viewPreferencesReady.then(function(prefs){
+    var status=prefs&&prefs.hobie&&prefs.hobie.status||"all";
+    return api("/api/hobie/queue"+(status==="all"?"":"?status="+encodeURIComponent(status))).then(function(r){renderHobieFull(r.tasks)});
+  });
+}
 document.getElementById("hobie-refresh").onclick=loadHobieFull;
 document.getElementById("hobie-clear-done").onclick=function(){
   if(!confirm("Remove all done tasks from the queue?"))return;

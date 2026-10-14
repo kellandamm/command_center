@@ -18,8 +18,8 @@ export function aiSecurityPage(nav?: NavLink[]): string {
   <span class="dim" id="as-meta"></span>
 </div>
 <div id="as-empty" class="card" style="display:none">
-  <h2>No roundups yet</h2>
-  <p class="dim" style="margin:.5rem 0 0">Publish the first edition with <code>POST /api/ai-security/roundups</code> and <code>Authorization: Bearer …</code> using <code>AI_SECURITY_TOKEN</code> (or <code>ADMIN_TOKEN</code>).</p>
+  <h2 id="as-empty-title">No editions yet</h2>
+  <p class="dim" style="margin:.5rem 0 0">Your weekly AI Security roundup will appear here when the first edition is published.</p>
 </div>
 <div id="as-content" style="display:none">
   <section class="card" id="as-latest">
@@ -41,6 +41,7 @@ export function aiSecurityPage(nav?: NavLink[]): string {
 function aiSecurityScript(): string {
   return `
 var asWeeks=[];
+var asShowArchive=true,asActiveWeek=null;
 function fmtDay(d){
   try{return new Date(d+"T12:00:00Z").toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"})}catch(e){return d}
 }
@@ -61,6 +62,7 @@ function showEmpty(){
   document.getElementById("as-meta").textContent="";
 }
 function showRoundup(r){
+  asActiveWeek=r.weekOf;
   document.getElementById("as-empty").style.display="none";
   document.getElementById("as-content").style.display="";
   document.getElementById("as-published").textContent="Published "+fmtWhen(r.publishedAt);
@@ -69,7 +71,7 @@ function showRoundup(r){
 }
 function fillArchive(weeks,active){
   var ul=document.getElementById("as-archive");
-  if(weeks.length<=1){document.getElementById("as-archive-wrap").style.display="none";return}
+  if(!asShowArchive||weeks.length<=1){document.getElementById("as-archive-wrap").style.display="none";return}
   document.getElementById("as-archive-wrap").style.display="";
   ul.innerHTML=weeks.map(function(w){
     var on=w===active?' style="font-weight:600"':"";
@@ -89,6 +91,10 @@ function loadWeek(weekOf){
   });
 }
 function init(){
+  window.viewPreferencesReady.then(function(prefs){
+    asShowArchive=!(prefs&&prefs.aiSecurity&&prefs.aiSecurity.showArchive===false);
+    fillArchive(asWeeks,asActiveWeek);
+  });
   api("/api/ai-security/roundups").then(function(j){
     asWeeks=j.weeks||[];
     var sel=document.getElementById("as-week");
@@ -102,7 +108,8 @@ function init(){
     fillArchive(asWeeks,j.latest?j.latest.weekOf:null);
   }).catch(function(err){
     showEmpty();
-    document.querySelector("#as-empty p").textContent=err.message||"Failed to load.";
+    document.getElementById("as-empty-title").textContent="Couldn't load roundups";
+    document.querySelector("#as-empty p").textContent=err.message||"Failed to load roundups.";
   });
 }
 init();

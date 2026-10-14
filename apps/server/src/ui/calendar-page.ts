@@ -15,9 +15,9 @@ export function calendarPage(nav?: NavLink[]): string {
 <p class="dim" id="calendar-status-full">Loading…</p>
 <div id="cal-week-grid" class="cal-week-grid"></div></div>`,
     script: `
-var calWeekStart=new Date();calWeekStart.setHours(0,0,0,0);
-calWeekStart.setDate(calWeekStart.getDate()-((calWeekStart.getDay()+6)%7));
-function startOfWeek(d){var x=new Date(d);x.setHours(0,0,0,0);x.setDate(x.getDate()-((x.getDay()+6)%7));return x;}
+var calWeekStartsOn=1;
+function startOfWeek(d){var x=new Date(d);x.setHours(0,0,0,0);x.setDate(x.getDate()-((x.getDay()-calWeekStartsOn+7)%7));return x;}
+var calWeekStart=startOfWeek(new Date());
 function addDays(d,n){var x=new Date(d);x.setDate(x.getDate()+n);return x;}
 function fmtDay(d){return d.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});}
 function fmtEventWhen(ev){
@@ -54,7 +54,11 @@ function loadCalendarWeek(){
 }
 document.getElementById("cal-prev").onclick=function(){calWeekStart=addDays(calWeekStart,-7);loadCalendarWeek()};
 document.getElementById("cal-next").onclick=function(){calWeekStart=addDays(calWeekStart,7);loadCalendarWeek()};
-loadCalendarWeek();
+window.viewPreferencesReady.then(function(prefs){
+  calWeekStartsOn=prefs&&prefs.calendar&&prefs.calendar.weekStartsOn==="sunday"?0:1;
+  calWeekStart=startOfWeek(new Date());
+  loadCalendarWeek();
+});
 `,
   });
 }

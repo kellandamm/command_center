@@ -322,6 +322,12 @@ document.getElementById("rss-recallio").onclick=function(){
 };
 var openId=sessionStorage.getItem("rss-open");
 if(openId){sessionStorage.removeItem("rss-open");setTimeout(function(){openArticle(openId)},400);}
-loadTree().then(loadArticles);
+window.viewPreferencesReady.then(function(prefs){
+  var news=prefs&&prefs.news||{};
+  rssState.view=news.layout==="card"?"card":"dense";
+  document.getElementById("rss-view-toggle").textContent=rssState.view==="dense"?"Dense list":"Card view";
+  document.getElementById("rss-unread-only").checked=news.unreadOnly===true;
+  return loadTree().then(loadArticles);
+});
 `;
 }
