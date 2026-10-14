@@ -17,6 +17,8 @@ export interface Config {
   cfAud: string | null;
   adminToken: string | null;
   allowInsecureNoAuth: boolean;
+  /** Unix socket path for read-only Docker Engine API; null disables container list. */
+  dockerSocket: string | null;
   version: string;
 }
 
@@ -59,8 +61,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     cfAud,
     adminToken,
     allowInsecureNoAuth: truthy(env.ALLOW_INSECURE_NO_AUTH),
+    dockerSocket: blank(env.DOCKER_SOCKET),
     version: blank(env.APP_VERSION) ?? "dev",
   };
+}
+
+export function dockerSocketPath(cfg: Config): string | null {
+  return cfg.dockerSocket;
 }
 
 export function llmConfigured(cfg: Config): boolean {
