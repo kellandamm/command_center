@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { readJson, writeFileAtomic } from "../store";
 import { defaultDashboardLayout } from "./defaults";
 import { normalizeDashboardLayout } from "./normalize";
+import { packAfterMove } from "./pack";
 import type { DashboardLayout } from "./types";
 
 export class DashboardLayoutStore {
@@ -30,7 +31,10 @@ export class DashboardLayoutStore {
   }
 
   async update(raw: unknown): Promise<DashboardLayout> {
-    const next = normalizeDashboardLayout(raw, this.panelIds);
+    const normalized = normalizeDashboardLayout(raw, this.panelIds);
+    let panels = normalized.panels;
+    for (const p of panels) panels = packAfterMove(panels, p.id);
+    const next = { ...normalized, panels };
     this.data = next;
     await writeFileAtomic(this.path, JSON.stringify(next, null, 2));
     return this.get();

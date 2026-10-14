@@ -9,6 +9,7 @@ import { BriefingService } from "../src/briefing/service";
 import { DailyBriefingService } from "../src/daily-briefing/service";
 import { defaultDashboardLayout } from "../src/dashboard-layout/defaults";
 import { normalizeDashboardLayout } from "../src/dashboard-layout/normalize";
+import { packAfterMove, rectanglesOverlap } from "../src/dashboard-layout/pack";
 import { DashboardLayoutStore } from "../src/dashboard-layout/storage";
 import { loadConfig } from "../src/config";
 import { makeAuthenticator } from "../src/auth";
@@ -28,11 +29,72 @@ test("dashboard layout: default includes every registered panel", () => {
   assert.deepEqual(layout.panels.map((p) => p.id), PANEL_IDS);
 });
 
-test("dashboard layout: normalize adds missing panels and drops unknown ids", () => {
+test("dashboard layout: pack pushes overlapping panels down", () => {
+  const panels = [
+    { id: "activity", x: 0, y: 0, w: 6, h: 4 },
+    { id: "hobie", x: 0, y: 2, w: 3, h: 3 },
+  ];
+  const packed = packAfterMove(panels, "activity");
+  const a = packed.find((p) => p.id === "activity")!;
+  const b = packed.find((p) => p.id === "hobie")!;
+  assert.equal(!rectanglesOverlap(a, b), true);
+  assert.ok(b.y >= a.y + a.h);
+});
+
+test("dashboard layout: missing panels append below saved layout", () => {
+  const raw = {
+    version: 2,
+    cols: 12,
+    rowHeight: 32,
+    panels: [{ id: "weather", x: 0, y: 0, w: 3, h: 3 }],
+  };
+  const next = normalizeDashboardLayout(raw, PANEL_IDS);
+  assert.ok(next.panels.find((p) => p.id === "tagged-news"));
+  assert.ok(next.panels.find((p) => p.id === "daily-briefing"));
+  assert.ok(next.panels.find((p) => p.id === "ai-security"));
+  const weatherBottom = 3;
+  for (const id of ["tagged-news", "daily-briefing", "ai-security"]) {
+    const p = next.panels.find((x) => x.id === id)!;
+    assert.ok(p.y >= weatherBottom, `${id} should append below saved panels`);
+  }
+});
+
+test("dashboard layout: v1 saved file maps positions into v2 grid", () => {
   const raw = {
     version: 1,
     cols: 12,
     rowHeight: 36,
+    panels: [
+      { id: "feeds", x: 0, y: 0, w: 12, h: 12 },
+      { id: "weather", x: 0, y: 0, w: 3, h: 3, collapsed: true },
+      { id: "removed-panel", x: 1, y: 1, w: 3, h: 3 },
+    ],
+  };
+  const next = normalizeDashboardLayout(raw, PANEL_IDS);
+  assert.equal(next.version, 2);
+  assert.equal(next.panels.length, PANEL_IDS.length);
+  assert.equal(next.panels.find((p) => p.id === "weather")?.collapsed, true);
+  const feeds = next.panels.find((p) => p.id === "feeds")!;
+  assert.equal(feeds.w, 12);
+  assert.equal(feeds.h, 12);
+  assert.ok(!next.panels.some((p) => p.id === "removed-panel"));
+});
+
+test("dashboard layout: default collapses low-priority panels and enlarges feeds", () => {
+  const layout = defaultDashboardLayout(PANEL_IDS);
+  const feeds = layout.panels.find((p) => p.id === "feeds")!;
+  assert.ok(feeds.w >= 8 && feeds.h >= 5);
+  assert.equal(layout.panels.find((p) => p.id === "calendar")?.collapsed, true);
+  assert.equal(layout.panels.find((p) => p.id === "notes")?.collapsed, true);
+  const maxEnd = layout.panels.reduce((m, p) => Math.max(m, p.y + (p.collapsed ? 1 : p.h)), 0);
+  assert.ok(maxEnd <= 8, "default layout should fit in eight grid rows");
+});
+
+test("dashboard layout: normalize adds missing panels and drops unknown ids", () => {
+  const raw = {
+    version: 2,
+    cols: 12,
+    rowHeight: 32,
     panels: [{ id: "weather", x: 1, y: 2, w: 3, h: 4, collapsed: true }],
   };
   const next = normalizeDashboardLayout(raw, PANEL_IDS);

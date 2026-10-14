@@ -3,14 +3,28 @@
 export const dashboardGridCss = `
 .dashboard-toolbar{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;margin-bottom:1rem}
 .dashboard-toolbar .dim{margin:0}
+.app-shell:has(.dashboard-page){height:100vh;max-height:100vh;overflow:hidden}
+.page-content:has(.dashboard-page){
+  flex:1 1 0;min-height:0;display:flex;flex-direction:column;padding:1rem 1.25rem .5rem;box-sizing:border-box;
+  overflow:hidden}
+.dashboard-page{flex:1 1 0;min-height:0;display:flex;flex-direction:column}
+.dashboard-page .page-header{margin-bottom:.5rem;flex-shrink:0}
+.dashboard-page .page-header p{margin:.2rem 0 0}
+.dashboard-page .dashboard-toolbar{margin-bottom:.5rem;flex-shrink:0}
 .dashboard-grid{
-  display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--dash-gap,8px);
-  grid-auto-rows:var(--dash-row,36px);position:relative;min-height:12rem;touch-action:none}
+  flex:none;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));
+  gap:var(--dash-gap,6px);position:relative;touch-action:none}
 .dashboard-item{
-  min-width:0;min-height:0;display:flex;flex-direction:column;position:relative;
+  min-width:0;min-height:0;overflow:hidden;display:flex;flex-direction:column;position:relative;
   grid-column:var(--gc-start)/span var(--gc-span);grid-row:var(--gr-start)/span var(--gr-span)}
 .dashboard-item.is-dragging{opacity:.92;z-index:30;box-shadow:0 8px 24px rgba(0,0,0,.12)}
+.dashboard-item.is-collapsed{align-self:start;height:var(--dash-strip-h,30px)!important;max-height:var(--dash-strip-h,30px)}
 .dashboard-item.is-collapsed .dashboard-panel-body{display:none}
+.dashboard-item.is-collapsed>.card{flex:0 0 auto;height:100%;min-height:0}
+.dashboard-item.is-collapsed .dashboard-panel-chrome{padding:.28rem .45rem;border-bottom:0;min-height:0}
+.dashboard-item.is-collapsed .dashboard-panel-chrome h2{font-size:.8125rem;line-height:1.2}
+.dashboard-item.is-collapsed .dashboard-drag-handle,.dashboard-item.is-collapsed .dashboard-collapse{
+  min-height:auto;min-width:1.6rem;padding:.1rem .2rem}
 .dashboard-item>.card{
   flex:1;min-height:0;display:flex;flex-direction:column;margin:0;padding:0;overflow:hidden}
 .dashboard-panel-chrome{
@@ -26,7 +40,8 @@ export const dashboardGridCss = `
 .dashboard-collapse{
   border:0;background:transparent;color:var(--muted-foreground);min-width:2rem;min-height:2rem;
   padding:.25rem;border-radius:calc(var(--radius) - 4px);font-size:1rem;line-height:1;cursor:pointer}
-.dashboard-panel-body{flex:1;min-height:0;overflow:auto;padding:.75rem 1rem 1rem;display:flex;flex-direction:column;gap:.5rem}
+.dashboard-panel-body{flex:1;min-height:0;overflow:auto;padding:.5rem .65rem .65rem;display:flex;flex-direction:column;gap:.35rem}
+.dashboard-panel-body .panel-scroll-region{flex:1;min-height:0;overflow:auto}
 .dashboard-panel-body>.row:first-child{display:none}
 .dashboard-panel-body>h2:first-child{display:none}
 .dashboard-resize{
@@ -36,10 +51,31 @@ export const dashboardGridCss = `
   content:"";position:absolute;right:2px;bottom:2px;width:10px;height:10px;
   border-right:2px solid var(--muted-foreground);border-bottom:2px solid var(--muted-foreground);opacity:.7}
 .dashboard-item.is-collapsed .dashboard-resize{display:none}
-#panel-feeds .feeds-panel-scroll{flex:1;min-height:0;max-height:9.5rem;overflow:auto;border:1px solid var(--border);
-  border-radius:calc(var(--radius) - 2px);padding:0 .75rem}
-#panel-feeds .feeds-full-link{margin:.25rem 0 0;font-size:.8125rem}
+.feeds-panel-scroll{flex:1;min-height:0;overflow:auto;border:1px solid var(--border);
+  border-radius:calc(var(--radius) - 2px);padding:0 .5rem}
+.feed-headline{display:flex;gap:.35rem;align-items:flex-start;justify-content:space-between}
+.feed-headline summary{cursor:pointer;list-style:none;font-weight:600}
+.feed-headline summary::-webkit-details-marker{display:none}
+.feed-headline summary::before{content:"▸ ";font-size:.7rem;color:var(--muted-foreground)}
+details.feed-item[open] .feed-headline summary::before{content:"▾ "}
+.feed-item .feed-summary{margin:.25rem 0 .35rem;font-size:.8125rem}
+.feed-item .feed-meta{margin:0;font-size:.75rem}
+#panel-notes #notes-editor{min-height:3rem;flex:1;max-height:100%;resize:none;font-size:.8125rem}
+#panel-briefing #briefing-body{flex:1;min-height:0;max-height:none;margin:0;font-size:.75rem}
+#panel-notes .dim{font-size:.75rem;margin:0}
+#panel-feeds{flex:1;min-height:0;display:flex;flex-direction:column}
+#panel-feeds .dashboard-panel-body{flex:1;min-height:0}
+#panel-feeds .feeds-full-link{margin:.25rem 0 0;font-size:.8125rem;flex-shrink:0}
 #panel-feeds .feeds-full-link a{text-decoration:underline;text-underline-offset:2px}
+#panel-feeds .row{flex-shrink:0}
+#panel-feeds #feeds-status{flex-shrink:0;margin:0;font-size:.8125rem}
+#panel-feeds .feeds-full-link,#panel-feeds .row:last-of-type{display:none}
+#panel-feeds .feed-item{margin:0;border-bottom:1px solid var(--border)}
+#panel-feeds .feed-item:last-child{border-bottom:0}
+#panel-feeds .feed-headline summary{font-size:.8125rem;font-weight:500;line-height:1.25}
+#panel-feeds .feed-meta{display:none}
+#panel-feeds .feed-item .feed-summary{display:none}
+#panel-feeds .feed-headline .ghost.mark-read{font-size:.6875rem;padding:.05rem .3rem;min-height:auto}
 @media(max-width:900px){
   .dashboard-grid{grid-template-columns:repeat(6,minmax(0,1fr))}
   .dashboard-item{grid-column:1/-1!important;grid-row:auto!important;height:auto!important}
@@ -52,14 +88,78 @@ export function dashboardGridScript(): string {
 (function(){
   var grid=document.getElementById("dashboard-grid");
   if(!grid)return;
-  var COLS=12,ROW=36,GAP=8,saveTimer=null;
-  grid.style.setProperty("--dash-row",ROW+"px");
+  var COLS=12,LAYOUT_VERSION=2,GAP=6,REF_ROW=32,STRIP_H=30,saveTimer=null,lastMovedId=null;
   grid.style.setProperty("--dash-gap",GAP+"px");
+  grid.style.setProperty("--dash-strip-h",STRIP_H+"px");
+  grid.style.setProperty("--dash-rows","8");
+  function layoutMaxEnd(panels){
+    var max=1;
+    (panels||[]).forEach(function(p){
+      var end=p.y+(p.collapsed?1:p.h);
+      if(end>max)max=end;
+    });
+    return max;
+  }
+  function effH(p){return p.collapsed?1:p.h}
+  function panelCoversRow(p,row){
+    var end=p.y+effH(p);
+    return p.y<=row&&row<end;
+  }
+  function rowIsStripOnly(panels,row){
+    var hits=(panels||[]).filter(function(p){return panelCoversRow(p,row)});
+    return hits.length>0&&hits.every(function(p){return p.collapsed});
+  }
+  function syncGridRows(panels){
+    var maxEnd=layoutMaxEnd(panels);
+    grid.style.setProperty("--dash-rows",String(maxEnd));
+    var page=document.querySelector(".dashboard-page");
+    if(!page)return;
+    var header=page.querySelector(".page-header");
+    var toolbar=page.querySelector(".dashboard-toolbar");
+    var chrome=(header?header.offsetHeight:0)+(toolbar?toolbar.offsetHeight:0)+10;
+    var avail=Math.max(160,page.clientHeight-chrome-6);
+    var stripRows=0,flexRows=0;
+    for(var r=0;r<maxEnd;r++){
+      if(rowIsStripOnly(panels,r)){stripRows++}else{flexRows++}
+    }
+    var gapTotal=GAP*(maxEnd-1);
+    var rowH=flexRows?Math.max(42,Math.floor((avail-stripRows*STRIP_H-gapTotal)/flexRows)):STRIP_H;
+    var tracks=[];
+    for(var ri=0;ri<maxEnd;ri++){
+      tracks.push(rowIsStripOnly(panels,ri)?STRIP_H+"px":rowH+"px");
+    }
+    var totalH=stripRows*STRIP_H+flexRows*rowH+gapTotal;
+    grid.style.gridTemplateRows=tracks.join(" ");
+    grid.style.height=totalH+"px";
+    grid.style.maxHeight=avail+"px";
+    grid.dataset.rowPx=String(rowH);
+    grid.dataset.stripPx=String(STRIP_H);
+    grid.dataset.maxEnd=String(maxEnd);
+  }
+  function gridMetrics(){
+    var maxEnd=parseInt(grid.dataset.maxEnd||"8",10)||8;
+    var strip=parseFloat(grid.dataset.stripPx||"0")||0;
+    var rowH=parseFloat(grid.dataset.rowPx||"52")||52;
+    var r=grid.getBoundingClientRect();
+    var colW=COLS?(r.width-GAP*(COLS-1))/COLS:80;
+    return {rows:maxEnd,rowH:rowH,strip:strip,colW:colW};
+  }
+  function rowIndexFromY(clientY,gridTop,m){
+    var y=clientY-gridTop;
+    var maxEnd=parseInt(grid.dataset.maxEnd||"8",10)||8;
+    for(var r=0;r<maxEnd;r++){
+      var h=rowIsStripOnly(readLayout().panels,r)?m.strip:m.rowH;
+      if(y<h)return r;
+      y-=h+GAP;
+    }
+    return Math.max(0,maxEnd-1);
+  }
 
   function titleFor(id){
     var map={
-      activity:"Activity",hobie:"Hobie queue",weather:"Weather",calendar:"Calendar",notes:"Notes",
-      feeds:"News feeds",briefing:"Daily briefing",todoist:"Todoist","host-health":"Host health",
+      activity:"Activity",hobie:"Hobie queue","tagged-news":"Tagged news","daily-briefing":"Daily briefing",
+      "ai-security":"AI Security",weather:"Weather",calendar:"Calendar",notes:"Notes",
+      feeds:"News feeds",briefing:"AI briefing",todoist:"Todoist","host-health":"Host health",
       github:"GitHub",recallio:"Recallio"
     };
     return map[id]||id;
@@ -96,21 +196,64 @@ export function dashboardGridScript(): string {
         collapsed:collapsed
       });
     });
-    return {version:1,cols:COLS,rowHeight:ROW,panels:panels};
+    return {version:LAYOUT_VERSION,cols:COLS,rowHeight:REF_ROW,panels:panels};
   }
 
+  function overlaps(a,b){
+    return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+effH(b)&&a.y+effH(a)>b.y;
+  }
+  function packAfterMove(panels,anchorId){
+    var out=panels.map(function(p){return Object.assign({},p)});
+    var anchor=out.find(function(p){return p.id===anchorId});
+    if(!anchor)return out;
+    var queue=[anchor],seen={};
+    seen[anchorId]=1;
+    while(queue.length){
+      var cur=queue.shift();
+      out.forEach(function(other){
+        if(other.id===cur.id)return;
+        if(!overlaps(cur,other))return;
+        var needY=cur.y+effH(cur);
+        if(other.y<needY){
+          other.y=needY;
+          if(other.x+other.w>COLS)other.x=Math.max(0,COLS-other.w);
+          if(!seen[other.id]){seen[other.id]=1;queue.push(other);}
+        }
+      });
+    }
+    return out;
+  }
+  function applyPanels(panels){
+    syncGridRows(panels);
+    var byId={};
+    panels.forEach(function(p){byId[p.id]=p});
+    grid.querySelectorAll(".dashboard-item").forEach(function(el){
+      var id=el.getAttribute("data-panel-id");
+      var entry=byId[id];
+      if(!entry)return;
+      el.dataset.fullH=String(entry.h);
+      applyEntry(el,entry);
+    });
+  }
   function scheduleSave(){
     if(saveTimer)clearTimeout(saveTimer);
     saveTimer=setTimeout(function(){
-      api("/api/dashboard-layout","PUT",readLayout()).catch(function(){});
+      var layout=readLayout();
+      if(lastMovedId){
+        layout.panels=packAfterMove(layout.panels,lastMovedId);
+        applyPanels(layout.panels);
+      }
+      api("/api/dashboard-layout","PUT",layout).then(function(r){
+        if(r.layout)applyLayout(r.layout);
+      }).catch(function(){});
     },400);
   }
 
   function cellFromPoint(clientX,clientY){
+    var m=gridMetrics();
     var r=grid.getBoundingClientRect();
-    var colW=(r.width-GAP*(COLS-1))/COLS;
-    var x=Math.floor((clientX-r.left)/(colW+GAP));
-    var y=Math.floor((clientY-r.top)/(ROW+GAP));
+    var x=Math.floor((clientX-r.left)/(m.colW+GAP));
+    var y=rowIndexFromY(clientY,r.top,m);
     return {x:Math.max(0,Math.min(COLS-1,x)),y:Math.max(0,y)};
   }
 
@@ -144,6 +287,8 @@ export function dashboardGridScript(): string {
         var btn=this;
         btn.setAttribute("aria-expanded",collapsed?"false":"true");
         btn.textContent=collapsed?"+":"−";
+        syncGridRows(readLayout().panels);
+        lastMovedId=id;
         scheduleSave();
       });
 
@@ -169,6 +314,7 @@ export function dashboardGridScript(): string {
           drag.releasePointerCapture(ev.pointerId);
           drag.removeEventListener("pointermove",move);
           drag.removeEventListener("pointerup",up);
+          lastMovedId=id;
           scheduleSave();
         }
         drag.addEventListener("pointermove",move);
@@ -183,9 +329,9 @@ export function dashboardGridScript(): string {
         var startH=parseInt(item.style.getPropertyValue("--gr-span"),10)||3;
         var startX=ev.clientX,startY=ev.clientY;
         function move(e){
-          var colW=(grid.getBoundingClientRect().width-GAP*(COLS-1))/COLS;
-          var dw=Math.round((e.clientX-startX)/(colW+GAP));
-          var dh=Math.round((e.clientY-startY)/(ROW+GAP));
+          var m=gridMetrics();
+          var dw=Math.round((e.clientX-startX)/(m.colW+GAP));
+          var dh=Math.round((e.clientY-startY)/(m.rowH+GAP));
           var w=Math.max(2,Math.min(COLS,startW+dw));
           var h=Math.max(2,Math.min(24,startH+dh));
           var x=parseInt(item.style.getPropertyValue("--gc-start"),10)-1||0;
@@ -198,6 +344,7 @@ export function dashboardGridScript(): string {
           resize.releasePointerCapture(ev.pointerId);
           resize.removeEventListener("pointermove",move);
           resize.removeEventListener("pointerup",up);
+          lastMovedId=id;
           scheduleSave();
         }
         resize.addEventListener("pointermove",move);
@@ -216,12 +363,14 @@ export function dashboardGridScript(): string {
         if(ev.key==="ArrowDown")y=y+1;
         item.style.setProperty("--gc-start",x+1);
         item.style.setProperty("--gr-start",y+1);
+        lastMovedId=id;
         scheduleSave();
       });
     });
   }
 
   function applyLayout(layout){
+    syncGridRows(layout.panels||[]);
     var byId={};
     (layout.panels||[]).forEach(function(p){byId[p.id]=p;});
     grid.querySelectorAll(".dashboard-item").forEach(function(el){
@@ -234,6 +383,8 @@ export function dashboardGridScript(): string {
   }
 
   setupChrome();
+  syncGridRows(readLayout().panels);
+  window.addEventListener("resize",function(){syncGridRows(readLayout().panels)});
   api("/api/dashboard-layout").then(function(r){applyLayout(r.layout||{});}).catch(function(){});
   var reset=document.getElementById("dashboard-reset-layout");
   if(reset)reset.addEventListener("click",function(){

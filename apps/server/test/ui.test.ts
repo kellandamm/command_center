@@ -14,6 +14,11 @@ test("ui: dashboard uses shadcn-style shell and draggable grid", () => {
   assert.match(html, /id="theme-toggle"/);
   assert.match(html, /id="panel-weather"/);
   assert.match(html, /data-panel-id="feeds"/);
+  assert.match(html, /data-panel-id="tagged-news"/);
+  assert.match(html, /data-panel-id="daily-briefing"/);
+  assert.match(html, /data-panel-id="ai-security"/);
+  assert.match(html, /data-panel-id="activity"/);
+  assert.match(html, /data-panel-id="hobie"/);
 });
 
 test("ui: ai security page has archive and empty state", () => {
