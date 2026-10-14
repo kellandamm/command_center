@@ -78,7 +78,7 @@ export async function safeFetch(
     method?: string;
     body?: string;
   } = {},
-): Promise<{ finalUrl: string; status: number; contentType: string; body: string }> {
+): Promise<{ finalUrl: string; status: number; contentType: string; body: string; headers: Record<string, string> }> {
   const maxBytes = opts.maxBytes ?? 3_000_000;
   let current = url;
   for (let hop = 0; hop <= (opts.maxRedirects ?? 5); hop++) {
@@ -108,11 +108,16 @@ export async function safeFetch(
       }
       chunks.push(value);
     }
+    const headers: Record<string, string> = {};
+    res.headers.forEach((v, k) => {
+      headers[k.toLowerCase()] = v;
+    });
     return {
       finalUrl: current,
       status: res.status,
-      contentType: res.headers.get("content-type") ?? "",
+      contentType: headers["content-type"] ?? "",
       body: Buffer.concat(chunks).toString("utf8"),
+      headers,
     };
   }
   throw new BlockedUrlError("too many redirects");

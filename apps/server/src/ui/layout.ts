@@ -104,6 +104,40 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:.8125rem;min-height:
 .news-compact-list{max-height:32rem;overflow:auto;border:1px solid var(--border);border-radius:calc(var(--radius) - 2px);padding:0 .75rem}
 .news-row{border-top:1px solid var(--border);padding:.75rem 0}.news-row:first-child{border-top:0}
 .news-list-card{padding-bottom:1rem}
+.page-content.rss-page{max-width:none;padding:.75rem 1rem 1rem;min-height:calc(100vh - 2rem);display:flex;flex-direction:column;gap:.5rem}
+.rss-topics.card{padding:.75rem 1rem;margin:0}
+.rss-workspace{display:flex;flex:1;min-height:0;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--card)}
+.rss-sidebar{width:14rem;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0;background:var(--sidebar)}
+.rss-sidebar-head{padding:.65rem .75rem;border-bottom:1px solid var(--border);font-weight:600;font-size:.8125rem}
+.rss-tree{flex:1;overflow:auto;padding:.35rem 0;font-size:.8125rem}
+.rss-tree button.tree-item{width:100%;text-align:left;border:0;background:transparent;color:inherit;padding:.35rem .75rem;border-radius:0;min-height:auto;justify-content:flex-start;font-weight:500}
+.rss-tree button.tree-item:hover,.rss-tree button.tree-item.on{background:var(--sidebar-accent)}
+.rss-tree .tree-feed{padding-left:1.25rem;font-weight:400;font-size:.75rem}
+.rss-tree .count{margin-left:auto;font-size:.7rem;color:var(--muted-foreground)}
+.rss-main{flex:1;display:flex;min-width:0;min-height:0}
+.rss-list-pane{flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)}
+.rss-list-pane.with-reader{max-width:42%}
+.rss-toolbar{padding:.5rem .75rem;border-bottom:1px solid var(--border);gap:.5rem;flex-wrap:wrap}
+.rss-toolbar input[type=search]{max-width:14rem;flex:1;min-width:8rem}
+.rss-articles{flex:1;overflow:auto}
+.rss-row{display:grid;grid-template-columns:5.5rem 1fr auto;gap:.5rem .75rem;padding:.45rem .75rem;border-bottom:1px solid var(--border);cursor:pointer;align-items:start}
+.rss-row:hover{background:var(--muted)}
+.rss-row.unread .rss-title{font-weight:600}
+.rss-row .src{font-size:.7rem;color:var(--muted-foreground);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rss-row .rss-title{font-size:.8125rem;line-height:1.35;margin:0}
+.rss-row .snippet{font-size:.75rem;color:var(--muted-foreground);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;grid-column:2/4}
+.rss-row .age{font-size:.7rem;color:var(--muted-foreground);white-space:nowrap}
+.rss-row.card-view{grid-template-columns:5rem 1fr;grid-template-rows:auto auto auto;padding:.75rem}
+.rss-row.card-view .snippet{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rss-row .thumb{width:4.5rem;height:2.5rem;object-fit:cover;border-radius:4px;background:var(--muted)}
+.rss-row.card-view .thumb{width:4.5rem;height:3rem}
+.rss-read-pane{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.rss-read-pane.hidden{display:none}
+.rss-read-head{padding:.75rem 1rem;border-bottom:1px solid var(--border)}
+.rss-read-body{flex:1;overflow:auto;padding:1rem;font-size:.875rem;line-height:1.55}
+.rss-read-body img{max-width:100%;height:auto}
+.rss-yt-badge{font-size:.65rem;background:var(--muted);padding:.1rem .35rem;border-radius:3px;margin-right:.35rem}
+@media(max-width:960px){.rss-workspace{flex-direction:column}.rss-sidebar{width:100%;max-height:10rem}.rss-list-pane.with-reader{max-width:none}.rss-read-pane{min-height:12rem}}
 .todoist-list{list-style:none;margin:0;padding:0}
 .todoist-item{border-top:1px solid var(--border);padding:.625rem 0}.todoist-item:first-child{border-top:0}
 .todoist-item input[type=checkbox]{width:auto;margin-top:.25rem;min-height:auto;accent-color:var(--primary)}
@@ -134,7 +168,7 @@ const NAV = [
   ["/", "Dashboard"],
   ["/ai-security", "AI Security"],
   ["/briefing", "Daily Briefing"],
-  ["/news", "Tagged news"],
+  ["/news", "News"],
   ["/settings", "Settings"],
 ] as const;
 

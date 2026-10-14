@@ -2,6 +2,7 @@ import type { DailyBriefingService } from "./daily-briefing/service";
 import type { BriefingService } from "./briefing/service";
 import { llmConfig, type Config } from "./config";
 import { parseFeedList } from "./feeds/parse";
+import { pollDueFeeds } from "./feeds/poller";
 import { fetchAllFeeds } from "./feeds/service";
 import type { FeedsStore } from "./feeds/store";
 import type { SettingsStore } from "./settings";
@@ -116,7 +117,12 @@ export class Scheduler {
         !state.lastFeedFetchAt || now.getTime() - new Date(state.lastFeedFetchAt).getTime() >= s.fetchIntervalMinutes * 60_000;
       if (fetchDue) {
         const parsed = parseFeedList(s.feeds);
-        await fetchAllFeeds(this.d.feeds, parsed.feeds, now);
+        if (this.d.feeds.feedCount() > 0) {
+          await pollDueFeeds(this.d.feeds, now);
+          await this.d.feeds.save();
+        } else {
+          await fetchAllFeeds(this.d.feeds, parsed.feeds, now);
+        }
         state = { ...state, lastFeedFetchAt: now.toISOString() };
         await this.d.kv.set(KEY, state);
       }

@@ -43,8 +43,13 @@ export async function handleNewsRoutes(
   readBody: (req: IncomingMessage) => Promise<unknown>,
 ): Promise<boolean> {
   if (path === "/api/news" && req.method === "GET") {
-    const limit = 80;
-    const items = feeds.list({ limit: 200 }).map((it) => ({ ...it, tags: tagsForItem(it) }));
+    const url = new URL(req.url ?? "/", "http://local");
+    const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? 80)));
+    const q = url.searchParams.get("q") ?? undefined;
+    const feedId = url.searchParams.get("feed") ?? undefined;
+    const folderId = url.searchParams.get("folder") ?? undefined;
+    const unreadOnly = url.searchParams.get("unread") === "1";
+    const items = feeds.list({ limit: 300, q, feedId, folderId, unreadOnly }).map((it) => ({ ...it, tags: tagsForItem(it) }));
     const p = prefs.get();
     const filtered = filterTaggedItems(items, p).slice(0, limit);
     json(res, 200, { tags: TOPIC_TAGS, prefs: p, items: filtered, total: items.length });

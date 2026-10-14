@@ -11,7 +11,7 @@ export const feedsPanel: PanelModule = {
   <button type="button" class="ghost" id="feeds-refresh" style="margin-left:auto">Refresh now</button></div>
   <p class="dim" id="feeds-status">Loading…</p>
   <div id="feeds-list" class="feeds-panel-scroll"></div>
-  <p class="feeds-full-link dim"><a href="/news">Open full tagged news view</a></p>
+  <p class="feeds-full-link dim"><a href="/news">Open full news reader</a></p>
   <div class="row" style="margin-top:10px">
     <button type="button" class="ghost" id="feeds-mark-all">Mark all read</button>
   </div>
@@ -23,9 +23,13 @@ export const feedsPanel: PanelModule = {
     };
     if (path === "/api/feeds" && req.method === "GET") {
       const parsed = parseFeedList(ctx.settings.get().feeds);
+      const feedIds = ctx.feeds.feedCount() > 0
+        ? ctx.feeds.list({ limit: 500 }).map((i) => i.feedId)
+        : parsed.feeds.map((f) => f.id);
+      const uniqueIds = [...new Set(feedIds)];
       const items = ctx.feeds.list({ limit: 80 });
       const unread = ctx.feeds.list({ unreadOnly: true, limit: 200 }).length;
-      json(200, { items, unread, feeds: ctx.feeds.statuses(parsed.feeds.map((f) => f.id)), feedErrors: parsed.errors });
+      json(200, { items, unread, feeds: ctx.feeds.statuses(uniqueIds.slice(0, 50)), feedErrors: parsed.errors });
       return true;
     }
     if (path === "/api/feeds/fetch" && req.method === "POST") {

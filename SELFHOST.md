@@ -106,7 +106,8 @@ and accepts JSON either as an array of hits or as `{ results | items | memories 
 ## Data layout (`/data`)
 
 - `settings.json` — feed list, fetch interval, briefing time
-- `feeds.json` — cached items and per-feed fetch status
+- `rss.sqlite` — RSS feeds, folders, articles, and poll state (WAL mode)
+- `feeds.json.migrated` — optional legacy cache after one-time migration from older releases
 - `news-prefs.json` — tagged news view: muted topics and focus chips
 - `briefing.json` — latest briefing and short history
 - `state.json` — scheduler timestamps
