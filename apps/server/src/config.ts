@@ -103,6 +103,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   const adminToken = blank(env.ADMIN_TOKEN);
   if (adminToken && adminToken.length < 24) throw new Error("ADMIN_TOKEN must be at least 24 characters.");
+  const mcpAppTokens = parseJsonRecord(env.MCP_APP_TOKENS);
+  for (const [id, tok] of Object.entries(mcpAppTokens)) {
+    if (tok.length < 24) throw new Error(`MCP_APP_TOKENS.${id} must be at least 24 characters.`);
+  }
+  const webhookSecret = blank(env.WEBHOOK_SECRET);
+  if (webhookSecret && webhookSecret.length < 24) throw new Error("WEBHOOK_SECRET must be at least 24 characters.");
+  const hobiePollToken = blank(env.HOBIE_POLL_TOKEN);
+  if (hobiePollToken && hobiePollToken.length < 24) throw new Error("HOBIE_POLL_TOKEN must be at least 24 characters.");
   return {
     port,
     host: blank(env.HOST) ?? "0.0.0.0",
@@ -126,10 +134,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     weatherLat: parseLatLon(env.WEATHER_LAT, DEFAULT_WEATHER_LAT, "WEATHER_LAT"),
     weatherLon: parseLatLon(env.WEATHER_LON, DEFAULT_WEATHER_LON, "WEATHER_LON"),
     icsUrls: parseIcsUrls(env.ICS_URLS),
-    mcpAppTokens: parseJsonRecord(env.MCP_APP_TOKENS),
+    mcpAppTokens,
     mcpCfClientMap: parseJsonRecord(env.MCP_CF_CLIENT_MAP),
-    webhookSecret: blank(env.WEBHOOK_SECRET),
-    hobiePollToken: blank(env.HOBIE_POLL_TOKEN),
+    webhookSecret,
+    hobiePollToken,
     mcpMaxHobiePending: Math.min(50, Math.max(1, Number(env.MCP_MAX_HOBIE_PENDING ?? 20) || 20)),
   };
 }

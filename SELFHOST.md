@@ -29,9 +29,9 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 | `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | Optional **outbound** Cloudflare Access service token. Sent as `CF-Access-Client-Id` / `CF-Access-Client-Secret` when the server calls Recallio behind Access. Set both if Recallio requires them; omit if Recallio is reachable without a service token. |
 | `WEATHER_LAT`, `WEATHER_LON` | Optional. Open-Meteo coordinates for the **Weather** panel (no API key). Default **Chicago** (`41.8781`, `-87.6298`) when unset. |
 | `ICS_URLS` | Optional. Comma-separated **https** iCal feed URLs for the **Calendar** panel. When unset, the panel explains how to enable it. Feeds are fetched server-side with the same SSRF rules as RSS. |
-| `MCP_APP_TOKENS` | JSON map of MCP client id → bearer token (≥ 24 chars each). Enables **Streamable HTTP** MCP at `/mcp`. |
-| `MCP_CF_CLIENT_MAP` | When Access protects the site, map each MCP client id to its inbound **service token** `CF-Access-Client-Id`. Both this and a matching app token are required per request. |
-| `WEBHOOK_SECRET` | ≥ 24 chars. `POST /api/webhooks/power-automate` with header `X-Webhook-Secret` (Power Automate fallback). |
+| `MCP_CF_CLIENT_MAP` | **Required** for `/mcp` and the Power Automate webhook. Non-empty JSON: MCP client id → inbound **service token** `CF-Access-Client-Id`. If unset, empty, or unknown id → **403** (no app token / webhook secret alone). Invalid JSON prevents startup. |
+| `MCP_APP_TOKENS` | JSON map of MCP client id → bearer token (≥ 24 chars). Used with `/mcp` after CF client id checks. |
+| `WEBHOOK_SECRET` | ≥ 24 chars. `POST /api/webhooks/power-automate` requires **`X-Webhook-Secret` and `CF-Access-Client-Id`** (create a dedicated Access service token for Power Automate). |
 | `HOBIE_POLL_TOKEN` | Optional bearer for Hobie to `GET /api/hobie/tasks` and `POST /api/hobie/claim`. Admin or MCP tokens also work. |
 | `MCP_MAX_HOBIE_PENDING` | Max pending Hobie tasks (default 20). |
 
@@ -39,7 +39,7 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 
 ### MCP and webhooks
 
-External agents (e.g. work Copilot) connect to **`/mcp`** (Streamable HTTP). Tools: `notes_read`, `notes_append`, `panel_post_update`, `todoist_add_task`, `hobie_queue_task`. If IT blocks custom MCP connectors, use **`POST /api/webhooks/power-automate`** with JSON `{ "action": "…", … }` and the same fields as each tool.
+External agents (e.g. work Copilot) connect to **`/mcp`** (Streamable HTTP) through Cloudflare Access with a **per-client service token** (`CF-Access-Client-Id` must appear in `MCP_CF_CLIENT_MAP`) plus the matching **`MCP_APP_TOKENS`** bearer. Tools: `notes_read`, `notes_append`, `panel_post_update`, `todoist_add_task`, `hobie_queue_task`. If IT blocks custom MCP connectors, use **`POST /api/webhooks/power-automate`** with the same **service token headers**, `X-Webhook-Secret`, and JSON `{ "action": "…", … }`.
 
 ### Server health panel (optional Docker socket)
 

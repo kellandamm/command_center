@@ -16,6 +16,12 @@ import { openIntegrationStores } from "./helpers";
 
 const TOKEN = "t".repeat(32);
 const MCP_TOKEN = "m".repeat(32);
+const CF_SERVICE_CLIENT_ID = "cf-service-copilot-test-id";
+const mcpIntegrationEnv = {
+  MCP_APP_TOKENS: JSON.stringify({ copilot: MCP_TOKEN }),
+  MCP_CF_CLIENT_MAP: JSON.stringify({ copilot: CF_SERVICE_CLIENT_ID }),
+};
+const cfAccess = { "cf-access-client-id": CF_SERVICE_CLIENT_ID };
 
 async function harness(env: Record<string, string> = {}) {
   const dir = await mkdtemp(join(tmpdir(), "cc-"));
@@ -45,6 +51,10 @@ async function harness(env: Record<string, string> = {}) {
   return { base, settings, feeds, briefing, close, cfg };
 }
 const authz = { authorization: `Bearer ${TOKEN}` };
+
+test("config: invalid MCP_CF_CLIENT_MAP JSON refuses startup", () => {
+  assert.throws(() => loadConfig({ ADMIN_TOKEN: TOKEN, MCP_CF_CLIENT_MAP: "not-json" }), /Invalid JSON/);
+});
 
 test("config: refuses to start without any authentication", () => {
   assert.throws(() => assertAuthConfigured(loadConfig({})), /No authentication/);
@@ -157,10 +167,65 @@ test("notes API round-trip", async () => {
   }
 });
 
-test("mcp: rejects unauthenticated requests", async () => {
+test("mcp: rejects when MCP_CF_CLIENT_MAP is missing (fail closed)", async () => {
   const h = await harness({ MCP_APP_TOKENS: JSON.stringify({ copilot: MCP_TOKEN }) });
   try {
-    assert.equal((await fetch(`${h.base}/mcp`, { method: "POST", body: "{}" })).status, 401);
+    const r = await fetch(`${h.base}/mcp`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${MCP_TOKEN}`, ...cfAccess },
+      body: "{}",
+    });
+    assert.equal(r.status, 403);
+    const j: any = await r.json();
+    assert.match(j.error, /MCP_CF_CLIENT_MAP/);
+  } finally {
+    await h.close();
+  }
+});
+
+test("integrations: unknown CF-Access-Client-Id is rejected on mcp and webhook", async () => {
+  const secret = "w".repeat(32);
+  const h = await harness({ ...mcpIntegrationEnv, WEBHOOK_SECRET: secret });
+  try {
+    const mcp = await fetch(`${h.base}/mcp`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${MCP_TOKEN}`, "cf-access-client-id": "not-registered", "content-type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(mcp.status, 403);
+    const wh = await fetch(`${h.base}/api/webhooks/power-automate`, {
+      method: "POST",
+      headers: { "x-webhook-secret": secret, "cf-access-client-id": "not-registered", "content-type": "application/json" },
+      body: JSON.stringify({ action: "notes_read" }),
+    });
+    assert.equal(wh.status, 403);
+  } finally {
+    await h.close();
+  }
+});
+
+test("webhook: rejects webhook secret without CF service token when map unset", async () => {
+  const secret = "w".repeat(32);
+  const h = await harness({ WEBHOOK_SECRET: secret });
+  try {
+    const wh = await fetch(`${h.base}/api/webhooks/power-automate`, {
+      method: "POST",
+      headers: { "x-webhook-secret": secret, "content-type": "application/json" },
+      body: JSON.stringify({ action: "notes_read" }),
+    });
+    assert.equal(wh.status, 403);
+  } finally {
+    await h.close();
+  }
+});
+
+test("mcp: rejects bearer without CF-Access-Client-Id", async () => {
+  const h = await harness(mcpIntegrationEnv);
+  try {
+    assert.equal(
+      (await fetch(`${h.base}/mcp`, { method: "POST", headers: { authorization: `Bearer ${MCP_TOKEN}` }, body: "{}" })).status,
+      403,
+    );
   } finally {
     await h.close();
   }
@@ -168,14 +233,11 @@ test("mcp: rejects unauthenticated requests", async () => {
 
 test("webhook and hobie queue persist under data dir", async () => {
   const secret = "w".repeat(32);
-  const h = await harness({
-    MCP_APP_TOKENS: JSON.stringify({ copilot: MCP_TOKEN }),
-    WEBHOOK_SECRET: secret,
-  });
+  const h = await harness({ ...mcpIntegrationEnv, WEBHOOK_SECRET: secret });
   try {
     const wh = await fetch(`${h.base}/api/webhooks/power-automate`, {
       method: "POST",
-      headers: { "x-webhook-secret": secret, "content-type": "application/json" },
+      headers: { "x-webhook-secret": secret, ...cfAccess, "content-type": "application/json" },
       body: JSON.stringify({ action: "hobie_queue_task", title: "Ship it", body: "Please review", urgent: true }),
     });
     assert.equal(wh.status, 200);
@@ -194,7 +256,7 @@ test("webhook and hobie queue persist under data dir", async () => {
 
     const act = await fetch(`${h.base}/api/webhooks/power-automate`, {
       method: "POST",
-      headers: { "x-webhook-secret": secret, "content-type": "application/json" },
+      headers: { "x-webhook-secret": secret, ...cfAccess, "content-type": "application/json" },
       body: JSON.stringify({ action: "panel_post_update", panel: "activity", markdown: "Copilot checked in" }),
     });
     assert.equal(act.status, 200);
@@ -207,12 +269,12 @@ test("webhook and hobie queue persist under data dir", async () => {
 });
 
 test("mcp: notes_append round-trip via SDK client", async () => {
-  const h = await harness({ MCP_APP_TOKENS: JSON.stringify({ copilot: MCP_TOKEN }) });
+  const h = await harness(mcpIntegrationEnv);
   try {
     const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
     const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
     const transport = new StreamableHTTPClientTransport(new URL(`${h.base}/mcp`), {
-      requestInit: { headers: { authorization: `Bearer ${MCP_TOKEN}` } },
+      requestInit: { headers: { authorization: `Bearer ${MCP_TOKEN}`, ...cfAccess } },
     });
     const client = new Client({ name: "test", version: "1.0.0" });
     await client.connect(transport);
