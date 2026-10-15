@@ -225,7 +225,21 @@ export class DailyBriefingService {
 
   private async buildGithub(cfg: Config): Promise<DailyBriefingSources["github"]> {
     if (!cfg.githubToken) {
-      return block("not_configured", undefined, "");
+      return block(
+        "not_configured",
+        {
+          activity: {
+            username: cfg.githubUsername,
+            authenticated: false,
+            warning: null,
+            pulls: [],
+            issues: [],
+            events: [],
+            fetchedAt: "",
+          },
+        },
+        "",
+      );
     }
     try {
       const activity = await fetchGithubActivity({ username: cfg.githubUsername, token: cfg.githubToken });
