@@ -183,7 +183,10 @@ function renderTree(){
   el.querySelectorAll(".tree-item[data-scope]").forEach(function(b){
     b.onclick=function(){
       var sc=b.dataset.scope;
-      if(sc==="all"||sc==="saved")rssState.scope={type:sc};
+      if(sc==="all"||sc==="saved"){
+        rssState.scope={type:sc};
+        if(sc==="saved")document.getElementById("rss-unread-only").checked=false;
+      }
       else rssState.scope={type:sc,id:b.dataset.id};
       renderTree();loadArticles();
     };
