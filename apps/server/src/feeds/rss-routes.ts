@@ -58,16 +58,16 @@ export async function handleRssRoutes(
   }
 
   if (path === "/api/rss/read" && req.method === "POST") {
-    const body = (await readBody(req)) as { ids?: string[] };
-    const n = feeds.markRead(body.ids ?? []);
+    const body = (await readBody(req)) as { ids?: string[]; read?: boolean };
+    const n = body.read === false ? feeds.markUnread(body.ids ?? []) : feeds.markRead(body.ids ?? []);
     await feeds.save();
-    json(res, 200, { marked: n });
+    json(res, 200, { marked: n, read: body.read !== false });
     return true;
   }
 
   if (path === "/api/rss/read-all" && req.method === "POST") {
-    const body = (await readBody(req)) as { feedId?: string; folderId?: string };
-    const n = feeds.markAllRead({ feedId: body.feedId, folderId: body.folderId });
+    const body = (await readBody(req)) as { feedId?: string; folderId?: string; starred?: boolean };
+    const n = feeds.markAllRead({ feedId: body.feedId, folderId: body.folderId, starred: body.starred });
     await feeds.save();
     json(res, 200, { marked: n });
     return true;

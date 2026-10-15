@@ -71,6 +71,10 @@ test("ui: news reader has feed tree and article list", () => {
   assert.match(html, /id="rss-tree"/);
   assert.match(html, /id="rss-articles"/);
   assert.match(html, /id="rss-read-pane"/);
+  assert.match(html, /Saved for later/);
+  assert.match(html, /id="rss-read-toggle"/);
+  assert.match(html, /data-article-action="save"/);
+  assert.match(html, /data-article-action="read"/);
 });
 
 test("ui: summaries page has search and auto settings", () => {

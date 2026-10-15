@@ -39,13 +39,15 @@ export function newsPage(nav?: NavLink[]): string {
         <button type="button" class="ghost" id="rss-opml-export">Export OPML</button>
         <button type="button" class="ghost" id="rss-opml-import">Import OPML</button>
         <input type="file" id="rss-opml-file" accept=".opml,.xml" hidden/>
+        <span class="dim" id="rss-list-status" role="status" aria-live="polite"></span>
       </div>
       <div class="rss-articles" id="rss-articles"></div>
     </section>
     <section class="rss-read-pane hidden" id="rss-read-pane" aria-label="Reading pane">
       <div class="rss-read-head row" style="flex-wrap:wrap">
         <button type="button" class="ghost" id="rss-close-read">Close</button>
-        <button type="button" class="ghost" id="rss-star">Star</button>
+        <button type="button" class="ghost" id="rss-star">Save for later</button>
+        <button type="button" class="ghost" id="rss-read-toggle">Mark unread</button>
         <button type="button" class="ghost" id="rss-summarize" disabled>Summarize</button>
         <button type="button" class="ghost" id="rss-recallio" disabled>Save to Recallio</button>
         <a id="rss-open-ext" href="#" target="_blank" rel="noopener" class="btn ghost">Open original</a>
@@ -67,7 +69,7 @@ export function newsPage(nav?: NavLink[]): string {
 
 function newsPageScript(): string {
   return `
-var rssState={view:"dense",scope:{type:"all"},items:[],selected:null,tree:null,prefs:{mutedTags:[],focusTags:[]},tags:[],listMeta:{total:0,filtered:0},organize:false};
+var rssState={view:"dense",scope:{type:"all"},items:[],selected:null,selectedRead:false,selectedStarred:false,tree:null,prefs:{mutedTags:[],focusTags:[]},tags:[],listMeta:{total:0,filtered:0},organize:false};
 function setOrganize(on){
   rssState.organize=on;
   var tree=document.getElementById("rss-tree");
@@ -164,6 +166,7 @@ function renderTree(){
   var t=rssState.tree;if(!t){el.innerHTML="";return}
   document.getElementById("rss-unread-total").textContent=t.unreadTotal?t.unreadTotal+" unread":"";
   var html='<button type="button" class="tree-item'+(rssState.scope.type==="all"?" on":"")+'" data-scope="all">Newsfeed <span class="count">'+esc(t.unreadTotal)+'</span></button>';
+  html+='<button type="button" class="tree-item'+(rssState.scope.type==="saved"?" on":"")+'" data-scope="saved">Saved for later</button>';
   (t.folders||[]).forEach(function(f){html+=renderFolderNode(f,0)});
   (t.rootFeeds||[]).forEach(function(fd){html+=renderFeedRow(fd,0)});
   el.innerHTML=html;
@@ -180,7 +183,7 @@ function renderTree(){
   el.querySelectorAll(".tree-item[data-scope]").forEach(function(b){
     b.onclick=function(){
       var sc=b.dataset.scope;
-      if(sc==="all")rssState.scope={type:"all"};
+      if(sc==="all"||sc==="saved")rssState.scope={type:sc};
       else rssState.scope={type:sc,id:b.dataset.id};
       renderTree();loadArticles();
     };
@@ -197,6 +200,7 @@ function articleQuery(){
   var q=[];
   if(rssState.scope.type==="feed")q.push("feed="+encodeURIComponent(rssState.scope.id));
   if(rssState.scope.type==="folder")q.push("folder="+encodeURIComponent(rssState.scope.id));
+  if(rssState.scope.type==="saved")q.push("starred=1");
   if(document.getElementById("rss-unread-only").checked)q.push("unread=1");
   var s=document.getElementById("rss-search").value.trim();
   if(s)q.push("q="+encodeURIComponent(s));
@@ -213,16 +217,54 @@ function renderArticles(){
     var cls="rss-row"+(dense?"":" card-view")+(!it.read?" unread":"");
     var thumb=it.thumbUrl?'<img class="thumb" src="'+esc(it.thumbUrl)+'" alt=""/>':'<span class="thumb"></span>';
     var dur=it.durationSec?'<span class="rss-yt-badge">'+Math.floor(it.durationSec/60)+":"+String(it.durationSec%60).padStart(2,"0")+'</span>':"";
+    var readLabel=it.read?"Mark unread":"Mark read";
+    var saveLabel=it.starred?"Remove saved":"Save for later";
     return '<article class="'+cls+'" data-id="'+esc(it.id)+'">'+thumb+
       '<div><div class="src">'+esc(it.feedTitle||it.feedId)+'</div><p class="rss-title">'+dur+esc(it.title)+'</p></div>'+
       '<span class="age">'+esc(relAge(it.firstSeenAt))+'</span>'+
-      '<p class="snippet">'+esc((it.summary||"").slice(0,dense?160:280))+'</p></article>';
+      '<p class="snippet">'+esc((it.summary||"").slice(0,dense?160:280))+'</p>'+
+      '<div class="rss-item-actions">'+
+        '<button type="button" class="ghost rss-item-action" data-article-action="save" data-id="'+esc(it.id)+'" aria-label="'+saveLabel+'" aria-pressed="'+String(!!it.starred)+'">'+saveLabel+'</button>'+
+        '<button type="button" class="ghost rss-item-action" data-article-action="read" data-id="'+esc(it.id)+'" aria-label="'+readLabel+'">'+readLabel+'</button>'+
+      '</div></article>';
   }).join("")||'<p class="dim" style="padding:1rem">No articles in this view.</p>';
   list.querySelectorAll(".rss-row").forEach(function(row){
     row.onclick=function(){openArticle(row.dataset.id)};
   });
+  list.querySelectorAll(".rss-item-action").forEach(function(btn){
+    btn.onclick=function(e){
+      e.stopPropagation();
+      var it=rssState.items.find(function(item){return item.id===btn.dataset.id});
+      if(!it)return;
+      if(btn.dataset.articleAction==="save")setArticleStarred(it.id,!it.starred);
+      else setArticleRead(it.id,!it.read);
+    };
+  });
 }
 function setActionStatus(msg,isErr){var el=document.getElementById("rss-action-status");el.textContent=msg||"";el.className=isErr?"bad":"dim";}
+function setListStatus(msg,isErr){var el=document.getElementById("rss-list-status");el.textContent=msg||"";el.className=isErr?"bad":"dim";}
+function updateReaderActions(){
+  document.getElementById("rss-star").textContent=rssState.selectedStarred?"Remove saved":"Save for later";
+  document.getElementById("rss-star").setAttribute("aria-pressed",String(rssState.selectedStarred));
+  document.getElementById("rss-read-toggle").textContent=rssState.selectedRead?"Mark unread":"Mark read";
+}
+function setArticleStarred(id,starred){
+  setListStatus(starred?"Saving for later…":"Removing from saved…");
+  api("/api/rss/star","POST",{id:id,starred:starred}).then(function(r){
+    if(!r.ok)throw new Error("Could not update saved status");
+    if(rssState.selected===id){rssState.selectedStarred=starred;updateReaderActions();}
+    setListStatus(starred?"Saved for later":"Removed from saved");
+    return refreshAll();
+  }).catch(function(e){setListStatus(e.message||"Could not update saved status",true)});
+}
+function setArticleRead(id,read){
+  setListStatus(read?"Marking read…":"Marking unread…");
+  api("/api/rss/read","POST",{ids:[id],read:read}).then(function(){
+    if(rssState.selected===id){rssState.selectedRead=read;updateReaderActions();}
+    setListStatus(read?"Marked read":"Marked unread");
+    return refreshAll();
+  }).catch(function(e){setListStatus(e.message||"Could not update read status",true)});
+}
 function showAiSummary(text){
   var box=document.getElementById("rss-ai-summary");
   if(!text){box.style.display="none";return;}
@@ -237,10 +279,12 @@ function openArticle(id){
   pane.classList.remove("hidden");
   api("/api/rss/entries/"+encodeURIComponent(id)).then(function(r){
     var it=r.item;
+    rssState.selectedRead=it.read;
+    rssState.selectedStarred=!!it.starred;
+    updateReaderActions();
     document.getElementById("rss-read-title").innerHTML="<h2 style='margin:0;font-size:1rem'>"+esc(it.title)+"</h2><p class='dim' style='margin:.35rem 0 0;font-size:.75rem'>"+esc(it.feedTitle||"")+"</p>";
     document.getElementById("rss-read-body").innerHTML=it.contentHtml||("<p>"+esc(it.summary||"")+"</p>");
     document.getElementById("rss-open-ext").href=it.link||"#";
-    document.getElementById("rss-star").textContent=it.starred?"Starred":"Star";
     var sumBtn=document.getElementById("rss-summarize");
     var recBtn=document.getElementById("rss-recallio");
     sumBtn.disabled=!r.llmEnabled;
@@ -248,7 +292,7 @@ function openArticle(id){
     recBtn.disabled=!r.recallioEnabled;
     recBtn.title=r.recallioEnabled?"":"Recallio not configured";
     showAiSummary(r.summary?r.summary.summary:"");
-    if(!it.read)api("/api/rss/read","POST",{ids:[it.id]}).then(loadArticles);
+    if(!it.read)api("/api/rss/read","POST",{ids:[it.id]}).then(function(){rssState.selectedRead=true;updateReaderActions();return refreshAll()});
   });
 }
 function loadTree(){return api("/api/rss/tree").then(function(r){rssState.tree=r.tree;renderTree()})}
@@ -276,6 +320,7 @@ document.getElementById("rss-mark-read").onclick=function(){
   var body={};
   if(rssState.scope.type==="feed")body.feedId=rssState.scope.id;
   if(rssState.scope.type==="folder")body.folderId=rssState.scope.id;
+  if(rssState.scope.type==="saved")body.starred=true;
   api("/api/rss/read-all","POST",body).then(refreshAll);
 };
 document.getElementById("rss-unread-only").onchange=loadArticles;
@@ -301,7 +346,11 @@ document.getElementById("rss-add-feed").onclick=function(){
 };
 document.getElementById("rss-star").onclick=function(){
   if(!rssState.selected)return;
-  api("/api/rss/star","POST",{id:rssState.selected,starred:true}).then(function(){openArticle(rssState.selected)});
+  setArticleStarred(rssState.selected,!rssState.selectedStarred);
+};
+document.getElementById("rss-read-toggle").onclick=function(){
+  if(!rssState.selected)return;
+  setArticleRead(rssState.selected,!rssState.selectedRead);
 };
 document.getElementById("rss-summarize").onclick=function(){
   if(!rssState.selected)return;

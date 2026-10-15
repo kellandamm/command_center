@@ -56,8 +56,14 @@ test("feeds store: ingest, unread, mark read", async () => {
     assert.equal(store.ingest("hn", [{ title: "One", link: "https://x/1" }], now), 0);
     assert.equal(store.list({ unreadOnly: true }).length, 1);
     const id = itemId("hn", "https://x/1", "One");
+    store.setStarred(id, true);
+    assert.deepEqual(store.list({ starred: true }).map((item) => item.id), [id]);
     store.markRead([id]);
     assert.equal(store.list({ unreadOnly: true }).length, 0);
+    store.markUnread([id]);
+    assert.deepEqual(store.list({ unreadOnly: true }).map((item) => item.id), [id]);
+    assert.equal(store.markAllRead({ starred: true }), 1);
+    assert.equal(store.list({ starred: true, unreadOnly: true }).length, 0);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
