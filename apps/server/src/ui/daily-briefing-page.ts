@@ -33,6 +33,9 @@ export function dailyBriefingPage(nav?: NavLink[]): string {
       <section class="briefing-section briefing-rail-card" id="db-todoist"><div class="section-head"><h2>On your list</h2><span class="status-pill dim" id="db-todoist-status">…</span></div><div id="db-todoist-body"></div></section>
     </aside>
     <section class="briefing-section briefing-github" id="db-github"><div class="section-head"><div><p class="briefing-kicker">FROM THE WORKBENCH</p><h2>GitHub dispatches</h2></div><span class="status-pill dim" id="db-github-status">…</span></div><div id="db-github-body"></div></section>
+    <section class="briefing-section briefing-board" id="db-board-blocked"><div class="section-head"><h2>Blocked on me</h2><span class="status-pill dim" id="db-board-blocked-status">…</span></div><div id="db-board-blocked-body"></div></section>
+    <section class="briefing-section briefing-board" id="db-board-moved"><div class="section-head"><h2>Moved since yesterday</h2><span class="status-pill dim" id="db-board-moved-status">…</span></div><div id="db-board-moved-body"></div></section>
+    <section class="briefing-section briefing-board" id="db-board-wins"><div class="section-head"><h2>Yesterday's wins</h2><span class="status-pill dim" id="db-board-wins-status">…</span></div><div id="db-board-wins-body"></div></section>
   </div>
 </main>`,
     script: dailyBriefingScript(),
@@ -112,6 +115,30 @@ function renderCalendar(s){
     return '<li><strong>'+esc(ev.summary)+'</strong><br><span class="dim">'+esc(fmtEventWhen(ev))+'</span></li>';
   }).join("")+'</ul>';
 }
+function renderBoardSection(statusId,bodyId,s,renderFn){
+  pill(document.getElementById(statusId),s.status);
+  var body=document.getElementById(bodyId);
+  if(s.status==="not_configured"||s.status==="error"){body.innerHTML='<p class="dim">'+esc(s.message||"Unavailable")+'</p>';return}
+  if(s.status==="empty"){body.innerHTML='<p class="dim">'+esc(s.message||"Nothing here.")+'</p>';return}
+  body.innerHTML=renderFn(s.data||{});
+}
+function renderBoardBlocked(s){renderBoardSection("db-board-blocked-status","db-board-blocked-body",s,function(d){
+  var rows=d.blocked||[];
+  if(!rows.length)return '<p class="dim">No blockers.</p>';
+  return '<ul class="todoist-list">'+rows.map(function(c){return '<li class="todoist-item">'+esc(c.title)+'</li>'}).join("")+'</ul>';
+})}
+function renderBoardMoved(s){renderBoardSection("db-board-moved-status","db-board-moved-body",s,function(d){
+  var rows=d.moved||[];
+  if(!rows.length)return '<p class="dim">No moves in the last 24 hours.</p>';
+  return '<ul>'+rows.slice(0,12).map(function(m){
+    return '<li><strong>'+esc(m.title)+'</strong> <span class="dim">'+esc(m.fromCol||"new")+' → '+esc(m.toCol)+'</span></li>';
+  }).join("")+'</ul>';
+})}
+function renderBoardWins(s){renderBoardSection("db-board-wins-status","db-board-wins-body",s,function(d){
+  var rows=d.wins||[];
+  if(!rows.length)return '<p class="dim">No wins yesterday.</p>';
+  return '<ul>'+rows.map(function(w){return '<li>'+esc(w.title)+'</li>'}).join("")+'</ul>';
+})}
 function renderGithub(s){
   pill(document.getElementById("db-github-status"),s.status);
   var body=document.getElementById("db-github-body");
@@ -138,6 +165,9 @@ function renderBriefing(b){
     renderWeather({status:"empty",message:"Generate a briefing to load weather."});
     renderCalendar({status:"not_configured",message:"Generate a briefing to load calendar."});
     renderGithub({status:"empty",message:"Generate a briefing to load GitHub."});
+    renderBoardBlocked({status:"empty",message:"Generate a briefing to load board sections."});
+    renderBoardMoved({status:"empty",message:"Generate a briefing to load board sections."});
+    renderBoardWins({status:"empty",message:"Generate a briefing to load board sections."});
     return;}
   meta.textContent="Generated "+fmtWhen(b.generatedAt)+" · "+b.trigger;
   var src=b.sources||{};
@@ -147,6 +177,10 @@ function renderBriefing(b){
   renderWeather(src.weather||{status:"error",message:"Missing weather section"});
   renderCalendar(src.calendar||{status:"error",message:"Missing calendar section"});
   renderGithub(src.github||{status:"error",message:"Missing GitHub section"});
+  var board=src.board||{status:"error",message:"Missing board section"};
+  renderBoardBlocked(board);
+  renderBoardMoved(board);
+  renderBoardWins(board);
 }
 function loadDayOptions(days,selected){
   var sel=document.getElementById("db-day");

@@ -13,6 +13,7 @@ const emptySources = (): DailyBriefingRecord["sources"] => ({
   weather: { status: "ok", data: { lat: 0, lon: 0, weather: { latitude: 0, longitude: 0, timezone: "UTC", current: { temperatureC: 0, weatherCode: 0, windKmh: 0, observedAt: null }, today: { highC: 0, lowC: 0, weatherCode: 0 }, label: "Clear" } } },
   calendar: { status: "not_configured", message: "Calendar is not configured" },
   github: { status: "empty", message: "No activity" },
+  board: { status: "empty", data: { blocked: [], moved: [], wins: [] } },
 });
 
 test("daily briefing storage: per-day files list newest first", async () => {

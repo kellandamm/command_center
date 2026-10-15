@@ -32,8 +32,8 @@ const SETTINGS_SHOTS: Shot[] = [
     path: "/",
     marker: "Dashboard",
     prepare: async (page) => {
-      await page.waitForSelector("#dashboard-grid", { timeout: 15_000 });
-      await page.waitForSelector("#dashboard-grid [data-panel-id]", { timeout: 15_000 });
+      await page.waitForSelector(".dashboard-overview", { timeout: 15_000 });
+      await page.waitForSelector("#dashboard-hobie-count", { timeout: 15_000 });
     },
   },
   {
@@ -41,6 +41,7 @@ const SETTINGS_SHOTS: Shot[] = [
     path: "/settings",
     marker: "Settings",
     prepare: async (page) => {
+      await page.click('.settings-tabs button[data-tab="schedule"]');
       await page.waitForSelector("#tab-schedule.on #scope-all", { timeout: 15_000 });
       await page.waitForSelector("#scope-folder-list label.choice-row", { timeout: 15_000 });
     },
@@ -55,11 +56,29 @@ const SETTINGS_SHOTS: Shot[] = [
     },
   },
   {
-    out: "docs/screenshots/settings-tabs/hobie-1280x800.png",
-    path: "/hobie",
-    marker: "Hobie",
+    out: "docs/screenshots/settings-tabs/board-1280x800.png",
+    path: "/board",
+    marker: "Board",
     prepare: async (page) => {
-      await page.waitForSelector("#hobie-full-list li", { timeout: 15_000 });
+      await page.waitForSelector(".board-col-list .board-card", { timeout: 15_000 });
+    },
+  },
+  {
+    out: "docs/screenshots/settings-tabs/wins-1280x800.png",
+    path: "/wins",
+    marker: "Wins",
+    prepare: async (page) => {
+      await page.waitForSelector(".wins-week", { timeout: 15_000 });
+    },
+  },
+  {
+    out: "docs/screenshots/settings-tabs/briefing-board-1280x800.png",
+    path: "/briefing",
+    marker: "Briefing",
+    prepare: async (page) => {
+      await page.waitForSelector("#db-board-blocked-body li", { timeout: 15_000 });
+      await page.waitForSelector("#db-board-wins-body li", { timeout: 15_000 });
+      await page.locator("#db-board-blocked").scrollIntoViewIfNeeded();
     },
   },
   {

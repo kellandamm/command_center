@@ -114,7 +114,7 @@ test("dashboard layout API persists under data dir", async () => {
   const aiSecurity = await AiSecurityService.open(dir);
   const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
   const notes = await NotesStore.open(dir);
-  const { panelUpdates, hobieQueue, dashboardLayout } = await openIntegrationStores(dir);
+  const integration = await openIntegrationStores(dir, cfg);
   const server = createApp({
     cfg,
     auth: makeAuthenticator(cfg),
@@ -125,9 +125,7 @@ test("dashboard layout API persists under data dir", async () => {
     dailyBriefing,
     newsPrefs,
     notes,
-    panelUpdates,
-    hobieQueue,
-    dashboardLayout,
+    ...integration,
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;

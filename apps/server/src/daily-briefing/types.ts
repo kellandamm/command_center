@@ -1,8 +1,11 @@
+import type { BoardCard } from "../board/types";
+import type { CardMoveEvent } from "../board/types";
 import type { CalendarEvent } from "../calendar/parse-ics";
 import type { GithubActivitySnapshot } from "../github/activity";
 import type { StoredItem } from "../feeds/store";
 import type { TodoistTask } from "../todoist/client";
 import type { WeatherSnapshot } from "../weather/open-meteo";
+import type { Win } from "../wins/types";
 
 export type SourceStatus = "ok" | "empty" | "error" | "not_configured";
 
@@ -27,6 +30,12 @@ export interface DailyBriefingAi {
   itemCount: number;
 }
 
+export interface DailyBriefingBoard {
+  blocked: BoardCard[];
+  moved: CardMoveEvent[];
+  wins: Win[];
+}
+
 export interface DailyBriefingSources {
   news: SourceBlock<DailyBriefingNews>;
   ai: SourceBlock<DailyBriefingAi>;
@@ -34,6 +43,7 @@ export interface DailyBriefingSources {
   weather: SourceBlock<{ weather: WeatherSnapshot; lat: number; lon: number }>;
   calendar: SourceBlock<{ events: CalendarEvent[] }>;
   github: SourceBlock<{ activity: GithubActivitySnapshot }>;
+  board: SourceBlock<DailyBriefingBoard>;
 }
 
 export interface DailyBriefingRecord {

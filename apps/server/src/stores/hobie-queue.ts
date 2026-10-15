@@ -19,11 +19,30 @@ const MAX_TASKS = 100;
 const MAX_TITLE = 200;
 const MAX_BODY = 8_000;
 
+export type HobieQueueMutation =
+  | { type: "claim"; task: HobieTask }
+  | { type: "done"; task: HobieTask };
+
 export class HobieQueueStore {
   private tasks: HobieTask[] = [];
   private queue: Promise<void> = Promise.resolve();
+  private listeners: Array<(ev: HobieQueueMutation) => void> = [];
 
   private constructor(private path: string) {}
+
+  onMutate(fn: (ev: HobieQueueMutation) => void): void {
+    this.listeners.push(fn);
+  }
+
+  private emit(ev: HobieQueueMutation): void {
+    for (const fn of this.listeners) {
+      try {
+        fn(ev);
+      } catch {
+        /* listener errors must not break queue */
+      }
+    }
+  }
 
   static async open(dataDir: string): Promise<HobieQueueStore> {
     const store = new HobieQueueStore(join(dataDir, "hobie-queue.json"));
@@ -74,6 +93,7 @@ export class HobieQueueStore {
     task.status = "claimed";
     task.claimedAt = new Date().toISOString();
     await this.flush();
+    this.emit({ type: "claim", task });
     return task;
   }
 
@@ -82,6 +102,7 @@ export class HobieQueueStore {
     if (!task) return false;
     task.status = "done";
     await this.flush();
+    this.emit({ type: "done", task });
     return true;
   }
 

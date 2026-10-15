@@ -1,4 +1,7 @@
+import type { BoardStore } from "./board/store";
 import type { DailyBriefingService } from "./daily-briefing/service";
+import { pollMergedPullRequestWins } from "./wins/github-poll";
+import type { WinsStore } from "./wins/store";
 import type { BriefingService } from "./briefing/service";
 import { llmConfig, type Config } from "./config";
 import { feedIdsInScope } from "./feed-scope";
@@ -16,6 +19,7 @@ export interface KVLike {
 
 export interface SchedState {
   lastFeedFetchAt?: string;
+  githubWinsPollAt?: string;
   slot?: string;
   attempts?: number;
   lastAt?: string;
@@ -95,6 +99,8 @@ export class Scheduler {
       briefing: BriefingService;
       newsPrefs: NewsPrefsStore;
       summaryService: SummaryService;
+      board?: BoardStore;
+      wins?: WinsStore;
       now?: () => Date;
     },
   ) {}
@@ -118,6 +124,22 @@ export class Scheduler {
 
       const fetchDue =
         !state.lastFeedFetchAt || now.getTime() - new Date(state.lastFeedFetchAt).getTime() >= s.fetchIntervalMinutes * 60_000;
+      const winsPollDue =
+        this.d.wins &&
+        (!state.githubWinsPollAt || now.getTime() - new Date(state.githubWinsPollAt).getTime() >= 60 * 60_000);
+      if (winsPollDue && this.d.wins) {
+        const since = state.githubWinsPollAt ?? new Date(now.getTime() - 7 * 24 * 60 * 60_000).toISOString();
+        await pollMergedPullRequestWins({
+          username: this.d.cfg.githubUsername,
+          token: this.d.cfg.githubToken,
+          wins: this.d.wins,
+          sinceIso: since,
+          now,
+        });
+        state = { ...state, githubWinsPollAt: now.toISOString() };
+        await this.d.kv.set(KEY, state);
+      }
+
       if (fetchDue) {
         if (this.d.feeds.feedCount() > 0) {
           const prefs = this.d.newsPrefs.get();
@@ -136,6 +158,8 @@ export class Scheduler {
         const rec = await this.d.dailyBriefing.generate({
           cfg: this.d.cfg,
           feeds: this.d.feeds,
+          board: this.d.board,
+          wins: this.d.wins,
           feedScope: s.feedScope,
           trigger: "schedule",
           now,

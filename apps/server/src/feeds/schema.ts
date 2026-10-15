@@ -98,5 +98,42 @@ export function initSchema(db: DatabaseSync): { fts5: boolean } {
       );
     `);
   }
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS cards (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      notes TEXT NOT NULL DEFAULT '',
+      column TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      hobie_task_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_cards_column ON cards(column, position);
+    CREATE TABLE IF NOT EXISTS card_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+      from_col TEXT,
+      to_col TEXT NOT NULL,
+      at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_card_events_at ON card_events(at DESC);
+    CREATE INDEX IF NOT EXISTS idx_card_events_card ON card_events(card_id, at DESC);
+    CREATE TABLE IF NOT EXISTS wins (
+      id TEXT PRIMARY KEY,
+      source TEXT NOT NULL CHECK(source IN ('card', 'pr', 'manual')),
+      ref TEXT NOT NULL,
+      title TEXT NOT NULL,
+      at TEXT NOT NULL,
+      UNIQUE(source, ref)
+    );
+    CREATE INDEX IF NOT EXISTS idx_wins_at ON wins(at DESC);
+    CREATE TABLE IF NOT EXISTS win_week_summaries (
+      iso_week TEXT PRIMARY KEY,
+      summary TEXT NOT NULL,
+      model TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+  `);
   return { fts5 };
 }

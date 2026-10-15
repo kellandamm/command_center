@@ -54,8 +54,8 @@ test("todoist: dashboard API removed; MCP client helpers still work", async () =
   const aiSecurity = await AiSecurityService.open(dir);
   const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
   const notes = await NotesStore.open(dir);
-  const { panelUpdates, hobieQueue, dashboardLayout } = await openIntegrationStores(dir);
-  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, feeds, briefing, aiSecurity, dailyBriefing, newsPrefs, notes, panelUpdates, hobieQueue, dashboardLayout });
+  const integration = await openIntegrationStores(dir, cfg);
+  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, feeds, briefing, aiSecurity, dailyBriefing, newsPrefs, notes, ...integration });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   try {

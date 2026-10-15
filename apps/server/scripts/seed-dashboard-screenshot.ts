@@ -13,7 +13,9 @@ import { FeedsStore } from "../src/feeds/store";
 import { NotesStore } from "../src/notes/store";
 import { panels } from "../src/panels/registry";
 import { SettingsStore } from "../src/settings";
+import { BoardStore } from "../src/board/store";
 import { HobieQueueStore } from "../src/stores/hobie-queue";
+import { WinsStore } from "../src/wins/store";
 import { PanelUpdatesStore } from "../src/stores/panel-updates";
 import { ensureDirs } from "../src/store";
 
@@ -55,6 +57,22 @@ async function main() {
   const hobie = await HobieQueueStore.open(dir);
   await hobie.enqueue({ clientId: "copilot", title: "Review Q4 deck", body: "Focus on budget slide.", urgent: true }, 20);
   await hobie.enqueue({ clientId: "power-automate", title: "File expense report", body: "Receipt in email.", urgent: false }, 20);
+
+  const board = BoardStore.open(dir);
+  board.create({ title: "Polish board drag UX", notes: "Keyboard path + focus rings", column: "Backlog" });
+  board.create({ title: "Weekly wins rollup", column: "Waiting" });
+  board.create({ title: "Waiting on vendor SSO fix", column: "Blocked on me" });
+  board.create({ title: "Ship screenshot seeds", column: "Done" });
+
+  const wins = WinsStore.open(dir);
+  wins.add({ source: "manual", ref: "seed-1", title: "Board + wins shipped", at: now.toISOString() });
+  wins.add({ source: "manual", ref: "seed-2", title: "Briefing board sections", at: new Date(now.getTime() - 86400000).toISOString() });
+  wins.saveWeekSummary(
+    "2026-W42",
+    "A strong week: the kanban board landed, wins tracking is live, and briefing sections surface blockers without opening another tab.",
+    "seed-model",
+    now.toISOString(),
+  );
 
   const aiDir = join(dir, "ai-security");
   await ensureRoundupDir(aiDir);
@@ -112,6 +130,17 @@ async function main() {
       },
       calendar: { status: "empty", message: "No events" },
       github: { status: "empty", message: "Not configured" },
+      board: {
+        status: "ok",
+        data: {
+          blocked: board.blockedOnMe(),
+          moved: board.movesSince(new Date(now.getTime() - 24 * 60 * 60_000).toISOString()),
+          wins: wins.between(
+            new Date(now.getTime() - 48 * 60 * 60_000).toISOString(),
+            new Date(now.getTime() - 12 * 60 * 60_000).toISOString(),
+          ),
+        },
+      },
     },
   };
   const briefingDir = join(dir, "daily-briefings");
