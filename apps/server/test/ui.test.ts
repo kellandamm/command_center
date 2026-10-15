@@ -78,6 +78,7 @@ test("ui: news reader has feed tree and article list", () => {
   assert.match(html, /id="rss-read-toggle"/);
   assert.match(html, /data-article-action="save"/);
   assert.match(html, /data-article-action="read"/);
+  assert.match(html, /if\(sc==="saved"\)document\.getElementById\("rss-unread-only"\)\.checked=false/);
 });
 
 test("ui: summaries page has search and auto settings", () => {

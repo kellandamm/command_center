@@ -87,6 +87,8 @@ test("news API: prefs persist under data dir", async () => {
       body: JSON.stringify({ ids: [entryId], read: true }),
     });
     assert.equal(markRead.status, 200);
+    const savedRead = await fetch(`${base}/api/news?starred=1`, { headers: authz });
+    assert.deepEqual((await savedRead.json() as any).items.map((item: any) => item.id), [entryId]);
     const savedUnread = await fetch(`${base}/api/news?starred=1&unread=1`, { headers: authz });
     assert.deepEqual((await savedUnread.json() as any).items, []);
     const markUnread = await fetch(`${base}/api/rss/read`, {
