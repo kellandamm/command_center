@@ -2,6 +2,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod";
 import type { IntegrationDeps } from "./actions";
 import {
+  actionBoardList,
+  actionBoardMove,
   actionHobieQueueTask,
   actionNotesAppend,
   actionNotesRead,
@@ -57,6 +59,39 @@ export function createCommandCenterMcp(deps: IntegrationDeps, clientId: string):
     async ({ content }) => {
       const task = await actionTodoistAddTask(deps, content);
       return { content: [{ type: "text", text: `Created Todoist task ${task.id}: ${task.content}` }] };
+    },
+  );
+
+  server.registerTool(
+    "board_list",
+    { description: "List kanban board cards and column counts.", inputSchema: {} },
+    async () => {
+      const { cards, counts } = await actionBoardList(deps);
+      const lines = cards.map((c) => `${c.column}: ${c.title} (${c.id})`).join("\n");
+      return {
+        content: [
+          {
+            type: "text",
+            text: lines ? `${lines}\n\ncounts: ${JSON.stringify(counts)}` : `Empty board. counts: ${JSON.stringify(counts)}`,
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    "board_move",
+    {
+      description: "Move a board card to another column.",
+      inputSchema: {
+        id: z.string(),
+        column: z.enum(["Backlog", "Ready for Hobie", "Waiting", "Blocked on me", "Done"]),
+        position: z.number().optional(),
+      },
+    },
+    async ({ id, column, position }) => {
+      const { card } = await actionBoardMove(deps, clientId, id, column, position);
+      return { content: [{ type: "text", text: `Moved to ${card.column} (${card.id})` }] };
     },
   );
 

@@ -11,7 +11,11 @@ import { Scheduler } from "./scheduler";
 import { SummaryService } from "./feeds/summary-service";
 import { SettingsStore } from "./settings";
 import { NotesStore } from "./notes/store";
+import { BoardStore } from "./board/store";
+import { wireHobieBoardSync } from "./board/hobie-sync";
 import { HobieQueueStore } from "./stores/hobie-queue";
+import { WinsStore } from "./wins/store";
+import { WinsRollupService } from "./wins/rollup-service";
 import { PanelUpdatesStore } from "./stores/panel-updates";
 import { DashboardLayoutStore } from "./dashboard-layout/storage";
 import { panels } from "./panels/registry";
@@ -36,10 +40,25 @@ async function main() {
   const notes = await NotesStore.open(cfg.dataDir);
   const panelUpdates = await PanelUpdatesStore.open(cfg.dataDir);
   const hobieQueue = await HobieQueueStore.open(cfg.dataDir);
+  const board = BoardStore.open(cfg.dataDir);
+  const wins = WinsStore.open(cfg.dataDir);
+  wireHobieBoardSync(hobieQueue, board, wins);
+  const winsRollup = new WinsRollupService(cfg, wins);
   const dashboardLayout = await DashboardLayoutStore.open(cfg.dataDir, panels.map((p) => p.id));
 
   const summaryService = new SummaryService(cfg, feeds, feeds.summaries);
-  const scheduler = new Scheduler({ cfg, settings, kv, feeds, briefing, dailyBriefing, newsPrefs, summaryService });
+  const scheduler = new Scheduler({
+    cfg,
+    settings,
+    kv,
+    feeds,
+    briefing,
+    dailyBriefing,
+    newsPrefs,
+    summaryService,
+    board,
+    wins,
+  });
   const server = createApp({
     cfg,
     auth: makeAuthenticator(cfg),
@@ -52,6 +71,9 @@ async function main() {
     notes,
     panelUpdates,
     hobieQueue,
+    board,
+    wins,
+    winsRollup,
     dashboardLayout,
   });
   server.listen(cfg.port, cfg.host, () => {

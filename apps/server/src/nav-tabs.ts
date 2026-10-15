@@ -6,7 +6,8 @@ export type SidebarTabId =
   | "briefing"
   | "news"
   | "summaries"
-  | "hobie"
+  | "board"
+  | "wins"
   | "notes"
   | "calendar"
   | "activity"
@@ -30,7 +31,8 @@ export const DEFAULT_SIDEBAR_TABS: SidebarTab[] = [
   { id: "briefing", href: "/briefing", label: "Daily Briefing", visible: true, order: 20 },
   { id: "news", href: "/news", label: "News", visible: true, order: 30 },
   { id: "summaries", href: "/summaries", label: "Summaries", visible: true, order: 40 },
-  { id: "hobie", href: "/hobie", label: "Hobie queue", visible: true, order: 50 },
+  { id: "board", href: "/board", label: "Board", visible: true, order: 50 },
+  { id: "wins", href: "/wins", label: "Wins", visible: true, order: 55 },
   { id: "notes", href: "/notes", label: "Notes", visible: true, order: 60 },
   { id: "calendar", href: "/calendar", label: "Calendar", visible: true, order: 70 },
   { id: "activity", href: "/activity", label: "Activity", visible: true, order: 80 },
@@ -47,7 +49,8 @@ export function normalizeSidebarTabs(input: unknown): SidebarTab[] {
   if (Array.isArray(input)) {
     for (const row of input) {
       if (!row || typeof row !== "object") continue;
-      const id = (row as SidebarTab).id;
+      let id = (row as SidebarTab).id;
+      if (id === "hobie") id = "board";
       if (!DEFAULT_BY_ID.has(id)) continue;
       const base = byId.get(id)!;
       const label = typeof (row as SidebarTab).label === "string" ? (row as SidebarTab).label.trim() : base.label;
@@ -76,7 +79,8 @@ export function applySidebarTabsPatch(current: SidebarTab[], patch: unknown): Si
   const byId = new Map(current.map((t) => [t.id, { ...t }]));
   for (const row of patch) {
     if (!row || typeof row !== "object") continue;
-    const id = (row as SidebarTab).id;
+    let id = (row as SidebarTab).id;
+    if (id === "hobie") id = "board";
     if (!DEFAULT_BY_ID.has(id)) continue;
     const cur = byId.get(id)!;
     if (typeof (row as SidebarTab).label === "string") {

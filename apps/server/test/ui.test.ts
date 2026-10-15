@@ -6,7 +6,8 @@ import { newsPage } from "../src/ui/news-page";
 import { summariesPage } from "../src/ui/summaries-page";
 import { activityPage } from "../src/ui/activity-page";
 import { calendarPage } from "../src/ui/calendar-page";
-import { hobiePage } from "../src/ui/hobie-page";
+import { boardPage } from "../src/ui/board-page";
+import { winsPage } from "../src/ui/wins-page";
 import { notesPage } from "../src/ui/notes-page";
 import { dashboardPage, settingsPage } from "../src/ui/pages";
 
@@ -16,13 +17,13 @@ test("ui: dashboard shows concise status summaries with links to full pages", ()
   assert.match(html, /class="sidebar-nav"/);
   assert.match(html, /class="dashboard-overview"/);
   assert.match(html, /Needs attention/);
-  assert.match(html, /Pending Hobie tasks/);
+  assert.match(html, /Hobie board/);
   assert.match(html, /Unread news/);
   assert.match(html, /Next up/);
   assert.match(html, /Today's briefing/);
   assert.match(html, /Recent agent activity/);
   assert.match(html, /id="theme-toggle"/);
-  assert.match(html, /href="\/hobie"/);
+  assert.match(html, /href="\/board"/);
   assert.match(html, /href="\/news"/);
   assert.match(html, /href="\/calendar"/);
   assert.match(html, /href="\/briefing"/);
@@ -59,6 +60,8 @@ test("ui: daily briefing page has source sections and nav link", () => {
   assert.match(html, /id="db-weather"/);
   assert.match(html, /id="db-todoist"/);
   assert.match(html, /id="db-github"/);
+  assert.match(html, /Blocked on me/);
+  assert.match(html, /Yesterday's wins/);
   assert.match(html, /id="db-refresh"/);
   assert.match(html, /class="briefing-grid"/);
   assert.match(html, /id="db-error"/);
@@ -96,7 +99,8 @@ test("ui: settings page has schedule and tabs sections", () => {
 });
 
 test("ui: full sidebar pages render", () => {
-  assert.match(hobiePage(), /href="\/hobie" class="on"/);
+  assert.match(boardPage(), /href="\/board" class="on"/);
+  assert.match(winsPage(), /href="\/wins" class="on"/);
   assert.match(notesPage(), /id="notes-editor-full"/);
   assert.match(calendarPage(), /id="cal-week-grid"/);
   assert.match(activityPage(), /id="activity-full-list"/);

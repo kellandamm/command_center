@@ -27,6 +27,8 @@ export async function handleDailyBriefingRoutes(
     const rec = await daily.generate({
       cfg: app.cfg,
       feeds: app.feeds,
+      board: app.board,
+      wins: app.wins,
       feedScope: app.settings.get().feedScope,
       trigger: "manual",
     });

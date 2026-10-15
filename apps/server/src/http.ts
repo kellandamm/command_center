@@ -30,7 +30,13 @@ import type { NewsPrefsStore } from "./feeds/news-prefs";
 import type { DashboardLayoutStore } from "./dashboard-layout/storage";
 import { activityPage } from "./ui/activity-page";
 import { calendarPage } from "./ui/calendar-page";
-import { hobiePage } from "./ui/hobie-page";
+import type { BoardStore } from "./board/store";
+import { handleBoardRoutes } from "./board/routes";
+import type { WinsStore } from "./wins/store";
+import { handleWinsRoutes } from "./wins/routes";
+import type { WinsRollupService } from "./wins/rollup-service";
+import { boardPage } from "./ui/board-page";
+import { winsPage } from "./ui/wins-page";
 import { notesPage } from "./ui/notes-page";
 import { dashboardPage, settingsPage } from "./ui/pages";
 import { newsPage } from "./ui/news-page";
@@ -50,6 +56,9 @@ export interface App {
   notes: NotesStore;
   panelUpdates: PanelUpdatesStore;
   hobieQueue: HobieQueueStore;
+  board: BoardStore;
+  wins: WinsStore;
+  winsRollup: WinsRollupService;
   dashboardLayout: DashboardLayoutStore;
 }
 
@@ -107,6 +116,8 @@ export function createApp(app: App): Server {
     notes: app.notes,
     panelUpdates: app.panelUpdates,
     hobieQueue: app.hobieQueue,
+    board: app.board,
+    wins: app.wins,
   });
 
   const ctx = (): PanelContext => ({
@@ -117,6 +128,8 @@ export function createApp(app: App): Server {
     notes: app.notes,
     panelUpdates: app.panelUpdates,
     hobieQueue: app.hobieQueue,
+    board: app.board,
+    wins: app.wins,
   });
 
   return createServer(async (req, res) => {
@@ -165,7 +178,13 @@ export function createApp(app: App): Server {
       if (get && path === "/briefing") return send(res, 200, dailyBriefingPage(nav()), undefined, extra);
       if (get && path === "/news") return send(res, 200, newsPage(nav()), undefined, extra);
       if (get && path === "/summaries") return send(res, 200, summariesPage(nav()), undefined, extra);
-      if (get && path === "/hobie") return send(res, 200, hobiePage(nav()), undefined, extra);
+      if (get && path === "/hobie") {
+        res.writeHead(302, { location: "/board", ...SECURITY, ...extra });
+        res.end();
+        return;
+      }
+      if (get && path === "/board") return send(res, 200, boardPage(nav()), undefined, extra);
+      if (get && path === "/wins") return send(res, 200, winsPage(nav()), undefined, extra);
       if (get && path === "/notes") return send(res, 200, notesPage(nav()), undefined, extra);
       if (get && path === "/calendar") return send(res, 200, calendarPage(nav()), undefined, extra);
       if (get && path === "/activity") return send(res, 200, activityPage(nav()), undefined, extra);
@@ -200,6 +219,11 @@ export function createApp(app: App): Server {
 
       if (await handleAiSecurityRoutes(app.aiSecurity, req, res, path, readBody)) return;
       if (await handleDailyBriefingRoutes(app, app.dailyBriefing, req, res, path)) return;
+      if (path.startsWith("/api/board") || path.startsWith("/api/wins")) {
+        const bodyForApi = get ? undefined : await readBody(req);
+        if (await handleBoardRoutes(app.board, app.hobieQueue, app.wins, app.cfg, req, res, path, bodyForApi)) return;
+        if (await handleWinsRoutes(app.wins, app.cfg, app.winsRollup, req, res, path, bodyForApi)) return;
+      }
       const summarySvc = new SummaryService(app.cfg, app.feeds, app.feeds.summaries);
       const rssOpts = { cfg: app.cfg, prefs: app.newsPrefs, summaries: summarySvc };
       if (await handleArticleActionRoutes(app.cfg, app.feeds, app.newsPrefs, summarySvc, req, res, path, readBody)) return;

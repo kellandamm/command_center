@@ -11,7 +11,7 @@ export function dashboardPage(nav?: NavLink[]): string {
   <section class="card dashboard-overview-card dashboard-attention-card" data-dashboard-card="attention">
     <h2>Needs attention</h2>
     <div class="dashboard-metrics">
-      <a class="dashboard-metric" href="/hobie"><span>Pending Hobie tasks</span><strong id="dashboard-hobie-count">Loading…</strong><span class="dim" id="dashboard-hobie-detail"></span></a>
+      <a class="dashboard-metric" href="/board"><span>Hobie board</span><strong id="dashboard-hobie-count">Loading…</strong><span class="dim" id="dashboard-hobie-detail"></span></a>
       <a class="dashboard-metric" href="/news"><span>Unread news</span><strong id="dashboard-news-count">Loading…</strong><span class="dim">Open News reader</span></a>
     </div>
   </section>
@@ -39,10 +39,11 @@ function dashboardSetError(id,err){
   el.classList.add("bad");
 }
 function loadDashboardHobie(){
-  return api("/api/hobie/queue?status=pending").then(function(r){
-    var tasks=r.tasks||[],urgent=tasks.filter(function(t){return t.urgent}).length;
-    document.getElementById("dashboard-hobie-count").textContent=String(tasks.length);
-    document.getElementById("dashboard-hobie-detail").textContent=urgent?urgent+" urgent":"No urgent tasks";
+  return api("/api/hobie/board-summary").then(function(r){
+    var counts=r.counts||{},keys=Object.keys(counts),total=keys.reduce(function(n,k){return n+(counts[k]||0)},0);
+    var ready=counts["Ready for Hobie"]||0,waiting=counts["Waiting"]||0;
+    document.getElementById("dashboard-hobie-count").textContent=String(total);
+    document.getElementById("dashboard-hobie-detail").textContent=ready||waiting?ready+" ready · "+waiting+" waiting":"Open board";
   }).catch(function(err){dashboardSetError("dashboard-hobie-count",err)});
 }
 function loadDashboardNews(){
@@ -83,7 +84,7 @@ window.viewPreferencesReady.then(function(prefs){
   document.querySelectorAll("[data-dashboard-card]").forEach(function(card){
     var key=card.dataset.dashboardCard;
     if(key==="attention"&&dashboard.hobie===false&&dashboard.news===false)card.hidden=true;
-    else if(key==="attention"&&dashboard.hobie===false)card.querySelector('a[href="/hobie"]').hidden=true;
+    else if(key==="attention"&&dashboard.hobie===false)card.querySelector('a[href="/board"]').hidden=true;
     else if(key==="attention"&&dashboard.news===false)card.querySelector('a[href="/news"]').hidden=true;
     else if(key!=="attention"&&dashboard[key]===false)card.hidden=true;
   });
@@ -113,7 +114,7 @@ export function settingsPage(nav?: NavLink[]): string {
 <div class="settings-options-grid">
 <div class="settings-option"><label for="pref-density">Page density</label><select id="pref-density" data-pref="density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select><p class="dim">Compact reduces spacing across supported pages.</p></div>
 <fieldset class="settings-option"><legend>Dashboard cards</legend>
-<label class="row choice-row"><input type="checkbox" data-pref="dashboard.hobie"/> Hobie queue</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.news"/> Unread news</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.calendar"/> Next calendar event</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.briefing"/> Daily briefing</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.activity"/> Agent activity</label></fieldset>
+<label class="row choice-row"><input type="checkbox" data-pref="dashboard.hobie"/> Hobie board</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.news"/> Unread news</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.calendar"/> Next calendar event</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.briefing"/> Daily briefing</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.activity"/> Agent activity</label></fieldset>
 <fieldset class="settings-option"><legend>Daily Briefing sections</legend>
 <label class="row choice-row"><input type="checkbox" data-pref="briefing.news"/> News stories</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.ai"/> AI editor’s note</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.todoist"/> Todoist tasks</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.weather"/> Weather</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.calendar"/> Calendar</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.github"/> GitHub</label></fieldset>
 <div class="settings-option"><label for="pref-news-layout">News article layout</label><select id="pref-news-layout" data-pref="news.layout"><option value="dense">Dense list</option><option value="card">Cards</option></select><label class="row choice-row"><input type="checkbox" data-pref="news.unreadOnly"/> Show unread only by default</label></div>

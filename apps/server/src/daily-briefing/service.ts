@@ -7,6 +7,9 @@ import type { FeedScopeSettings } from "../settings";
 import type { FeedsStore } from "../feeds/store";
 import { fetchGithubActivity } from "../github/activity";
 import { chatCompletion } from "../llm/provider";
+import type { BoardStore } from "../board/store";
+import type { WinsStore } from "../wins/store";
+import { slotInstant } from "../scheduler";
 import { dayKey } from "../store";
 import { listTasks, partitionTodayAndOverdue } from "../todoist/client";
 import { fetchOpenMeteo } from "../weather/open-meteo";
@@ -68,6 +71,8 @@ export class DailyBriefingService {
   async generate(opts: {
     cfg: Config;
     feeds: FeedsStore;
+    board?: BoardStore;
+    wins?: WinsStore;
     feedScope?: FeedScopeSettings;
     trigger: "schedule" | "manual";
     now?: Date;
@@ -77,7 +82,7 @@ export class DailyBriefingService {
     const day = dayKey(now, this.tz);
     const sinceIso = new Date(now.getTime() - 24 * 60 * 60_000).toISOString();
     const fetchFn = opts.fetchFn ?? fetch;
-    const sources = await this.gatherSources(opts.cfg, opts.feeds, sinceIso, now, fetchFn, opts.feedScope);
+    const sources = await this.gatherSources(opts.cfg, opts.feeds, sinceIso, now, fetchFn, opts.feedScope, opts.board, opts.wins);
     const rec: DailyBriefingRecord = { day, generatedAt: now.toISOString(), trigger: opts.trigger, sources };
     await writeBriefingFile(briefingDayPath(this.dir, day), rec);
     return rec;
@@ -90,6 +95,8 @@ export class DailyBriefingService {
     now: Date,
     fetchFn: typeof fetch,
     feedScope?: FeedScopeSettings,
+    board?: BoardStore,
+    wins?: WinsStore,
   ): Promise<DailyBriefingSources> {
     const scope = feedScope ?? { mode: "all", folderIds: [] };
     const newsItems = feeds.itemsForBriefing(sinceIso, 40, feedIdsInScope(feeds, scope));
@@ -105,8 +112,31 @@ export class DailyBriefingService {
     const weather = await this.buildWeather(cfg, fetchFn);
     const calendar = await this.buildCalendar(cfg);
     const github = await this.buildGithub(cfg);
+    const boardBlock = this.buildBoard(board, wins, sinceIso, now);
 
-    return { news, ai, todoist, weather, calendar, github };
+    return { news, ai, todoist, weather, calendar, github, board: boardBlock };
+  }
+
+  private buildBoard(
+    board: BoardStore | undefined,
+    wins: WinsStore | undefined,
+    sinceIso: string,
+    now: Date,
+  ): DailyBriefingSources["board"] {
+    if (!board || !wins) {
+      return block("not_configured", { blocked: [], moved: [], wins: [] }, "Board data is not available.");
+    }
+    const blocked = board.blockedOnMe();
+    const moved = board.movesSince(sinceIso);
+    const yesterday = dayKey(new Date(now.getTime() - 24 * 60 * 60_000), this.tz);
+    const yStart = slotInstant(yesterday, "00:00", this.tz).toISOString();
+    const yEnd = new Date(slotInstant(yesterday, "23:59", this.tz).getTime() + 59_999).toISOString();
+    const yWins = wins.between(yStart, yEnd);
+    const hasData = blocked.length || moved.length || yWins.length;
+    if (!hasData) {
+      return block("empty", { blocked, moved, wins: yWins }, "No board blockers, moves, or wins for yesterday.");
+    }
+    return block("ok", { blocked, moved, wins: yWins });
   }
 
   private async buildAi(
@@ -194,6 +224,9 @@ export class DailyBriefingService {
   }
 
   private async buildGithub(cfg: Config): Promise<DailyBriefingSources["github"]> {
+    if (!cfg.githubToken) {
+      return block("not_configured", undefined, "");
+    }
     try {
       const activity = await fetchGithubActivity({ username: cfg.githubUsername, token: cfg.githubToken });
       const hasData = activity.pulls.length || activity.issues.length || activity.events.length;

@@ -308,7 +308,7 @@ const THEME_SCRIPT = `
 })();
 `;
 
-export function page(opts: { title: string; body: string; active?: string; script?: string; nav?: NavLink[] }): string {
+export function page(opts: { title: string; body: string; active?: string; script?: string; nav?: NavLink[]; extraCss?: string }): string {
   const links = opts.nav ?? visibleNavTabs(DEFAULT_SIDEBAR_TABS);
   const nav = links
     .map(
@@ -332,7 +332,7 @@ export function page(opts: { title: string; body: string; active?: string; scrip
 <link rel="icon" href="/icon-192.png"><link rel="apple-touch-icon" href="/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<title>${esc(opts.title)}</title><style>${CSS}html,body{font-family:Inter,ui-sans-serif,system-ui,sans-serif}</style></head>
+<title>${esc(opts.title)}</title><style>${CSS}${opts.extraCss ?? ""}html,body{font-family:Inter,ui-sans-serif,system-ui,sans-serif}</style></head>
 <body>${shell}
 <script>
 ${THEME_SCRIPT}
