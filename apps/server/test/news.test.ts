@@ -56,7 +56,7 @@ test("news API: prefs persist under data dir", async () => {
   await settings.load();
   const feeds = await FeedsStore.open(dir);
   const entryId = itemId("hn", "https://example.com/security-story", "Critical CVE disclosure");
-  feeds.ingest("hn", [{ title: "Critical CVE disclosure", link: "https://example.com/security-story" }]);
+  feeds.ingest("hn", [{ title: "Critical CVE disclosure", link: "https://example.com/security-story" }], new Date());
   const newsPrefs = await NewsPrefsStore.open(dir);
   const briefing = await BriefingService.open(dir, cfg.tz);
   const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
