@@ -158,7 +158,7 @@ export class BoardStore {
       .get(READY_FOR_HOBIE, task.title) as Record<string, unknown> | undefined;
     if (!row) return undefined;
     const at = new Date().toISOString();
-    this.db.prepare(`UPDATE cards SET hobie_task_id = ?, updated_at = ? WHERE id = ?`).run(task.id, at, row.id);
+    this.db.prepare(`UPDATE cards SET hobie_task_id = ?, updated_at = ? WHERE id = ?`).run(task.id, at, String(row.id));
     return this.get(String(row.id));
   }
 

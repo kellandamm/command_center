@@ -49,8 +49,9 @@ export function normalizeSidebarTabs(input: unknown): SidebarTab[] {
   if (Array.isArray(input)) {
     for (const row of input) {
       if (!row || typeof row !== "object") continue;
-      let id = (row as SidebarTab).id;
-      if (id === "hobie") id = "board";
+      const idRaw = (row as { id?: unknown }).id;
+      if (typeof idRaw !== "string") continue;
+      const id = (idRaw === "hobie" ? "board" : idRaw) as SidebarTabId;
       if (!DEFAULT_BY_ID.has(id)) continue;
       const base = byId.get(id)!;
       const label = typeof (row as SidebarTab).label === "string" ? (row as SidebarTab).label.trim() : base.label;
@@ -79,8 +80,9 @@ export function applySidebarTabsPatch(current: SidebarTab[], patch: unknown): Si
   const byId = new Map(current.map((t) => [t.id, { ...t }]));
   for (const row of patch) {
     if (!row || typeof row !== "object") continue;
-    let id = (row as SidebarTab).id;
-    if (id === "hobie") id = "board";
+    const idRaw = (row as { id?: unknown }).id;
+    if (typeof idRaw !== "string") continue;
+    const id = (idRaw === "hobie" ? "board" : idRaw) as SidebarTabId;
     if (!DEFAULT_BY_ID.has(id)) continue;
     const cur = byId.get(id)!;
     if (typeof (row as SidebarTab).label === "string") {
