@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { initSchema } from "../feeds/schema";
-import type { HobieQueueStore } from "../stores/hobie-queue";
+import type { HobieQueueStore, HobieTask } from "../stores/hobie-queue";
 import type { WinsStore } from "../wins/store";
 import {
   BOARD_COLUMNS,
@@ -131,6 +131,7 @@ export class BoardStore {
         opts.maxHobiePending ?? 20,
       );
       hobieTaskId = task.id;
+      this.db.prepare(`UPDATE cards SET hobie_task_id = ?, updated_at = ? WHERE id = ?`).run(hobieTaskId, now, id);
     }
 
     const position = opts.position ?? this.nextPosition(toColumn, id);
@@ -147,14 +148,28 @@ export class BoardStore {
     return this.get(id);
   }
 
-  async onHobieClaimed(taskId: string): Promise<BoardCard | undefined> {
-    const card = this.byHobieTaskId(taskId);
+  resolveCardForTask(task: HobieTask): BoardCard | undefined {
+    const linked = this.byHobieTaskId(task.id);
+    if (linked) return linked;
+    const row = this.db
+      .prepare(
+        `SELECT * FROM cards WHERE column = ? AND (hobie_task_id IS NULL OR hobie_task_id = '') AND title = ? LIMIT 1`,
+      )
+      .get(READY_FOR_HOBIE, task.title) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    const at = new Date().toISOString();
+    this.db.prepare(`UPDATE cards SET hobie_task_id = ?, updated_at = ? WHERE id = ?`).run(task.id, at, row.id);
+    return this.get(String(row.id));
+  }
+
+  async onHobieClaimed(task: HobieTask): Promise<BoardCard | undefined> {
+    const card = this.resolveCardForTask(task);
     if (!card || card.column === WAITING || card.column === DONE) return card;
     return this.move(card.id, WAITING);
   }
 
-  async onHobieDone(taskId: string, wins: WinsStore): Promise<BoardCard | undefined> {
-    const card = this.byHobieTaskId(taskId);
+  async onHobieDone(task: HobieTask, wins: WinsStore): Promise<BoardCard | undefined> {
+    const card = this.resolveCardForTask(task);
     if (!card) return undefined;
     if (card.column === DONE) return card;
     return this.move(card.id, DONE, { wins });

@@ -61,6 +61,7 @@ const SETTINGS_SHOTS: Shot[] = [
     marker: "Board",
     prepare: async (page) => {
       await page.waitForSelector(".board-col-list .board-card", { timeout: 15_000 });
+      await page.waitForSelector('[data-column="Ready for Hobie"] .board-card', { timeout: 15_000 });
     },
   },
   {

@@ -112,6 +112,28 @@ test("daily briefing board sections on seeded DB", async () => {
   }
 });
 
+test("board: claim reconciles Ready card before hobie_task_id is persisted", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-board-race-"));
+  try {
+    const hobie = await HobieQueueStore.open(dir);
+    const board = BoardStore.open(dir);
+    const wins = WinsStore.open(dir);
+    wireHobieBoardSync(hobie, board, wins);
+
+    const card = board.create({ title: "Race reconcile", column: "Ready for Hobie" });
+    const task = await hobie.enqueue({ clientId: "board", title: "Race reconcile", body: "", urgent: false }, 20);
+    assert.equal(board.get(card.id)?.hobieTaskId, null);
+
+    await hobie.claim(task.id);
+    await new Promise((r) => setTimeout(r, 30));
+    const after = board.get(card.id)!;
+    assert.equal(after.hobieTaskId, task.id);
+    assert.equal(after.column, WAITING);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("schema upgrade: cards and wins tables on legacy rss DB", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-schema-board-"));
   try {

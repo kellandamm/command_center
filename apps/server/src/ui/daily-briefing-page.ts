@@ -140,6 +140,9 @@ function renderBoardWins(s){renderBoardSection("db-board-wins-status","db-board-
   return '<ul>'+rows.map(function(w){return '<li>'+esc(w.title)+'</li>'}).join("")+'</ul>';
 })}
 function renderGithub(s){
+  var section=document.getElementById("db-github");
+  if(s.status==="not_configured"){section.hidden=true;return;}
+  section.hidden=false;
   pill(document.getElementById("db-github-status"),s.status);
   var body=document.getElementById("db-github-body");
   if(s.status==="error"){body.innerHTML='<p class="bad">'+esc(s.message||"Error")+'</p>';return}

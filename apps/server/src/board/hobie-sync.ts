@@ -5,8 +5,8 @@ import type { WinsStore } from "../wins/store";
 export function wireHobieBoardSync(hobie: HobieQueueStore, board: BoardStore, wins: WinsStore): void {
   hobie.onMutate((ev) => {
     void (async () => {
-      if (ev.type === "claim") await board.onHobieClaimed(ev.task.id);
-      if (ev.type === "done") await board.onHobieDone(ev.task.id, wins);
+      if (ev.type === "claim") await board.onHobieClaimed(ev.task);
+      if (ev.type === "done") await board.onHobieDone(ev.task, wins);
     })();
   });
 }

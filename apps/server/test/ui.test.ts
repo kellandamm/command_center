@@ -100,7 +100,7 @@ test("ui: settings page has schedule and tabs sections", () => {
 
 test("ui: full sidebar pages render", () => {
   assert.match(boardPage(), /href="\/board" class="on"/);
-  assert.match(winsPage(), /<h1>Wins<\/h1>/);
+  assert.match(winsPage(), /href="\/wins" class="on"/);
   assert.match(notesPage(), /id="notes-editor-full"/);
   assert.match(calendarPage(), /id="cal-week-grid"/);
   assert.match(activityPage(), /id="activity-full-list"/);

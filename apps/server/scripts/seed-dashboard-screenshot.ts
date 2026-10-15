@@ -60,6 +60,8 @@ async function main() {
 
   const board = BoardStore.open(dir);
   board.create({ title: "Polish board drag UX", notes: "Keyboard path + focus rings", column: "Backlog" });
+  const handoff = board.create({ title: "Hand off to Hobie agent", notes: "Linked Hobie task for screenshots", column: "Backlog" });
+  await board.move(handoff.id, "Ready for Hobie", { hobieQueue: hobie, maxHobiePending: 20 });
   board.create({ title: "Weekly wins rollup", column: "Waiting" });
   board.create({ title: "Waiting on vendor SSO fix", column: "Blocked on me" });
   board.create({ title: "Ship screenshot seeds", column: "Done" });
@@ -129,7 +131,7 @@ async function main() {
         },
       },
       calendar: { status: "empty", message: "No events" },
-      github: { status: "empty", message: "Not configured" },
+      github: { status: "not_configured" },
       board: {
         status: "ok",
         data: {
