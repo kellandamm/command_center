@@ -12,7 +12,7 @@ import { BriefingService } from "../src/briefing/service";
 import { DailyBriefingService } from "../src/daily-briefing/service";
 import { loadConfig } from "../src/config";
 import { makeAuthenticator } from "../src/auth";
-import { FeedsStore } from "../src/feeds/store";
+import { FeedsStore, itemId } from "../src/feeds/store";
 import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
@@ -55,6 +55,8 @@ test("news API: prefs persist under data dir", async () => {
   const settings = new SettingsStore(dir);
   await settings.load();
   const feeds = await FeedsStore.open(dir);
+  const entryId = itemId("hn", "https://example.com/security-story", "Critical CVE disclosure");
+  feeds.ingest("hn", [{ title: "Critical CVE disclosure", link: "https://example.com/security-story" }]);
   const newsPrefs = await NewsPrefsStore.open(dir);
   const briefing = await BriefingService.open(dir, cfg.tz);
   const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
@@ -70,6 +72,39 @@ test("news API: prefs persist under data dir", async () => {
     assert.equal(get.status, 200);
     const body: any = await get.json();
     assert.ok(Array.isArray(body.tags));
+    const jsonHeaders = { ...authz, "content-type": "application/json" };
+    const star = await fetch(`${base}/api/rss/star`, {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({ id: entryId, starred: true }),
+    });
+    assert.equal(star.status, 200);
+    const saved = await fetch(`${base}/api/news?starred=1`, { headers: authz });
+    assert.deepEqual((await saved.json() as any).items.map((item: any) => item.id), [entryId]);
+    const markRead = await fetch(`${base}/api/rss/read`, {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({ ids: [entryId], read: true }),
+    });
+    assert.equal(markRead.status, 200);
+    const savedUnread = await fetch(`${base}/api/news?starred=1&unread=1`, { headers: authz });
+    assert.deepEqual((await savedUnread.json() as any).items, []);
+    const markUnread = await fetch(`${base}/api/rss/read`, {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({ ids: [entryId], read: false }),
+    });
+    assert.equal(markUnread.status, 200);
+    const savedUnreadAgain = await fetch(`${base}/api/news?starred=1&unread=1`, { headers: authz });
+    assert.deepEqual((await savedUnreadAgain.json() as any).items.map((item: any) => item.id), [entryId]);
+    const unstar = await fetch(`${base}/api/rss/star`, {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({ id: entryId, starred: false }),
+    });
+    assert.equal(unstar.status, 200);
+    const savedAgain = await fetch(`${base}/api/news?starred=1`, { headers: authz });
+    assert.deepEqual((await savedAgain.json() as any).items, []);
     const put = await fetch(`${base}/api/news/prefs`, {
       method: "PUT",
       headers: authz,

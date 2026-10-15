@@ -49,7 +49,8 @@ export async function handleNewsRoutes(
     const feedId = url.searchParams.get("feed") ?? undefined;
     const folderId = url.searchParams.get("folder") ?? undefined;
     const unreadOnly = url.searchParams.get("unread") === "1";
-    const items = feeds.list({ limit: 300, q, feedId, folderId, unreadOnly }).map((it) => ({ ...it, tags: tagsForItem(it) }));
+    const starred = url.searchParams.get("starred") === "1";
+    const items = feeds.list({ limit: 300, q, feedId, folderId, unreadOnly, starred }).map((it) => ({ ...it, tags: tagsForItem(it) }));
     const p = prefs.get();
     const filtered = filterTaggedItems(items, p).slice(0, limit);
     json(res, 200, { tags: TOPIC_TAGS, prefs: p, items: filtered, total: items.length });

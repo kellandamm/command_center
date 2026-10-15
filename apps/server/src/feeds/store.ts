@@ -662,8 +662,24 @@ export class FeedsStore {
     return n;
   }
 
-  markAllRead(scope?: { feedId?: string; folderId?: string }): number {
+  markUnread(ids: string[]): number {
+    let n = 0;
+    const stmt = this.db.prepare(`UPDATE entries SET read_at = NULL WHERE id = ? AND read_at IS NOT NULL`);
+    for (const id of ids) {
+      const r = stmt.run(id);
+      n += Number(r.changes);
+    }
+    this.dirty = true;
+    return n;
+  }
+
+  markAllRead(scope?: { feedId?: string; folderId?: string; starred?: boolean }): number {
     const now = new Date().toISOString();
+    if (scope?.starred) {
+      const r = this.db.prepare(`UPDATE entries SET read_at = ? WHERE starred = 1 AND read_at IS NULL`).run(now);
+      this.dirty = true;
+      return Number(r.changes);
+    }
     if (scope?.feedId) {
       const r = this.db.prepare(`UPDATE entries SET read_at = ? WHERE feed_id = ? AND read_at IS NULL`).run(now, scope.feedId);
       this.dirty = true;

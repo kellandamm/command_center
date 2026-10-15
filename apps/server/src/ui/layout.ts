@@ -145,6 +145,8 @@ textarea{font-family:ui-monospace,Menlo,monospace;font-size:.8125rem;min-height:
 .rss-row .rss-title{font-size:.8125rem;line-height:1.35;margin:0}
 .rss-row .snippet{font-size:.75rem;color:var(--muted-foreground);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;grid-column:2/4}
 .rss-row .age{font-size:.7rem;color:var(--muted-foreground);white-space:nowrap}
+.rss-item-actions{display:flex;gap:.35rem;grid-column:1/-1;align-items:center}
+.rss-item-action{font-size:.7rem;padding:.15rem .4rem;min-height:1.5rem}
 .rss-row.card-view{grid-template-columns:5rem 1fr;grid-template-rows:auto auto auto;padding:.75rem}
 .rss-row.card-view .snippet{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .rss-row .thumb{width:4.5rem;height:2.5rem;object-fit:cover;border-radius:4px;background:var(--muted)}
