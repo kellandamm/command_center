@@ -296,8 +296,10 @@ test("knowledge APIs support notes, spaces, captured sources, graph, import, and
       assert.equal(largeNote.status, 201);
       const boundedAnswer = await write("/api/knowledge/ask", { spaceId: space.id, question: "Summarize the sources." });
       assert.equal(boundedAnswer.status, 200);
+      const boundedAnswerData = await boundedAnswer.json();
       const sourceSection = JSON.parse(sentPrompt).messages[1].content.split("\n\nSources:\n")[1];
       assert.ok(sourceSection.length <= 24_000);
+      assert.deepEqual(boundedAnswerData.citations.map((citation: { title: string }) => citation.title), ["Renamed", "Second", "Large source"]);
     } finally {
       globalThis.fetch = originalFetch;
     }
