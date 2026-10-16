@@ -113,12 +113,13 @@ and accepts JSON either as an array of hits or as `{ results | items | memories 
 - `news-prefs.json` — tagged news view: muted topics and focus chips
 - `briefing.json` — latest briefing and short history
 - `state.json` — scheduler timestamps
-- `notes.md` — dashboard **Notes** panel (plain markdown)
+- `knowledge.json` — individual Markdown notes, captured links, tags, and personal spaces
+- `notes.md` — legacy plain-Markdown Notes file; its contents are copied into the knowledge store on first startup and the original file is kept as a backup
 - `panel-updates.json` — **Activity** panel (agent updates via MCP/webhook)
 - `hobie-queue.json` — **Hobie queue** (tasks for the owner assistant)
 - `ai-security/` — weekly AI Security roundups (`YYYY-MM-DD.json`, keyed by `weekOf`)
 
-Back up the volume to keep feeds, read state, and briefings.
+Back up the volume to keep feeds, read state, briefings, and personal knowledge. The Notes page can export an ordinary Markdown bundle or a complete JSON backup; JSON imports merge records without overwriting existing entries.
 
 ## Security
 

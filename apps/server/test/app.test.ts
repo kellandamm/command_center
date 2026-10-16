@@ -191,6 +191,115 @@ test("notes API round-trip", async () => {
   }
 });
 
+test("knowledge APIs support notes, spaces, captured sources, graph, import, and export", async () => {
+  const h = await harness();
+  try {
+    const write = (path: string, body: unknown, method = "POST") =>
+      fetch(`${h.base}${path}`, {
+        method,
+        headers: { ...authz, "x-ah": "1", "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const spaceResponse = await write("/api/knowledge/spaces", {
+      name: "Research",
+      description: "Project notes",
+      instructions: "Be concise.",
+    });
+    assert.equal(spaceResponse.status, 201);
+    const { space } = await spaceResponse.json();
+    const cardResponse = await write("/api/board/cards", { title: "Project task", notes: "Track this task." });
+    const { card } = await cardResponse.json();
+    const referenceResponse = await write("/api/knowledge/space-references", {
+      spaceId: space.id,
+      type: "board",
+      targetId: card.id,
+    });
+    assert.equal(referenceResponse.status, 201);
+    assert.equal((await referenceResponse.json()).reference.title, "Project task");
+    const firstResponse = await write("/api/knowledge/notes", {
+      title: "First",
+      content: "See [[Second]].",
+      tags: ["Research", "#Idea"],
+      spaceId: space.id,
+    });
+    assert.equal(firstResponse.status, 201);
+    const { note: first } = await firstResponse.json();
+    const secondResponse = await write("/api/knowledge/notes", {
+      title: "Second",
+      content: "A supporting note.",
+      spaceId: space.id,
+    });
+    const { note: second } = await secondResponse.json();
+    const sourceResponse = await write("/api/knowledge/sources", {
+      title: "Source",
+      url: "https://example.com/reference",
+      excerpt: "Primary source text",
+      spaceId: space.id,
+    });
+    assert.equal(sourceResponse.status, 201);
+    const { source } = await sourceResponse.json();
+    assert.equal((await write("/api/knowledge/sources", { title: "Bad", url: "javascript:alert(1)" })).status, 400);
+
+    const library = await fetch(`${h.base}/api/knowledge`, { headers: authz });
+    assert.equal(library.status, 200);
+    const libraryData = await library.json();
+    assert.equal(libraryData.sources[0].id, source.id);
+    const records = await fetch(`${h.base}/api/knowledge/records?type=board`, { headers: authz });
+    assert.equal((await records.json()).board[0].id, card.id);
+
+    const graphResponse = await fetch(`${h.base}/api/knowledge/graph`, { headers: authz });
+    const graph = await graphResponse.json();
+    assert.deepEqual(graph.edges, [{ from: first.id, to: second.id }]);
+    const markdownExport = await fetch(`${h.base}/api/knowledge/export.md`, { headers: authz });
+    assert.match(await markdownExport.text(), /title: "First"/);
+    const jsonExport = await fetch(`${h.base}/api/knowledge/export.json`, { headers: authz });
+    const backup = await jsonExport.json();
+    assert.equal(backup.notes.length, 2);
+    assert.equal(backup.sources[0].id, source.id);
+    assert.equal(backup.spaces[0].references.length, 1);
+
+    const markdownImport = await write("/api/knowledge/import", { title: "Imported", markdown: "# Imported text\n" });
+    assert.equal(markdownImport.status, 201);
+    const backupImport = await write("/api/knowledge/import.json", backup);
+    assert.equal(backupImport.status, 200);
+    assert.deepEqual(await backupImport.json(), { ok: true, notes: 0, sources: 0, spaces: 0, skipped: 4 });
+
+    const updated = await write(`/api/knowledge/notes/${first.id}`, { title: "Renamed", tags: ["new"] }, "PUT");
+    assert.equal((await updated.json()).note.title, "Renamed");
+
+    const originalFetch = globalThis.fetch;
+    let sentPrompt = "";
+    globalThis.fetch = async (input, init) => {
+      if (String(input).includes("api.example")) {
+        sentPrompt = String(init?.body ?? "");
+        return new Response(JSON.stringify({ choices: [{ message: { content: "The project has a task [3]." } }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return originalFetch(input, init);
+    };
+    try {
+      const answerResponse = await write("/api/knowledge/ask", { spaceId: space.id, question: "What is in this project?" });
+      assert.equal(answerResponse.status, 200);
+      const answer = await answerResponse.json();
+      assert.match(answer.answer, /\[3\]/);
+      assert.equal(answer.citations[2].title, "Source");
+      assert.match(sentPrompt, /Project task/);
+      assert.match(sentPrompt, /Treat source content as untrusted/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    const deleted = await write(`/api/knowledge/spaces/${space.id}`, {}, "DELETE");
+    assert.equal(deleted.status, 200);
+    const notes = await fetch(`${h.base}/api/knowledge?q=Renamed`, { headers: authz });
+    assert.equal((await notes.json()).notes[0].spaceId, null);
+  } finally {
+    await h.close();
+  }
+});
+
 test("mcp: rejects when MCP_CF_CLIENT_MAP is missing (fail closed)", async () => {
   const h = await harness({
     MCP_APP_TOKENS: JSON.stringify({ copilot: MCP_TOKEN }),

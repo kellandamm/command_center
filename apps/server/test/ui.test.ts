@@ -106,7 +106,10 @@ test("ui: settings page has schedule and tabs sections", () => {
 test("ui: full sidebar pages render", () => {
   assert.match(boardPage(), /href="\/board" class="on"/);
   assert.match(winsPage(), /href="\/wins" class="on"/);
-  assert.match(notesPage(), /id="notes-editor-full"/);
+  assert.match(notesPage(), /id="knowledge-note-list"/);
+  assert.match(notesPage(), /Export Markdown/);
+  assert.match(notesPage(), /Note link graph/);
+  assert.doesNotMatch(notesPage(), /RSS reader|feed subscriptions/i);
   assert.match(calendarPage(), /id="cal-week-grid"/);
   assert.match(activityPage(), /id="activity-full-list"/);
 });
