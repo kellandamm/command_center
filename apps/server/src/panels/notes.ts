@@ -235,11 +235,19 @@ export const notesPanel: PanelModule = {
       questionTimes.push(Date.now());
       knowledgeQuestionTimes.set(ctx.notes, questionTimes);
       let remaining = 24_000;
-      const quotedSources = sources.map((item, index) => {
-        const content = item.content.slice(0, remaining);
-        remaining -= content.length;
-        return `[${index + 1}] ${item.title}${item.url ? ` (${item.url})` : ""}\n${content}`;
-      });
+      const includedSources: typeof sources = [];
+      const quotedSources: string[] = [];
+      for (const item of sources) {
+        const prefix = `[${includedSources.length + 1}] ${item.title}${item.url ? ` (${item.url})` : ""}\n`;
+        const separator = quotedSources.length ? "\n\n" : "";
+        const contentLength = remaining - separator.length - prefix.length;
+        if (contentLength < 0) break;
+        const quote = `${separator}${prefix}${item.content.slice(0, contentLength)}`;
+        quotedSources.push(quote);
+        includedSources.push(item);
+        remaining -= quote.length;
+        if (remaining === 0) break;
+      }
       const answer = await chatCompletion(llm, [
         {
           role: "system",
@@ -252,7 +260,7 @@ export const notesPanel: PanelModule = {
       ]);
       json(200, {
         answer,
-        citations: sources.map(({ id, title, url }, index) => ({ id, title, url, number: index + 1 })),
+        citations: includedSources.map(({ id, title, url }, index) => ({ id, title, url, number: index + 1 })),
       });
       return true;
     }

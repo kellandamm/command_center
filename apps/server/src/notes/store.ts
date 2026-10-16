@@ -83,6 +83,7 @@ function tags(value: unknown): string[] {
 function optionalUrl(value: unknown, field: string): string | null {
   if (value === undefined || value === null || value === "") return null;
   if (typeof value !== "string") throw new ValidationError(`${field} must be a URL`);
+  if (Buffer.byteLength(value, "utf8") > 2_048) throw new ValidationError(`${field} exceeds 2048 bytes`);
   let parsed: URL;
   try {
     parsed = new URL(value);

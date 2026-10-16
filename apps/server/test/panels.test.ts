@@ -92,6 +92,7 @@ test("knowledge store: spaces, captured links, search, references, and backup im
     assert.equal(store.getSpaceContent(space.id)?.notes.length, 2);
     assert.equal(store.getSpaceContent(space.id)?.space.references[0]?.title, "Board task");
     await assert.rejects(store.createSource({ title: "Bad URL", url: "javascript:alert(1)" }), /HTTP or HTTPS/);
+    await assert.rejects(store.createSource({ title: "Long URL", url: `https://example.com/${"x".repeat(2_048)}` }), /exceeds 2048 bytes/);
 
     const graphEdges = store.listNotes().flatMap((note) =>
       [...note.content.matchAll(/\[\[([^\]]+)\]\]/g)].map((match) => ({ from: note.id, title: match[1] })),
