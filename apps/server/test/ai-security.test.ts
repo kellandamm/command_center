@@ -16,7 +16,7 @@ import { FeedsStore } from "../src/feeds/store";
 import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
-import { openIntegrationStores } from "./helpers";
+import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
 const ADMIN = "a".repeat(32);
 const PUBLISH = "p".repeat(32);
@@ -122,7 +122,7 @@ test("ai security API: publish, list, and reject invalid payload", async () => {
     assert.deepEqual(listed.weeks, ["2026-10-06"]);
     assert.equal(listed.latest.weekOf, "2026-10-06");
   } finally {
-    server.close();
+    await closeIntegrationServer(server, feeds, integration);
     await rm(dir, { recursive: true, force: true });
   }
 });

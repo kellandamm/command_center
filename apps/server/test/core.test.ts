@@ -49,8 +49,8 @@ test("feeds: RSS, Atom and RDF parse; scripts in summaries are stripped", () => 
 
 test("feeds store: ingest, unread, mark read", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-"));
+  const store = await FeedsStore.open(dir);
   try {
-    const store = await FeedsStore.open(dir);
     const now = new Date("2026-10-13T12:00:00Z");
     assert.equal(store.ingest("hn", [{ title: "One", link: "https://x/1" }], now), 1);
     assert.equal(store.ingest("hn", [{ title: "One", link: "https://x/1" }], now), 0);
@@ -65,6 +65,7 @@ test("feeds store: ingest, unread, mark read", async () => {
     assert.equal(store.markAllRead({ starred: true }), 1);
     assert.equal(store.list({ starred: true, unreadOnly: true }).length, 0);
   } finally {
+    store.close();
     await rm(dir, { recursive: true, force: true });
   }
 });

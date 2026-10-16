@@ -17,10 +17,10 @@ import { FeedsStore } from "../src/feeds/store";
 
 test("board: move to Ready creates Hobie task; claim → Waiting; done → Done + one win", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-board-"));
+  const board = BoardStore.open(dir);
+  const wins = WinsStore.open(dir);
   try {
     const hobie = await HobieQueueStore.open(dir);
-    const board = BoardStore.open(dir);
-    const wins = WinsStore.open(dir);
     wireHobieBoardSync(hobie, board, wins);
     const cfg = loadConfig({ ADMIN_TOKEN: "t".repeat(32), ALLOW_INSECURE_NO_AUTH: "1", DATA_DIR: dir });
 
@@ -45,27 +45,30 @@ test("board: move to Ready creates Hobie task; claim → Waiting; done → Done 
     await board.move(card.id, DONE, { wins });
     assert.equal(wins.list().filter((w) => w.source === "card" && w.ref === card.id).length, 1);
   } finally {
+    board.close();
+    wins.close();
     await rm(dir, { recursive: true, force: true });
   }
 });
 
 test("wins: dedupe by source+ref", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-win-dedupe-"));
+  const wins = WinsStore.open(dir);
   try {
-    const wins = WinsStore.open(dir);
     const a = wins.add({ source: "manual", ref: "x", title: "First" });
     const b = wins.add({ source: "manual", ref: "x", title: "First" });
     assert.equal(a?.id, b?.id);
     assert.equal(wins.list().length, 1);
   } finally {
+    wins.close();
     await rm(dir, { recursive: true, force: true });
   }
 });
 
 test("github wins poll without token does not throw", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-gh-win-"));
+  const wins = WinsStore.open(dir);
   try {
-    const wins = WinsStore.open(dir);
     const n = await pollMergedPullRequestWins({
       username: "kellandamm",
       token: null,
@@ -75,17 +78,18 @@ test("github wins poll without token does not throw", async () => {
     assert.equal(n, 0);
     assert.equal(wins.list().length, 0);
   } finally {
+    wins.close();
     await rm(dir, { recursive: true, force: true });
   }
 });
 
 test("daily briefing board sections on seeded DB", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-db-brief-"));
+  const board = BoardStore.open(dir);
+  const wins = WinsStore.open(dir);
+  const feeds = await FeedsStore.open(dir);
   try {
     const hobie = await HobieQueueStore.open(dir);
-    const board = BoardStore.open(dir);
-    const wins = WinsStore.open(dir);
-    const feeds = await FeedsStore.open(dir);
     const cfg = loadConfig({ ADMIN_TOKEN: "t".repeat(32), ALLOW_INSECURE_NO_AUTH: "1", DATA_DIR: dir, TZ: "UTC" });
     const daily = await DailyBriefingService.open(dir, cfg.tz);
 
@@ -108,16 +112,19 @@ test("daily briefing board sections on seeded DB", async () => {
     assert.ok(rec.sources.board.data!.moved.length >= 1);
     assert.ok(rec.sources.board.data!.wins.some((w) => w.title === "Yesterday win"));
   } finally {
+    feeds.close();
+    board.close();
+    wins.close();
     await rm(dir, { recursive: true, force: true });
   }
 });
 
 test("board: claim reconciles Ready card before hobie_task_id is persisted", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-board-race-"));
+  const board = BoardStore.open(dir);
+  const wins = WinsStore.open(dir);
   try {
     const hobie = await HobieQueueStore.open(dir);
-    const board = BoardStore.open(dir);
-    const wins = WinsStore.open(dir);
     wireHobieBoardSync(hobie, board, wins);
 
     const card = board.create({ title: "Race reconcile", column: "Ready for Hobie" });
@@ -130,12 +137,15 @@ test("board: claim reconciles Ready card before hobie_task_id is persisted", asy
     assert.equal(after.hobieTaskId, task.id);
     assert.equal(after.column, WAITING);
   } finally {
+    board.close();
+    wins.close();
     await rm(dir, { recursive: true, force: true });
   }
 });
 
 test("schema upgrade: cards and wins tables on legacy rss DB", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-schema-board-"));
+  let board: BoardStore | undefined;
   try {
     const dbPath = join(dir, "rss.sqlite");
     const db = new DatabaseSync(dbPath);
@@ -143,7 +153,7 @@ test("schema upgrade: cards and wins tables on legacy rss DB", async () => {
     initSchema(db);
     db.close();
 
-    const board = BoardStore.open(dir);
+    board = BoardStore.open(dir);
     board.create({ title: "legacy ok" });
     assert.equal(board.list().length, 1);
 
@@ -155,6 +165,7 @@ test("schema upgrade: cards and wins tables on legacy rss DB", async () => {
     initSchema(db2);
     db2.close();
   } finally {
+    board?.close();
     await rm(dir, { recursive: true, force: true });
   }
 });

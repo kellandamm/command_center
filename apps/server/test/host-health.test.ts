@@ -16,7 +16,7 @@ import { FeedsStore } from "../src/feeds/store";
 import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
-import { openIntegrationStores } from "./helpers";
+import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
 const TOKEN = "t".repeat(32);
 
@@ -65,7 +65,7 @@ test("http: host-health API returns host metrics and disabled docker without soc
     assert.equal(j.docker.available, false);
     assert.match(j.docker.reason, /DOCKER_SOCKET/);
   } finally {
-    server.close();
+    await closeIntegrationServer(server, feeds, integration);
     await rm(dir, { recursive: true, force: true });
   }
 });

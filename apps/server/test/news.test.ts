@@ -16,7 +16,7 @@ import { FeedsStore, itemId } from "../src/feeds/store";
 import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
-import { openIntegrationStores } from "./helpers";
+import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
 const TOKEN = "n".repeat(32);
 
@@ -116,7 +116,7 @@ test("news API: prefs persist under data dir", async () => {
     const stored = await NewsPrefsStore.open(dir);
     assert.deepEqual(stored.get().mutedTags, ["business"]);
   } finally {
-    server.close();
+    await closeIntegrationServer(server, feeds, integration);
     await rm(dir, { recursive: true, force: true });
   }
 });

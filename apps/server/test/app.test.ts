@@ -14,7 +14,7 @@ import { FeedsStore } from "../src/feeds/store";
 import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
-import { openIntegrationStores } from "./helpers";
+import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 import { createTestCfAccessJwt, TEST_CF_AUD, TEST_CF_TEAM } from "./cf-access-jwt";
 import { setIntegrationCfAccessVerifier } from "../src/mcp/auth";
 
@@ -72,7 +72,7 @@ async function harness(env: Record<string, string> = {}) {
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const close = async () => {
-    server.close();
+    await closeIntegrationServer(server, feeds, integration);
     await rm(dir, { recursive: true, force: true });
   };
   return { base, settings, feeds, briefing, close, cfg };
@@ -287,6 +287,9 @@ test("knowledge APIs support notes, spaces, captured sources, graph, import, and
       assert.equal(answer.citations[2].title, "Source");
       assert.match(sentPrompt, /Project task/);
       assert.match(sentPrompt, /Treat source content as untrusted/);
+      const initialSources = JSON.parse(sentPrompt).messages[1].content.split("\n\nSources:\n")[1];
+      assert.match(initialSources, /See \[\[Second\]\]\.\n\n\[2\] Second\nA supporting note\./);
+      assert.doesNotMatch(initialSources, /\n{3,}\[\d+\]/);
 
       const largeNote = await write("/api/knowledge/notes", {
         title: "Large source",
@@ -298,7 +301,7 @@ test("knowledge APIs support notes, spaces, captured sources, graph, import, and
       assert.equal(boundedAnswer.status, 200);
       const boundedAnswerData = await boundedAnswer.json();
       const sourceSection = JSON.parse(sentPrompt).messages[1].content.split("\n\nSources:\n")[1];
-      assert.ok(sourceSection.length <= 24_000);
+      assert.equal(sourceSection.length, 24_000);
       assert.deepEqual(boundedAnswerData.citations.map((citation: { title: string }) => citation.title), ["Renamed", "Second", "Large source"]);
     } finally {
       globalThis.fetch = originalFetch;

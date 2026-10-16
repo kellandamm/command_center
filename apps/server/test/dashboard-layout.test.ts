@@ -19,7 +19,7 @@ import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { panels } from "../src/panels/registry";
 import { SettingsStore } from "../src/settings";
-import { openIntegrationStores } from "./helpers";
+import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
 const TOKEN = "d".repeat(32);
 const PANEL_IDS = panels.map((p) => p.id);
@@ -148,7 +148,7 @@ test("dashboard layout API persists under data dir", async () => {
     const body: any = await reset.json();
     assert.deepEqual(body.layout.panels.map((p: { id: string }) => p.id), PANEL_IDS);
   } finally {
-    server.close();
+    await closeIntegrationServer(server, feeds, integration);
     await rm(dir, { recursive: true, force: true });
   }
 });

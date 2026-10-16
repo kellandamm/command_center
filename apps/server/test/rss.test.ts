@@ -12,13 +12,13 @@ import type { FeedRow } from "../src/feeds/store";
 
 test("rss: OPML import/export round-trip keeps folders and feed urls", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-rss-opml-"));
+  const store = await FeedsStore.open(dir);
   try {
     const xml = await readFile(join(import.meta.dirname, "fixtures/inoreader.opml"), "utf8");
     const parsed = parseOpml(xml);
     const folderNames = parsed.folders.map((f) => f.name);
     assert.ok(folderNames.includes("3d Printing"));
     assert.ok(folderNames.includes("Youtube AI"));
-    const store = await FeedsStore.open(dir);
     const stats = store.importOpml(xml, { replace: true });
     assert.ok(stats.feeds >= 200);
     assert.ok(stats.folders >= 10);
@@ -43,14 +43,15 @@ test("rss: OPML import/export round-trip keeps folders and feed urls", async () 
     assert.equal(importUrls.size, exportUrls.size);
     for (const u of importUrls) assert.ok(exportUrls.has(u), u);
   } finally {
+    store.close();
     await rm(dir, { recursive: true, force: true });
   }
 });
 
 test("rss: conditional GET 304 does not ingest items", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-rss-304-"));
+  const store = await FeedsStore.open(dir);
   try {
-    const store = await FeedsStore.open(dir);
     store.upsertFeedRow({
       id: "feed1",
       title: "Example",
@@ -75,14 +76,15 @@ test("rss: conditional GET 304 does not ingest items", async () => {
     store.recordFetchSuccess(row.id, new Date(), { notModified: true, etag: "abc" });
     assert.equal(store.list().length, 0);
   } finally {
+    store.close();
     await rm(dir, { recursive: true, force: true });
   }
 });
 
 test("rss: retention prunes excess per-feed and old unread", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-rss-ret-"));
+  const store = await FeedsStore.open(dir);
   try {
-    const store = await FeedsStore.open(dir);
     store.upsertFeedRow({ id: "f1", title: "F", xmlUrl: "https://example.com/a.xml", nextPollAt: new Date().toISOString() });
     const now = new Date("2026-10-13T12:00:00Z");
     for (let i = 0; i < RETENTION.perFeed + 20; i++) {
@@ -98,12 +100,14 @@ test("rss: retention prunes excess per-feed and old unread", async () => {
     store.runRetention(new Date("2026-12-01T12:00:00Z"));
     assert.ok(store.list({ limit: 500 }).length <= RETENTION.perFeed);
   } finally {
+    store.close();
     await rm(dir, { recursive: true, force: true });
   }
 });
 
 test("rss: nested OPML folders use path ids and sum unread in tree", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-rss-nested-"));
+  const store = await FeedsStore.open(dir);
   try {
     const nested = `<?xml version="1.0"?><opml><body>
       <outline text="Parent" title="Parent">
@@ -113,7 +117,6 @@ test("rss: nested OPML folders use path ids and sum unread in tree", async () =>
         <outline type="rss" text="F2" xmlUrl="https://example.com/b.xml"/>
       </outline>
     </body></opml>`;
-    const store = await FeedsStore.open(dir);
     store.importOpml(nested, { replace: true });
     const parentId = folderIdFromPath(["Parent"]);
     const childId = folderIdFromPath(["Parent", "Child"]);
@@ -138,12 +141,14 @@ test("rss: nested OPML folders use path ids and sum unread in tree", async () =>
     assert.equal(tree2.folders.length, 1);
     assert.equal(tree2.folders[0]!.folders.length, 1);
   } finally {
+    store.close();
     await rm(dir, { recursive: true, force: true });
   }
 });
 
 test("rss: legacy feeds.json migrates into sqlite", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-rss-mig-"));
+  let store: FeedsStore | undefined;
   try {
     const id = itemId("https://theverge.com/rss", "https://theverge.com/a", "Story");
     await writeFile(
@@ -164,11 +169,12 @@ test("rss: legacy feeds.json migrates into sqlite", async () => {
       }),
       "utf8",
     );
-    const store = await FeedsStore.open(dir);
+    store = await FeedsStore.open(dir);
     assert.equal(store.list().length, 1);
     assert.equal(store.list()[0]!.title, "Story");
     assert.ok(store.feedCount() >= 1);
   } finally {
+    store?.close();
     await rm(dir, { recursive: true, force: true });
   }
 });

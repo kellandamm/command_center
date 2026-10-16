@@ -40,8 +40,8 @@ test("settings: legacy feeds field migrates out of persisted settings", async ()
 
 test("feed scope: folder mode limits feed ids", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-feed-scope-"));
+  const store = await FeedsStore.open(dir);
   try {
-    const store = await FeedsStore.open(dir);
     const parent = store.createFolder("News").id;
     const child = store.createFolder("Tech", parent).id;
     store.upsertFeedRow({ id: "f1", title: "A", xmlUrl: "https://a.example/rss", folderId: parent, nextPollAt: new Date().toISOString() }, { setFolder: true });
@@ -55,6 +55,7 @@ test("feed scope: folder mode limits feed ids", async () => {
     assert.equal(store.list({ feedIds: ids }).length, 1);
     assert.equal(folderIdsForScope(store, scope).includes(child), true);
   } finally {
+    store.close();
     await rm(dir, { recursive: true, force: true });
   }
 });

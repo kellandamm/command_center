@@ -255,7 +255,7 @@ export const notesPanel: PanelModule = {
         },
         {
           role: "user",
-          content: `Space guidance: ${context.space.instructions || "None"}\n\nQuestion: ${body.question.trim().slice(0, 2_000)}\n\nSources:\n${quotedSources.join("\n\n")}`,
+          content: `Space guidance: ${context.space.instructions || "None"}\n\nQuestion: ${body.question.trim().slice(0, 2_000)}\n\nSources:\n${quotedSources.join("")}`,
         },
       ]);
       json(200, {
