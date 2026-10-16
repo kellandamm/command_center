@@ -21,7 +21,7 @@ import { FeedsStore } from "../src/feeds/store";
 import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
-import { openIntegrationStores } from "./helpers";
+import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
 const TOKEN = "t".repeat(32);
 
@@ -86,7 +86,7 @@ test("recallio: API route returns graceful JSON", async () => {
     assert.ok(j.error);
     assert.deepEqual(j.results, []);
   } finally {
-    server.close();
+    await closeIntegrationServer(server, feeds, integration);
     await rm(dir, { recursive: true, force: true });
   }
 });

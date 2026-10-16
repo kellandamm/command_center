@@ -23,6 +23,10 @@ export class WinsStore {
     return new WinsStore(db);
   }
 
+  close(): void {
+    this.db.close();
+  }
+
   list(limit = 500): Win[] {
     const rows = this.db
       .prepare(`SELECT * FROM wins ORDER BY at DESC LIMIT ?`)

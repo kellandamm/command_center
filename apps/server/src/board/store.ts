@@ -43,6 +43,10 @@ export class BoardStore {
     return new BoardStore(db);
   }
 
+  close(): void {
+    this.db.close();
+  }
+
   list(): BoardCard[] {
     const rows = this.db
       .prepare(`SELECT * FROM cards ORDER BY column, position, created_at`)

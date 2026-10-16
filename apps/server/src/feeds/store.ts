@@ -102,6 +102,10 @@ export class FeedsStore {
     return { feedTitle: row.title, folderId: row.folder_id, folderName: row.folder_name };
   }
 
+  close(): void {
+    this.db.close();
+  }
+
   async save(): Promise<void> {
     if (this.dirty) {
       // WAL mode persists on write; checkpoint for tests reading file copy.

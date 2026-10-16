@@ -104,9 +104,9 @@ const SETTINGS_SHOTS: Shot[] = [
   {
     out: "docs/screenshots/settings-tabs/notes-1280x800.png",
     path: "/notes",
-    marker: "Notes",
+    marker: "Knowledge",
     prepare: async (page) => {
-      await page.waitForSelector("#notes-editor-full", { timeout: 15_000 });
+      await page.waitForSelector("#knowledge-note-list", { timeout: 15_000 });
     },
   },
 ];

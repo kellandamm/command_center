@@ -14,7 +14,7 @@ import { FeedsStore } from "../src/feeds/store";
 import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
-import { openIntegrationStores } from "./helpers";
+import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 import { partitionTodayAndOverdue, type TodoistTask } from "../src/todoist/client";
 
 const TOKEN = "t".repeat(32);
@@ -62,7 +62,7 @@ test("todoist: dashboard API removed; MCP client helpers still work", async () =
     const r = await fetch(`${base}/api/todoist`, { headers: { authorization: `Bearer ${TOKEN}` } });
     assert.equal(r.status, 404);
   } finally {
-    server.close();
+    await closeIntegrationServer(server, feeds, integration);
     await rm(dir, { recursive: true, force: true });
   }
 });
