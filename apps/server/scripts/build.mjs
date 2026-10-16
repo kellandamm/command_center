@@ -1,11 +1,12 @@
 import { build } from "esbuild";
 import { mkdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 mkdirSync(new URL("../dist/", import.meta.url), { recursive: true });
 
 await build({
-  entryPoints: [new URL("../src/index.ts", import.meta.url).pathname],
-  outfile: new URL("../dist/server.mjs", import.meta.url).pathname,
+  entryPoints: [fileURLToPath(new URL("../src/index.ts", import.meta.url))],
+  outfile: fileURLToPath(new URL("../dist/server.mjs", import.meta.url)),
   bundle: true,
   platform: "node",
   format: "esm",
