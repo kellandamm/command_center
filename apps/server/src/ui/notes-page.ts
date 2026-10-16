@@ -129,10 +129,10 @@ export function notesPage(nav?: NavLink[]): string {
   function render(){
     var noteList=$("knowledge-note-list"),sourceList=$("knowledge-source-list");
     noteList.replaceChildren();sourceList.replaceChildren();
-    state.notes.filter(function(note){return (!state.spaceFilter||note.spaceId===state.spaceFilter)&&matchesQuery(note.title+"\n"+note.content+"\n"+(note.tags||[]).join(" "));}).forEach(function(note){
+    state.notes.filter(function(note){return (!state.spaceFilter||note.spaceId===state.spaceFilter)&&matchesQuery(note.title+"\\n"+note.content+"\\n"+(note.tags||[]).join(" "));}).forEach(function(note){
       addRow(noteList,note.title,(note.tags||[]).map(function(t){return "#"+t;}).join(" ")||note.updatedAt.slice(0,10),function(){selectNote(note.id);});
     });
-    state.sources.filter(function(source){return (!state.spaceFilter||source.spaceId===state.spaceFilter)&&matchesQuery(source.title+"\n"+source.url+"\n"+source.excerpt+"\n"+(source.tags||[]).join(" "));}).forEach(function(source){
+    state.sources.filter(function(source){return (!state.spaceFilter||source.spaceId===state.spaceFilter)&&matchesQuery(source.title+"\\n"+source.url+"\\n"+source.excerpt+"\\n"+(source.tags||[]).join(" "));}).forEach(function(source){
       var action=node("button","ghost","Remove");action.type="button";action.onclick=function(){
         if(!confirm("Remove this captured link?"))return;
         apiCall("/api/knowledge/sources/"+encodeURIComponent(source.id),"DELETE").then(load).catch(showError);
