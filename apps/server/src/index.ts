@@ -11,6 +11,7 @@ import { Scheduler } from "./scheduler";
 import { SummaryService } from "./feeds/summary-service";
 import { SettingsStore } from "./settings";
 import { NotesStore } from "./notes/store";
+import { BookmarksStore } from "./bookmarks/store";
 import { BoardStore } from "./board/store";
 import { wireHobieBoardSync } from "./board/hobie-sync";
 import { HobieQueueStore } from "./stores/hobie-queue";
@@ -38,6 +39,7 @@ async function main() {
   const aiSecurity = await AiSecurityService.open(cfg.dataDir);
   const dailyBriefing = await DailyBriefingService.open(cfg.dataDir, cfg.tz);
   const notes = await NotesStore.open(cfg.dataDir);
+  const bookmarks = await BookmarksStore.open(cfg.dataDir);
   const panelUpdates = await PanelUpdatesStore.open(cfg.dataDir);
   const hobieQueue = await HobieQueueStore.open(cfg.dataDir);
   const board = BoardStore.open(cfg.dataDir);
@@ -69,6 +71,7 @@ async function main() {
     dailyBriefing,
     newsPrefs,
     notes,
+    bookmarks,
     panelUpdates,
     hobieQueue,
     board,

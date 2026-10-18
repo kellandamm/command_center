@@ -191,6 +191,41 @@ test("notes API round-trip", async () => {
   }
 });
 
+test("bookmarks APIs support a separate authenticated launchpad and bounded imports", async () => {
+  const h = await harness();
+  try {
+    const write = (path: string, body: unknown, method = "POST") => fetch(`${h.base}/api/bookmarks/${path}`, {
+      method, headers: { ...authz, "x-ah": "1", "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+    assert.equal((await fetch(`${h.base}/bookmarks`)).status, 401);
+    assert.equal((await fetch(`${h.base}/api/bookmarks`)).status, 401);
+    assert.equal((await fetch(`${h.base}/api/bookmarks/groups`, { method: "POST", headers: authz })).status, 403);
+    const page = await fetch(`${h.base}/bookmarks`, { headers: authz });
+    assert.equal(page.status, 200);
+    assert.match(await page.text(), /id="bookmark-groups"/);
+    const groupResponse = await write("groups", { name: "Work" });
+    assert.equal(groupResponse.status, 201);
+    const { group } = await groupResponse.json();
+    const bookmarkResponse = await write("items", { groupId: group.id, title: "Example", url: "https://example.com" });
+    assert.equal(bookmarkResponse.status, 201);
+    const { bookmark } = await bookmarkResponse.json();
+    assert.equal((await write("items", { ...bookmark, title: "Edited" }, "PUT")).status, 200);
+    assert.equal((await write("items", { groupId: group.id, title: "Unsafe", url: "javascript:alert(1)" })).status, 400);
+    assert.equal((await write("preferences", { density: "compact", columns: 2 }, "PUT")).status, 200);
+    assert.equal((await write("groups", { id: group.id }, "DELETE")).status, 400);
+    const backup = await fetch(`${h.base}/api/bookmarks/export.json`, { headers: authz });
+    assert.match(backup.headers.get("content-disposition")!, /command-center-bookmarks.json/);
+    const data = await backup.json();
+    assert.equal(data.bookmarks[0].title, "Edited");
+    assert.deepEqual(await (await write("import", data)).json(), { added: 0, skipped: 1 });
+    assert.equal((await write("import", { groups: [], bookmarks: Array(5_001).fill({ groupId: group.id, title: "X", url: "https://example.com" }) })).status, 400);
+    assert.equal((await write("items", { id: bookmark.id }, "DELETE")).status, 200);
+    assert.equal((await write("groups", { id: group.id }, "DELETE")).status, 200);
+    const knowledge = await fetch(`${h.base}/api/knowledge`, { headers: authz });
+    assert.deepEqual((await knowledge.json()).sources, []);
+  } finally { await h.close(); }
+});
+
 test("knowledge preview validates input and renders safe Markdown without saving notes", async () => {
   const h = await harness();
   try {

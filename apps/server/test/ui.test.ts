@@ -10,6 +10,7 @@ import { calendarPage } from "../src/ui/calendar-page";
 import { boardPage } from "../src/ui/board-page";
 import { winsPage } from "../src/ui/wins-page";
 import { notesPage } from "../src/ui/notes-page";
+import { bookmarksPage } from "../src/ui/bookmarks-page";
 import { dashboardPage, settingsPage } from "../src/ui/pages";
 
 test("ui: dashboard shows concise status summaries with links to full pages", () => {
@@ -126,6 +127,19 @@ test("ui: Notes centers writing with preview, formatting, focus, and collapsed p
   }
   assert.match(html, /<details class="notes-properties">/);
   assert.match(html, /Changes save automatically/);
+  for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+    assert.doesNotThrow(() => new Script(match[1]!));
+  }
+});
+
+test("ui: Bookmarks is a separate grouped launchpad with search, import and layout controls", () => {
+  const html = bookmarksPage();
+  assert.match(html, /href="\/bookmarks" class="on"/);
+  for (const id of ["bookmark-groups", "bookmark-search", "bookmark-import", "bookmark-density", "bookmark-columns", "bookmark-dialog"]) {
+    assert.ok(html.includes(`id="${id}"`));
+  }
+  assert.match(html, /Download backup/);
+  assert.doesNotMatch(html, /favicon|google\.com\/s2/);
   for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
     assert.doesNotThrow(() => new Script(match[1]!));
   }

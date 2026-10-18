@@ -9,6 +9,7 @@ export type SidebarTabId =
   | "board"
   | "wins"
   | "notes"
+  | "bookmarks"
   | "calendar"
   | "activity"
   | "settings";
@@ -34,6 +35,7 @@ export const DEFAULT_SIDEBAR_TABS: SidebarTab[] = [
   { id: "board", href: "/board", label: "Board", visible: true, order: 50 },
   { id: "wins", href: "/wins", label: "Wins", visible: true, order: 55 },
   { id: "notes", href: "/notes", label: "Notes", visible: true, order: 60 },
+  { id: "bookmarks", href: "/bookmarks", label: "Bookmarks", visible: true, order: 65 },
   { id: "calendar", href: "/calendar", label: "Calendar", visible: true, order: 70 },
   { id: "activity", href: "/activity", label: "Activity", visible: true, order: 80 },
   { id: "settings", href: "/settings", label: "Settings", visible: true, order: 90, locked: true },

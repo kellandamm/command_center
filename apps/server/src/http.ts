@@ -10,6 +10,8 @@ import type { Authenticator } from "./auth";
 import { csrfOk, tokenEquals } from "./auth";
 import type { FeedsStore } from "./feeds/store";
 import type { NotesStore } from "./notes/store";
+import type { BookmarksStore } from "./bookmarks/store";
+import { bookmarksPage } from "./ui/bookmarks-page";
 import { handlePowerAutomateWebhook } from "./integrations/power-automate";
 import { handleHobieAgentRoutes } from "./mcp/hobie-routes";
 import { handleMcpRoute } from "./mcp/handler";
@@ -54,6 +56,7 @@ export interface App {
   dailyBriefing: DailyBriefingService;
   newsPrefs: NewsPrefsStore;
   notes: NotesStore;
+  bookmarks: BookmarksStore;
   panelUpdates: PanelUpdatesStore;
   hobieQueue: HobieQueueStore;
   board: BoardStore;
@@ -186,9 +189,37 @@ export function createApp(app: App): Server {
       if (get && path === "/board") return send(res, 200, boardPage(nav()), undefined, extra);
       if (get && path === "/wins") return send(res, 200, winsPage(nav()), undefined, extra);
       if (get && path === "/notes") return send(res, 200, notesPage(nav()), undefined, extra);
+      if (get && path === "/bookmarks") return send(res, 200, bookmarksPage(nav()), undefined, extra);
       if (get && path === "/calendar") return send(res, 200, calendarPage(nav()), undefined, extra);
       if (get && path === "/activity") return send(res, 200, activityPage(nav()), undefined, extra);
       if (get && path === "/settings") return send(res, 200, settingsPage(nav()), undefined, extra);
+
+      if (get && path === "/api/bookmarks") return json(res, 200, app.bookmarks.list());
+      if (get && path === "/api/bookmarks/export.json") {
+        return send(res, 200, JSON.stringify(app.bookmarks.list(), null, 2), "application/json", {
+          ...extra, "content-disposition": 'attachment; filename="command-center-bookmarks.json"',
+        });
+      }
+      if (path.startsWith("/api/bookmarks/")) {
+        if (!["POST", "PATCH", "DELETE", "PUT"].includes(method)) return json(res, 405, { error: "method not allowed" });
+        const body = await readBody(req, 5_000_000);
+        if (path === "/api/bookmarks/groups") {
+          if (method === "POST") return json(res, 201, { group: await app.bookmarks.createGroup(body) });
+          if (method === "PATCH") { await app.bookmarks.updateGroup(body); return json(res, 200, { ok: true }); }
+          if (method === "DELETE") { await app.bookmarks.deleteGroup(body); return json(res, 200, { ok: true }); }
+        }
+        if (path === "/api/bookmarks/items") {
+          if (method === "POST" || method === "PUT") return json(res, method === "POST" ? 201 : 200, { bookmark: await app.bookmarks.saveBookmark(body, method === "PUT") });
+          if (method === "DELETE") { await app.bookmarks.deleteBookmark(body); return json(res, 200, { ok: true }); }
+          if (method === "PATCH") { await app.bookmarks.moveBookmark(body); return json(res, 200, { ok: true }); }
+        }
+        if (path === "/api/bookmarks/preferences" && method === "PUT") {
+          await app.bookmarks.preferences(body);
+          return json(res, 200, { ok: true });
+        }
+        if (path === "/api/bookmarks/import" && method === "POST") return json(res, 200, await app.bookmarks.import(body));
+        return json(res, 404, { error: "bookmark route not found" });
+      }
 
       if (get && path === "/api/state") {
         return json(res, 200, {
