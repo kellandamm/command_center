@@ -144,3 +144,15 @@ test("ui: Bookmarks is a separate grouped launchpad with search, import and layo
     assert.doesNotThrow(() => new Script(match[1]!));
   }
 });
+
+test("ui: Calendar has mini-month, agenda, read-only details, and day/week/month views", () => {
+  const html = calendarPage();
+  for (const id of ["cal-mini", "cal-agenda", "cal-search", "cal-sources", "cal-event-dialog", "cal-today", "cal-refresh"]) {
+    assert.ok(html.includes(`id="${id}"`));
+  }
+  for (const mode of ["day", "week", "month"]) assert.ok(html.includes(`data-cal-view="${mode}"`));
+  assert.match(html, /Read-only ICS subscriptions/);
+  for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+    assert.doesNotThrow(() => new Script(match[1]!));
+  }
+});

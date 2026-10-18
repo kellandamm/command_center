@@ -134,6 +134,16 @@ The dedicated writing-workflow regression runs with `pnpm --filter @homepage/ser
 
 Questions in a personal space use the configured LLM and include up to 24,000 characters of source text, titles, URLs, and separators. Only sources included in that context are returned as citations. Each knowledge store allows up to 10 questions per hour.
 
+### Calendar workspace
+
+The read-only `/calendar` workspace is inspired by Fantastical's information layout: mini-month navigation, a period agenda, Day/Week/Month views, a Today shortcut, event search, and color-coded calendar filters. Choose an event to read its dates, location, description, and optional HTTP/HTTPS event link. Existing `ICS_URLS` and `ICS_LOCAL_FILES` subscriptions remain the data source; configure calendars on the server rather than inside the page. Calendar names use `X-WR-CALNAME` when supplied, with generic names as fallback.
+
+Dates and times use the server's `TZ` (shown above the calendar), including each event's `TZID` when supplied. All-day and overnight events span their occupied dates; all-day `DTEND` is exclusive. Week starts follow Settings' existing Monday/Sunday preference. Week/day timelines display overlapping events side by side; small screens scroll the timeline horizontally and keep an agenda above it. Calendar filters and the selected view are temporary page state.
+
+The page requests the displayed date range, including past dates, rather than the dashboard's default 12 upcoming events. `/api/calendar?start=YYYY-MM-DD&end=YYYY-MM-DD` accepts an exclusive end date, at most 62 days, and returns at most 2,000 events with an explicit truncation warning. The dashboard's existing horizon-based API remains compatible. Failed feeds and refresh failures are shown explicitly.
+
+This is not a Fantastical service integration: event creation/editing, account synchronization, scheduling, and natural-language entry are not included. The existing lightweight ICS parser reads explicit VEVENT occurrences; it does not expand RRULE recurrence rules. Use feeds that include individual occurrences when recurring instances are needed. Run `pnpm --filter @homepage/server test:calendar-browser` for the dedicated browser regression.
+
 ### Bookmarks launchpad
 
 The separate `/bookmarks` page is inspired by [Tinypad](https://www.tinypad.app/): grouped quick-access links, instant search, and a responsive grid. It does not change Dashboard or Notes' captured links. Create and rename groups, add/edit/remove links, move links between groups in the edit dialog, and reorder groups or links using their Manage menus. Only empty groups can be deleted.

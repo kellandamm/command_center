@@ -1,5 +1,6 @@
 import { fetchCalendarEvents } from "../calendar/service";
 import type { PanelModule } from "./types";
+import { ValidationError } from "../settings";
 
 export const calendarPanel: PanelModule = {
   id: "calendar",
@@ -18,9 +19,25 @@ export const calendarPanel: PanelModule = {
     };
     if (path === "/api/calendar" && req.method === "GET") {
       const url = new URL(req.url ?? "/", "http://local");
-      const horizonDays = Math.min(60, Math.max(7, Number(url.searchParams.get("horizonDays") ?? 14)));
+      const horizon = Number(url.searchParams.get("horizonDays") ?? 14);
+      if (!Number.isFinite(horizon)) throw new ValidationError("horizonDays must be a number");
+      const horizonDays = Math.min(60, Math.max(7, horizon));
+      const start = url.searchParams.get("start"), end = url.searchParams.get("end");
+      let rangeStart: Date | undefined, rangeEnd: Date | undefined;
+      if (start !== null || end !== null) {
+        const validDay = (value: string | null): value is string => !!value && /^\d{4}-\d{2}-\d{2}$/.test(value)
+          && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+        if (!validDay(start) || !validDay(end)) throw new ValidationError("start and end must be valid YYYY-MM-DD dates");
+        rangeStart = new Date(`${start}T00:00:00Z`);
+        rangeEnd = new Date(`${end}T00:00:00Z`);
+        const days = (rangeEnd.getTime() - rangeStart.getTime()) / 86_400_000;
+        if (days <= 0 || days > 62) throw new ValidationError("Calendar range must be between 1 and 62 days");
+      }
       const snap = await fetchCalendarEvents(ctx.cfg.icsUrls, ctx.cfg.tz, {
         horizonDays,
+        rangeStart,
+        rangeEnd,
+        limit: rangeStart ? 2_000 : undefined,
         localFiles: ctx.cfg.icsLocalFiles,
       });
       json(200, snap);
