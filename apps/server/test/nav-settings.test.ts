@@ -18,6 +18,14 @@ test("nav: dashboard and settings tabs always visible", () => {
   assert.ok(!visible.some((t) => t.href === "/news"));
 });
 
+test("nav: existing sidebar settings gain the Bookmarks tab without changing saved preferences", () => {
+  const tabs = normalizeSidebarTabs([{ id: "notes", label: "My notes", visible: false, order: 60 }]);
+  assert.equal(tabs.find((tab) => tab.id === "notes")?.visible, false);
+  assert.equal(tabs.find((tab) => tab.id === "notes")?.label, "My notes");
+  assert.equal(tabs.find((tab) => tab.id === "bookmarks")?.visible, true);
+  assert.ok(visibleNavTabs(tabs).some((tab) => tab.href === "/bookmarks"));
+});
+
 test("settings: legacy feeds field migrates out of persisted settings", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-settings-mig-"));
   try {

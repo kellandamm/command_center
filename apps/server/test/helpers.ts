@@ -1,4 +1,5 @@
 import { BoardStore } from "../src/board/store";
+import { BookmarksStore } from "../src/bookmarks/store";
 import { wireHobieBoardSync } from "../src/board/hobie-sync";
 import { DashboardLayoutStore } from "../src/dashboard-layout/storage";
 import { panels } from "../src/panels/registry";
@@ -34,6 +35,7 @@ export async function openIntegrationStores(dataDir: string, cfg?: Config) {
     wins,
   );
   return {
+    bookmarks: await BookmarksStore.open(dataDir),
     panelUpdates,
     hobieQueue,
     board,

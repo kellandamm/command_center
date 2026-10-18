@@ -114,6 +114,7 @@ and accepts JSON either as an array of hits or as `{ results | items | memories 
 - `briefing.json` — latest briefing and short history
 - `state.json` — scheduler timestamps
 - `knowledge.json` — individual Markdown notes, captured links, tags, and personal spaces
+- `bookmarks.json` — separate bookmark groups, ordered links, and launchpad layout preferences
 - `notes.md` — legacy plain-Markdown Notes file; its contents are copied into the knowledge store on first startup and the original file is kept as a backup
 - `panel-updates.json` — **Activity** panel (agent updates via MCP/webhook)
 - `hobie-queue.json` — **Hobie queue** (tasks for the owner assistant)
@@ -132,6 +133,16 @@ Use Ctrl/Cmd+S to save immediately, Ctrl/Cmd+1/2/3 for Source/Split/Preview, Ctr
 The dedicated writing-workflow regression runs with `pnpm --filter @homepage/server test:notes-browser` (requires the Playwright Chromium browser installed via `pnpm --filter @homepage/server exec playwright install chromium`).
 
 Questions in a personal space use the configured LLM and include up to 24,000 characters of source text, titles, URLs, and separators. Only sources included in that context are returned as citations. Each knowledge store allows up to 10 questions per hour.
+
+### Bookmarks launchpad
+
+The separate `/bookmarks` page is inspired by [Tinypad](https://www.tinypad.app/): grouped quick-access links, instant search, and a responsive grid. It does not change Dashboard or Notes' captured links. Create and rename groups, add/edit/remove links, move links between groups in the edit dialog, and reorder groups or links using their Manage menus. Only empty groups can be deleted.
+
+Layout & files saves comfortable/compact spacing and 1-4 columns to the server (narrow screens reduce columns automatically). Import a Netscape-style browser bookmarks HTML export from Chrome, Edge, Firefox, or Safari, or restore a Bookmarks JSON backup. Folder paths become group names; imports merge matching group names and skip duplicate URLs within each group. Imports are limited to 5 MB, 100 groups and 5,000 links including existing records; invalid JSON imports fail without partial changes. HTML imports skip unsupported URL schemes and report the count. Only HTTP/HTTPS links without embedded credentials are accepted.
+
+Links open in new tabs. Site initials replace remotely fetched favicons: the launchpad does not contact bookmarked sites or third-party icon services until you open a link. Back up `bookmarks.json` with your data volume, or use Download backup on the page. This is a server-backed launchpad, not automatic browser synchronization.
+
+Run the dedicated browser workflow with `pnpm --filter @homepage/server test:bookmarks-browser` (uses the same Playwright Chromium installation as the Notes regression).
 
 ## Security
 
