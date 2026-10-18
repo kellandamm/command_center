@@ -7,6 +7,9 @@ export interface CalendarEvent {
   end: Date | null;
   allDay: boolean;
   location: string | null;
+  description?: string | null;
+  url?: string | null;
+  calendarId?: string;
 }
 
 function unfoldIcs(text: string): string[] {
@@ -40,16 +43,17 @@ function parseIcsDate(value: string, tz: string): { date: Date; allDay: boolean 
   if (m[7] === "Z") return { date: new Date(Date.UTC(y, mo, d, h, mi, s)), allDay: false };
   const day = `${y}-${String(mo + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   const hhmm = `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
-  return { date: slotInstant(day, hhmm, tz), allDay: false };
+  return { date: new Date(slotInstant(day, hhmm, tz).getTime() + s * 1_000), allDay: false };
 }
 
-function propValue(line: string): { name: string; value: string } {
+function propValue(line: string): { name: string; value: string; timezone?: string } {
   const idx = line.indexOf(":");
   if (idx < 0) return { name: line.toUpperCase(), value: "" };
   const head = line.slice(0, idx);
   const value = line.slice(idx + 1);
   const name = head.split(";")[0]!.toUpperCase();
-  return { name, value };
+  const timezone = head.match(/;TZID=(?:"([^"]+)"|([^;]+))/i);
+  return { name, value, timezone: timezone?.[1] ?? timezone?.[2] };
 }
 
 /** Parse VEVENT blocks from iCalendar text. */
@@ -57,7 +61,7 @@ export function parseIcsEvents(icsText: string, tz: string, now = new Date()): C
   const lines = unfoldIcs(icsText);
   const events: CalendarEvent[] = [];
   let inEvent = false;
-  let cur: Partial<CalendarEvent> & { startRaw?: string; endRaw?: string } = {};
+  let cur: Partial<CalendarEvent> & { startRaw?: string; endRaw?: string; startTimezone?: string; endTimezone?: string } = {};
 
   for (const line of lines) {
     const upper = line.toUpperCase();
@@ -70,10 +74,10 @@ export function parseIcsEvents(icsText: string, tz: string, now = new Date()): C
       inEvent = false;
       if (cur.startRaw && cur.summary) {
         try {
-          const { date: start, allDay } = parseIcsDate(cur.startRaw, tz);
+          const { date: start, allDay } = parseIcsDate(cur.startRaw, cur.startTimezone ?? tz);
           let end: Date | null = null;
           if (cur.endRaw) {
-            end = parseIcsDate(cur.endRaw, tz).date;
+            end = parseIcsDate(cur.endRaw, cur.endTimezone ?? cur.startTimezone ?? tz).date;
           }
           if (!end || end <= start) end = new Date(start.getTime() + (allDay ? 86_400_000 : 3_600_000));
           if (end >= now) {
@@ -84,6 +88,8 @@ export function parseIcsEvents(icsText: string, tz: string, now = new Date()): C
               end,
               allDay,
               location: cur.location ?? null,
+              description: cur.description ?? null,
+              url: cur.url ?? null,
             });
           }
         } catch {
@@ -93,12 +99,14 @@ export function parseIcsEvents(icsText: string, tz: string, now = new Date()): C
       continue;
     }
     if (!inEvent) continue;
-    const { name, value } = propValue(line);
+    const { name, value, timezone } = propValue(line);
     if (name === "UID") cur.uid = value;
     if (name === "SUMMARY") cur.summary = value.replace(/\\n/g, " ").replace(/\\,/g, ",");
     if (name === "LOCATION") cur.location = value.replace(/\\n/g, " ").replace(/\\,/g, ",");
-    if (name === "DTSTART") cur.startRaw = value;
-    if (name === "DTEND") cur.endRaw = value;
+    if (name === "DESCRIPTION") cur.description = value.replace(/\\n/gi, "\n").replace(/\\,/g, ",").replace(/\\;/g, ";").replace(/\\\\/g, "\\");
+    if (name === "URL") cur.url = value;
+    if (name === "DTSTART") { cur.startRaw = value; cur.startTimezone = timezone; }
+    if (name === "DTEND") { cur.endRaw = value; cur.endTimezone = timezone; }
   }
 
   events.sort((a, b) => a.start.getTime() - b.start.getTime());

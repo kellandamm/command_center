@@ -168,6 +168,16 @@ test("calendar API without ICS_URLS is disabled", async () => {
     const j: any = await r.json();
     assert.equal(j.configured, false);
     assert.deepEqual(j.events, []);
+    for (const query of [
+      "start=2026-10-01", "start=2026-02-30&end=2026-03-10",
+      "start=2026-10-20&end=2026-10-01", "start=2026-01-01&end=2026-12-31",
+      "start=bad&end=bad", "horizonDays=NaN",
+    ]) {
+      assert.equal((await fetch(`${h.base}/api/calendar?${query}`, { headers: authz })).status, 400, query);
+    }
+    const range = await fetch(`${h.base}/api/calendar?start=2026-10-01&end=2026-11-01`, { headers: authz });
+    assert.equal(range.status, 200);
+    assert.equal((await range.json()).timezone, "UTC");
   } finally {
     await h.close();
   }

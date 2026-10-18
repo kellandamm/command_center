@@ -12,6 +12,7 @@
     "test": "tsx --test test/*.test.ts",
     "test:notes-browser": "tsx --test test/notes.browser.ts",
     "test:bookmarks-browser": "tsx --test test/bookmarks.browser.ts",
+    "test:calendar-browser": "tsx --test test/calendar.browser.ts",
     "seed:dashboard-screenshot": "tsx scripts/seed-dashboard-screenshot.ts",
     "seed:ui-screenshots": "tsx scripts/seed-ui-screenshots.ts",
     "capture:ui-screenshots": "tsx scripts/capture-ui-screenshots.ts"
