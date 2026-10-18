@@ -9,17 +9,14 @@ import { WinsStore } from "../src/wins/store";
 import { WinsRollupService } from "../src/wins/rollup-service";
 import type { Config } from "../src/config";
 import type { Server } from "node:http";
-import type { FeedsStore } from "../src/feeds/store";
 
 export async function closeIntegrationServer(
   server: Server,
-  feeds: FeedsStore,
   integration: { board: BoardStore; wins: WinsStore },
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     server.close((err) => err ? reject(err) : resolve());
   });
-  feeds.close();
   integration.board.close();
   integration.wins.close();
 }

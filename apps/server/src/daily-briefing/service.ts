@@ -1,12 +1,8 @@
 import { join } from "node:path";
-import type { Config, LlmConfig } from "../config";
-import { llmConfig, todoistConfigured } from "../config";
+import type { Config } from "../config";
+import { todoistConfigured } from "../config";
 import { fetchCalendarEvents } from "../calendar/service";
-import { feedIdsInScope } from "../feed-scope";
-import type { FeedScopeSettings } from "../settings";
-import type { FeedsStore } from "../feeds/store";
 import { fetchGithubActivity } from "../github/activity";
-import { chatCompletion } from "../llm/provider";
 import type { BoardStore } from "../board/store";
 import type { WinsStore } from "../wins/store";
 import { slotInstant } from "../scheduler";
@@ -21,24 +17,12 @@ import {
   writeBriefingFile,
 } from "./storage";
 import type { DailyBriefingRecord, DailyBriefingSources, SourceBlock, SourceStatus } from "./types";
-import type { StoredItem } from "../feeds/store";
 
 function block<T>(status: SourceStatus, data?: T, message?: string): SourceBlock<T> {
   const out: SourceBlock<T> = { status };
   if (message) out.message = message;
   if (data !== undefined) out.data = data;
   return out;
-}
-
-function formatItems(items: StoredItem[]): string {
-  return items
-    .map((it, i) => {
-      const parts = [`${i + 1}. ${it.title}`];
-      if (it.link) parts.push(`   ${it.link}`);
-      if (it.summary) parts.push(`   ${it.summary.slice(0, 280)}`);
-      return parts.join("\n");
-    })
-    .join("\n\n");
 }
 
 export class DailyBriefingService {
@@ -70,10 +54,8 @@ export class DailyBriefingService {
 
   async generate(opts: {
     cfg: Config;
-    feeds: FeedsStore;
     board?: BoardStore;
     wins?: WinsStore;
-    feedScope?: FeedScopeSettings;
     trigger: "schedule" | "manual";
     now?: Date;
     fetchFn?: typeof fetch;
@@ -82,7 +64,7 @@ export class DailyBriefingService {
     const day = dayKey(now, this.tz);
     const sinceIso = new Date(now.getTime() - 24 * 60 * 60_000).toISOString();
     const fetchFn = opts.fetchFn ?? fetch;
-    const sources = await this.gatherSources(opts.cfg, opts.feeds, sinceIso, now, fetchFn, opts.feedScope, opts.board, opts.wins);
+    const sources = await this.gatherSources(opts.cfg, sinceIso, now, fetchFn, opts.board, opts.wins);
     const rec: DailyBriefingRecord = { day, generatedAt: now.toISOString(), trigger: opts.trigger, sources };
     await writeBriefingFile(briefingDayPath(this.dir, day), rec);
     return rec;
@@ -90,31 +72,19 @@ export class DailyBriefingService {
 
   private async gatherSources(
     cfg: Config,
-    feeds: FeedsStore,
     sinceIso: string,
     now: Date,
     fetchFn: typeof fetch,
-    feedScope?: FeedScopeSettings,
     board?: BoardStore,
     wins?: WinsStore,
   ): Promise<DailyBriefingSources> {
-    const scope = feedScope ?? { mode: "all", folderIds: [] };
-    const newsItems = feeds.itemsForBriefing(sinceIso, 40, feedIdsInScope(feeds, scope));
-    const news: DailyBriefingSources["news"] =
-      newsItems.length > 0
-        ? block("ok", { items: newsItems, itemCount: newsItems.length })
-        : block("empty", { items: [], itemCount: 0 }, "No new feed items in the last 24 hours.");
-
-    const llm = llmConfig(cfg);
-    const ai = await this.buildAi(llm, newsItems, dayKey(now, this.tz), fetchFn);
-
     const todoist = await this.buildTodoist(cfg, now, fetchFn);
     const weather = await this.buildWeather(cfg, fetchFn);
     const calendar = await this.buildCalendar(cfg);
     const github = await this.buildGithub(cfg);
     const boardBlock = this.buildBoard(board, wins, sinceIso, now);
 
-    return { news, ai, todoist, weather, calendar, github, board: boardBlock };
+    return { todoist, weather, calendar, github, board: boardBlock };
   }
 
   private buildBoard(
@@ -137,45 +107,6 @@ export class DailyBriefingService {
       return block("empty", { blocked, moved, wins: yWins }, "No board blockers, moves, or wins for yesterday.");
     }
     return block("ok", { blocked, moved, wins: yWins });
-  }
-
-  private async buildAi(
-    llm: LlmConfig | null,
-    items: StoredItem[],
-    day: string,
-    fetchFn: typeof fetch,
-  ): Promise<DailyBriefingSources["ai"]> {
-    if (!llm) {
-      return block("not_configured", { content: "", itemCount: items.length }, "LLM not configured (set LLM_BASE_URL, LLM_API_KEY, LLM_MODEL).");
-    }
-    if (!items.length) {
-      return block("empty", { content: "", itemCount: 0 }, "No feed items to summarize.");
-    }
-    try {
-      const content = await chatCompletion(
-        llm,
-        [
-          {
-            role: "system",
-            content:
-              "You write a concise morning briefing for one person. Use short sections and bullet points. " +
-              "Highlight what matters, group related stories, and keep a calm practical tone. Plain text only.",
-          },
-          {
-            role: "user",
-            content: `Summarize these ${items.length} new feed items for today (${day}):\n\n${formatItems(items)}`,
-          },
-        ],
-        fetchFn,
-      );
-      return block("ok", { content, itemCount: items.length });
-    } catch (err) {
-      return block(
-        "error",
-        { content: "", itemCount: items.length },
-        err instanceof Error ? err.message : String(err),
-      );
-    }
   }
 
   private async buildTodoist(cfg: Config, now: Date, fetchFn: typeof fetch): Promise<DailyBriefingSources["todoist"]> {

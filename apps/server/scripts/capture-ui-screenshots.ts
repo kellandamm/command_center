@@ -22,7 +22,7 @@ type Shot = {
   /** Must match document.title or h1 text (case-insensitive substring). */
   marker: string;
   prepare?: (page: Page) => Promise<void>;
-  /** Screenshot a sub-element instead of the viewport (e.g. news workspace). */
+  /** Screenshot a sub-element instead of the viewport. */
   clipSelector?: string;
 };
 
@@ -42,8 +42,7 @@ const SETTINGS_SHOTS: Shot[] = [
     marker: "Settings",
     prepare: async (page) => {
       await page.click('.settings-tabs button[data-tab="schedule"]');
-      await page.waitForSelector("#tab-schedule.on #scope-all", { timeout: 15_000 });
-      await page.waitForSelector("#scope-folder-list label.choice-row", { timeout: 15_000 });
+      await page.waitForSelector("#tab-schedule.on #briefingTime", { timeout: 15_000 });
     },
   },
   {
@@ -111,20 +110,6 @@ const SETTINGS_SHOTS: Shot[] = [
   },
 ];
 
-const RSS_SHOT: Shot = {
-  out: "docs/screenshots/rss-reader/grouped-tree-1280x800.png",
-  path: "/news",
-  marker: "News",
-  prepare: async (page) => {
-    await page.waitForSelector("#rss-tree .tree-folder-row", { timeout: 15_000 });
-    await page.waitForSelector("#rss-tree .tree-feed-row", { timeout: 15_000 });
-    await page.click("#rss-organize");
-    await page.waitForSelector("#rss-tree.organize .tree-folder-actions .tree-act", { timeout: 15_000 });
-    await page.locator("#rss-tree .tree-folder-row").first().scrollIntoViewIfNeeded();
-  },
-  clipSelector: ".rss-workspace",
-};
-
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -185,8 +170,7 @@ function startAppServer(dataDir: string, port: number, icsLocalFile: string): Ch
 }
 
 async function main() {
-  const onlyRss = process.argv.includes("--rss-only");
-  const shots = onlyRss ? [RSS_SHOT] : [...SETTINGS_SHOTS, RSS_SHOT];
+  const shots = SETTINGS_SHOTS;
 
   const dataDir = await mkdtemp(join(tmpdir(), "cc-ui-shot-"));
   const icsPath = join(serverDir, "test/fixtures/demo-week.ics");

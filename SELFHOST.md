@@ -1,6 +1,6 @@
 # Self-hosting the command center
 
-`apps/server` is a single-container personal dashboard: pluggable panels, RSS/Atom news feeds (fetched on a schedule, stored on disk), and an optional daily AI briefing via any OpenAI-compatible `/chat/completions` endpoint (including [Command Code Provider API](https://api.commandcode.ai/provider/v1)).
+`apps/server` is a single-container personal dashboard with Notes, Bookmarks, Calendar, Board, Wins, and a scheduled Daily Briefing. Optional Notes questions and weekly Wins summaries use an OpenAI-compatible `/chat/completions` endpoint (including [Command Code Provider API](https://api.commandcode.ai/provider/v1)).
 
 ## Quick start
 
@@ -14,22 +14,21 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 
 | Variable | Notes |
 |---|---|
-| `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | Optional. When all three are set, the **AI briefing** panel can generate summaries. Example base URL: `https://api.commandcode.ai/provider/v1`. Without them the dashboard still runs; briefing shows a clear disabled message. |
+| `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | Optional. Enable **Notes space questions** and **weekly Wins summaries**. Example base URL: `https://api.commandcode.ai/provider/v1`. Daily Briefing does not require an LLM. |
 | `TODOIST_API_TOKEN` | Optional. [Todoist REST API](https://developer.todoist.com/rest/v2/) token for the **Todoist** panel (today/overdue tasks, quick-add, complete). Without it the panel shows a clear disabled message. |
 | `GITHUB_TOKEN` | Optional. Personal access token (classic or fine-grained) for the **GitHub** panel. Public data works without it; the panel degrades gracefully on rate limits. |
 | `GITHUB_USERNAME` | GitHub login for open issues/PRs and public events. Default `kellandamm`. |
 | `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` | Cloudflare Access JWT on every request (`Cf-Access-Jwt-Assertion`). Set both or neither. |
 | `ADMIN_TOKEN` | ≥ 24 chars. `Authorization: Bearer …`, or `/?token=…` once (HttpOnly cookie; needs HTTPS). |
-| `AI_SECURITY_TOKEN` | Optional. ≥ 24 chars. **Publish-only** credential for `POST /api/ai-security/roundups` (`Authorization: Bearer …` plus `x-ah: 1`). Does not grant dashboard or settings access. `ADMIN_TOKEN` still works for publish (backward compatibility for scripts that already use it). |
 | `ALLOW_INSECURE_NO_AUTH=1` | Localhost only. Without any auth setting the server refuses to start. |
-| `TZ` | Feed fetch schedule, briefing day boundary, and settings times use this zone. |
+| `TZ` | Calendar dates, briefing day boundary, and settings times use this zone. |
 | `HOST_PORT` | Compose publish port on loopback. |
 | `DATA_DIR` | Default `/data` (Docker volume). |
 | `DOCKER_SOCKET` | Optional. Unix path to the Docker Engine API socket (e.g. `/var/run/docker.sock`). When set and readable, the **Server health** panel lists containers (read-only). When unset, host CPU/memory/disk still work; the container section explains that Docker is not configured. |
 | `RECALLIO_URL` | Optional. Base URL for the **Recallio search** panel (e.g. `https://recall.gobison.io`). Without it the panel shows a disabled message; the rest of the dashboard is unchanged. |
 | `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | Optional **outbound** Cloudflare Access service token. Sent as `CF-Access-Client-Id` / `CF-Access-Client-Secret` when the server calls Recallio behind Access. Set both if Recallio requires them; omit if Recallio is reachable without a service token. |
 | `WEATHER_LAT`, `WEATHER_LON` | Optional. Open-Meteo coordinates for the **Weather** panel (no API key). Default **Chicago** (`41.8781`, `-87.6298`) when unset. |
-| `ICS_URLS` | Optional. Comma-separated **https** iCal feed URLs for the **Calendar** panel. When unset, the panel explains how to enable it. Feeds are fetched server-side with the same SSRF rules as RSS. |
+| `ICS_URLS` | Optional. Comma-separated **https** iCal subscription URLs for the **Calendar** panel. When unset, the panel explains how to enable it. Requests use server-side SSRF protection. |
 | `MCP_CF_CLIENT_MAP` | **Required** for `/mcp` and the Power Automate webhook. Non-empty JSON: MCP client id → service token id (must match verified JWT `common_name`). If unset, empty, or unknown id → **403**. Invalid JSON prevents startup. |
 | `MCP_APP_TOKENS` | JSON map of MCP client id → bearer token (≥ 24 chars). Used with `/mcp` after CF client id checks. |
 | `WEBHOOK_SECRET` | ≥ 24 chars. Webhook requires **`X-Webhook-Secret`** plus a verified **`Cf-Access-Jwt-Assertion`** (Access injects this for service tokens). `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD` must be set. |
@@ -101,26 +100,31 @@ The private **kellan-damm/Recallio** repo was not available from this environmen
 
 `POST {RECALLIO_URL}/api/search` with JSON body `{ "q": "<query>", "limit": 10 }`
 
-**Save article from News:** `POST {RECALLIO_URL}/api/memories` with JSON `{ "title", "content", "url", "source": "command-center-news" }` (same Cloudflare Access service-token headers as search when `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` are set).
-
-and accepts JSON either as an array of hits or as `{ results | items | memories | data: [...] }`. Each item may use Recallio-style fields (`content`, `similarityScore`) or generic ones (`title`, `snippet`, `url`, `score`). If your instance uses a different path or method, adjust `apps/server/src/recallio/client.ts` or open an issue with the expected contract.
+The search accepts JSON either as an array of hits or as `{ results | items | memories | data: [...] }`. Each item may use Recallio-style fields (`content`, `similarityScore`) or generic ones (`title`, `snippet`, `url`, `score`). If your instance uses a different path or method, adjust `apps/server/src/recallio/client.ts` or open an issue with the expected contract.
 
 ## Data layout (`/data`)
 
-- `settings.json` — feed list, fetch interval, briefing time
-- `rss.sqlite` — RSS feeds, folders, articles, and poll state (WAL mode)
-- `feeds.json.migrated` — optional legacy cache after one-time migration from older releases
-- `news-prefs.json` — tagged news view: muted topics and focus chips
-- `briefing.json` — latest briefing and short history
+- `settings.json` — daily briefing time, sidebar tabs, and view preferences
+- `rss.sqlite` — Board cards/events and Wins, including weekly summaries (WAL mode); the legacy filename is retained to preserve existing records
+- `daily-briefings/` — per-day calendar, weather, tasks, GitHub, Board activity, and Wins snapshots
 - `state.json` — scheduler timestamps
 - `knowledge.json` — individual Markdown notes, captured links, tags, and personal spaces
 - `bookmarks.json` — separate bookmark groups, ordered links, and launchpad layout preferences
 - `notes.md` — legacy plain-Markdown Notes file; its contents are copied into the knowledge store on first startup and the original file is kept as a backup
 - `panel-updates.json` — **Activity** panel (agent updates via MCP/webhook)
 - `hobie-queue.json` — **Hobie queue** (tasks for the owner assistant)
-- `ai-security/` — weekly AI Security roundups (`YYYY-MM-DD.json`, keyed by `weekOf`)
 
-Back up the volume to keep feeds, read state, briefings, and personal knowledge. The Notes page can export an ordinary Markdown bundle or a complete JSON backup; JSON imports merge records without overwriting existing entries.
+Back up the volume to keep Board, Wins, briefings, and personal knowledge. The Notes page can export an ordinary Markdown bundle or a complete JSON backup; JSON imports merge records without overwriting existing entries.
+
+### Daily Briefing and removed integrations
+
+Settings controls the daily briefing time (default `06:00`, using `TZ`). The briefing retains calendar, weather, Todoist tasks, GitHub activity, Board blockers/moves, and yesterday's wins. It does not fetch news or request AI news summaries.
+
+News, RSS/OPML import and polling, article actions, Summaries, and AI Security publishing/archive APIs have been removed, including their scheduled jobs and publish-only credentials. Remove obsolete `AI_SECURITY_TOKEN` values from deployment secrets and stop any external jobs posting roundups; those endpoints now return 404 for authenticated requests.
+
+Existing archives are not automatically erased. Old `feeds.json`, `feeds.json.migrated`, `news-prefs.json`, `briefing.json`, and `ai-security/` data is no longer read or written. Legacy Daily Briefing files remain on disk, but responses omit retired news and AI sections. Old News/Summaries/AI Security sidebar entries and settings are ignored and omitted when settings are next saved. Legacy news tables in `rss.sqlite` are untouched and unused; **do not delete this database**, because it also contains Board and Wins. Back up first before manually removing obsolete files or tables.
+
+Run `pnpm --filter @homepage/server test:personal-dashboard-browser` for the retained Dashboard, Settings, and Daily Briefing workflow (requires Playwright Chromium).
 
 ### Writing in Notes
 
@@ -156,8 +160,8 @@ Run the dedicated browser workflow with `pnpm --filter @homepage/server test:boo
 
 ## Security
 
-- Auth on every route except `/healthz`; writes need same-origin `Origin` and `x-ah: 1` (CSRF). The AI Security publish endpoint also accepts `AI_SECURITY_TOKEN` (or `ADMIN_TOKEN`) in `Authorization` without a browser session.
-- Feed URLs are fetched server-side with SSRF checks (public IPs only, DNS re-checked).
+- Auth on every route except `/healthz`; writes need same-origin `Origin` and `x-ah: 1` (CSRF).
+- Calendar subscriptions and other outbound URLs use server-side SSRF checks (public IPs only, DNS re-checked).
 - Container runs as non-root with capabilities dropped (`compose.yml`).
 
 ## Cloudflare tunnel + Access
@@ -170,7 +174,7 @@ Run the dedicated browser workflow with `pnpm --filter @homepage/server test:boo
 
 1. Create `apps/server/src/panels/your-panel.ts` exporting a `PanelModule` (`id`, `title`, `dashboardHtml`, optional `handle` for API routes).
 2. Register it in `apps/server/src/panels/registry.ts`.
-3. If the panel needs client-side behavior, add a small script from `ui/pages.ts` (see the feeds and briefing panels).
+3. If the panel needs client-side behavior, add a small script from `ui/pages.ts` (see the calendar and daily briefing panels).
 
 ## Development
 
