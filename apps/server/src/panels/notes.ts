@@ -3,6 +3,7 @@ import { ValidationError } from "../settings";
 import { llmConfig } from "../config";
 import { chatCompletion } from "../llm/provider";
 import type { NotesStore } from "../notes/store";
+import { renderNoteMarkdown } from "../notes/markdown";
 import { fetchCalendarEvents } from "../calendar/service";
 import type { PanelModule } from "./types";
 
@@ -83,6 +84,14 @@ export const notesPanel: PanelModule = {
       const url = new URL(req.url ?? "/", "http://local");
       const q = url.searchParams.get("q") ?? "";
       json(200, { ...ctx.notes.search(q), query: q });
+      return true;
+    }
+
+    if (path === "/api/knowledge/preview" && req.method === "POST") {
+      const body = await readJson(req);
+      if (typeof body.content !== "string") throw new ValidationError("content must be text");
+      if (Buffer.byteLength(body.content, "utf8") > 200_000) throw new ValidationError("content exceeds 200000 bytes");
+      json(200, { html: renderNoteMarkdown(body.content) });
       return true;
     }
 

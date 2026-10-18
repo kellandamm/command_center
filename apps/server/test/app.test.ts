@@ -191,6 +191,29 @@ test("notes API round-trip", async () => {
   }
 });
 
+test("knowledge preview validates input and renders safe Markdown without saving notes", async () => {
+  const h = await harness();
+  try {
+    const preview = (body: unknown) => fetch(`${h.base}/api/knowledge/preview`, {
+      method: "POST",
+      headers: { ...authz, "x-ah": "1", "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const response = await preview({ content: "# Preview\n\n**Bold**<script>alert(1)</script>" });
+    assert.equal(response.status, 200);
+    const { html } = await response.json();
+    assert.match(html, /<h1>Preview<\/h1>/);
+    assert.match(html, /<strong>Bold<\/strong>/);
+    assert.doesNotMatch(html, /<script|alert\(1\)/);
+    assert.equal((await preview({ content: 123 })).status, 400);
+    assert.equal((await preview({ content: "x".repeat(200_001) })).status, 400);
+    const library = await fetch(`${h.base}/api/knowledge`, { headers: authz });
+    assert.deepEqual((await library.json()).notes, []);
+  } finally {
+    await h.close();
+  }
+});
+
 test("knowledge APIs support notes, spaces, captured sources, graph, import, and export", async () => {
   const h = await harness();
   try {
