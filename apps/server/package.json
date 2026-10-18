@@ -10,6 +10,7 @@
     "start": "node dist/server.mjs",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts",
+    "test:notes-browser": "tsx --test test/notes.browser.ts",
     "seed:dashboard-screenshot": "tsx scripts/seed-dashboard-screenshot.ts",
     "seed:ui-screenshots": "tsx scripts/seed-ui-screenshots.ts",
     "capture:ui-screenshots": "tsx scripts/capture-ui-screenshots.ts"
@@ -18,6 +19,7 @@
     "@modelcontextprotocol/sdk": "^1.32.1",
     "fast-xml-parser": "^5.11.0",
     "jose": "^6.2.12",
+    "marked": "^17.0.0",
     "sanitize-html": "^2.17.0",
     "zod": "^4.6.5"
   },

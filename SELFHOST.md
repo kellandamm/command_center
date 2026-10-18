@@ -121,6 +121,16 @@ and accepts JSON either as an array of hits or as `{ results | items | memories 
 
 Back up the volume to keep feeds, read state, briefings, and personal knowledge. The Notes page can export an ordinary Markdown bundle or a complete JSON backup; JSON imports merge records without overwriting existing entries.
 
+### Writing in Notes
+
+The writing-first Notes workspace takes inspiration from [Tagdown](https://github.com/sthix/tagdown): a searchable note library, Source / Split / Preview views, a Markdown formatting toolbar, and focus mode. Existing notes, spaces, captured links, Board/Calendar references, graph, and imports/exports remain available; properties and secondary tools are collapsed until needed.
+
+Edits autosave to the server after 900 ms without typing. Save status distinguishes pending changes, successful writes, and failures. Switching notes waits for pending saves; a failed save keeps the current draft open. Leaving with unsaved changes prompts a warning. This requires a connection to the server; it is not an offline vault or version-history system.
+
+Use Ctrl/Cmd+S to save immediately, Ctrl/Cmd+1/2/3 for Source/Split/Preview, Ctrl/Cmd+B or I to format selected text, and Ctrl/Cmd+Shift+F to toggle focus mode (Escape exits). Narrow screens stack Split panes. Task checkboxes in the preview are read-only; edit their Markdown in Source. Preview rendering stays on your server, sanitizes HTML, and does not load remote images.
+
+The dedicated writing-workflow regression runs with `pnpm --filter @homepage/server test:notes-browser` (requires the Playwright Chromium browser installed via `pnpm --filter @homepage/server exec playwright install chromium`).
+
 Questions in a personal space use the configured LLM and include up to 24,000 characters of source text, titles, URLs, and separators. Only sources included in that context are returned as citations. Each knowledge store allows up to 10 questions per hour.
 
 ## Security

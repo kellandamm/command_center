@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { Script } from "node:vm";
 import { aiSecurityPage } from "../src/ui/ai-security-page";
 import { dailyBriefingPage } from "../src/ui/daily-briefing-page";
 import { newsPage } from "../src/ui/news-page";
@@ -112,4 +113,20 @@ test("ui: full sidebar pages render", () => {
   assert.doesNotMatch(notesPage(), /RSS reader|feed subscriptions/i);
   assert.match(calendarPage(), /id="cal-week-grid"/);
   assert.match(activityPage(), /id="activity-full-list"/);
+});
+
+test("ui: Notes centers writing with preview, formatting, focus, and collapsed properties", () => {
+  const html = notesPage();
+  assert.match(html, /<h1>Notes<\/h1>/);
+  for (const id of ["knowledge-preview", "knowledge-formatting", "knowledge-focus", "knowledge-word-count"]) {
+    assert.ok(html.includes(`id="${id}"`));
+  }
+  for (const mode of ["source", "split", "preview"]) {
+    assert.ok(html.includes(`data-note-mode="${mode}"`));
+  }
+  assert.match(html, /<details class="notes-properties">/);
+  assert.match(html, /Changes save automatically/);
+  for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+    assert.doesNotThrow(() => new Script(match[1]!));
+  }
 });
