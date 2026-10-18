@@ -26,10 +26,8 @@ export async function handleDailyBriefingRoutes(
   if (path === "/api/daily-briefing/refresh" && req.method === "POST") {
     const rec = await daily.generate({
       cfg: app.cfg,
-      feeds: app.feeds,
       board: app.board,
       wins: app.wins,
-      feedScope: app.settings.get().feedScope,
       trigger: "manual",
     });
     json(res, 200, { briefing: rec });

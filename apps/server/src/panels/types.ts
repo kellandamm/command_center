@@ -1,7 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { BriefingService } from "../briefing/service";
 import type { Config } from "../config";
-import type { FeedsStore } from "../feeds/store";
 import type { NotesStore } from "../notes/store";
 import type { BoardStore } from "../board/store";
 import type { HobieQueueStore } from "../stores/hobie-queue";
@@ -12,8 +10,6 @@ import type { SettingsStore } from "../settings";
 export interface PanelContext {
   cfg: Config;
   settings: SettingsStore;
-  feeds: FeedsStore;
-  briefing: BriefingService;
   notes: NotesStore;
   panelUpdates: PanelUpdatesStore;
   hobieQueue: HobieQueueStore;

@@ -2,10 +2,7 @@ import type { Settings } from "./settings";
 
 export type SidebarTabId =
   | "dashboard"
-  | "ai-security"
   | "briefing"
-  | "news"
-  | "summaries"
   | "board"
   | "wins"
   | "notes"
@@ -28,10 +25,7 @@ const LOCKED = new Set<SidebarTabId>(["dashboard", "settings"]);
 
 export const DEFAULT_SIDEBAR_TABS: SidebarTab[] = [
   { id: "dashboard", href: "/", label: "Dashboard", visible: true, order: 0, locked: true },
-  { id: "ai-security", href: "/ai-security", label: "AI Security", visible: true, order: 10 },
   { id: "briefing", href: "/briefing", label: "Daily Briefing", visible: true, order: 20 },
-  { id: "news", href: "/news", label: "News", visible: true, order: 30 },
-  { id: "summaries", href: "/summaries", label: "Summaries", visible: true, order: 40 },
   { id: "board", href: "/board", label: "Board", visible: true, order: 50 },
   { id: "wins", href: "/wins", label: "Wins", visible: true, order: 55 },
   { id: "notes", href: "/notes", label: "Notes", visible: true, order: 60 },

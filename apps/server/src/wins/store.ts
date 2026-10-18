@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { initSchema } from "../feeds/schema";
+import { DATABASE_FILE, initSchema } from "../database";
 import type { Win, WinSource } from "./types";
 
 function rowToWin(r: Record<string, unknown>): Win {
@@ -18,7 +18,7 @@ export class WinsStore {
   private constructor(private db: DatabaseSync) {}
 
   static open(dataDir: string): WinsStore {
-    const db = new DatabaseSync(join(dataDir, "rss.sqlite"));
+    const db = new DatabaseSync(join(dataDir, DATABASE_FILE));
     initSchema(db);
     return new WinsStore(db);
   }

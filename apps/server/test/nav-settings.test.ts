@@ -3,14 +3,12 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { feedIdsInScope, folderIdsForScope } from "../src/feed-scope";
-import { FeedsStore } from "../src/feeds/store";
 import { applySidebarTabsPatch, normalizeSidebarTabs, visibleNavTabs } from "../src/nav-tabs";
 import { applySettings, DEFAULT_SETTINGS, SettingsStore } from "../src/settings";
 
 test("nav: dashboard and settings tabs always visible", () => {
   const tabs = normalizeSidebarTabs(
-    DEFAULT_SETTINGS.sidebarTabs.map((t) => (t.id === "news" ? { ...t, visible: false } : t)),
+    DEFAULT_SETTINGS.sidebarTabs.map((t) => ({ ...t, visible: false })),
   );
   const visible = visibleNavTabs(tabs);
   assert.ok(visible.some((t) => t.href === "/"));
@@ -26,55 +24,45 @@ test("nav: existing sidebar settings gain the Bookmarks tab without changing sav
   assert.ok(visibleNavTabs(tabs).some((tab) => tab.href === "/bookmarks"));
 });
 
-test("settings: legacy feeds field migrates out of persisted settings", async () => {
+test("settings: retired integration settings are ignored while personal preferences survive", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-settings-mig-"));
   try {
     const { writeFile } = await import("node:fs/promises");
     await writeFile(
       join(dir, "settings.json"),
-      JSON.stringify({ feeds: "hn\nhttps://example.com/rss.xml", fetchIntervalMinutes: 15 }),
+      JSON.stringify({
+        feeds: "hn\nhttps://example.com/rss.xml", fetchIntervalMinutes: 15, feedScope: { mode: "all" },
+        briefingTime: "08:30",
+        sidebarTabs: [{ id: "news", label: "Reader" }, { id: "ai-security" }, { id: "summaries" }],
+        viewPreferences: { news: { layout: "card" }, aiSecurity: { showArchive: true }, summaries: { limit: 50 },
+          dashboard: { news: false, calendar: false }, briefing: { news: true, ai: true, github: false } },
+      }),
       "utf8",
     );
     const store = new SettingsStore(dir);
     await store.load();
-    assert.equal(store.consumeLegacyFeeds()?.includes("hn"), true);
     assert.equal("feeds" in store.get(), false);
-    assert.equal(store.get().fetchIntervalMinutes, 15);
+    assert.equal("fetchIntervalMinutes" in store.get(), false);
+    assert.equal("feedScope" in store.get(), false);
+    assert.equal(store.get().briefingTime, "08:30");
+    assert.equal(store.get().viewPreferences.dashboard.calendar, false);
+    assert.equal(store.get().viewPreferences.briefing.github, false);
+    const json = JSON.stringify(store.get());
+    assert.doesNotMatch(json, /news|aiSecurity|ai-security|summaries|"ai"/);
+    await store.update({ briefingTime: "09:00" });
+    const { readFile } = await import("node:fs/promises");
+    assert.doesNotMatch(await readFile(join(dir, "settings.json"), "utf8"), /feeds|feedScope|fetchInterval|news|aiSecurity|summaries/);
     assert.equal(store.get().viewPreferences.calendar.weekStartsOn, "monday");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("feed scope: folder mode limits feed ids", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "cc-feed-scope-"));
-  const store = await FeedsStore.open(dir);
-  try {
-    const parent = store.createFolder("News").id;
-    const child = store.createFolder("Tech", parent).id;
-    store.upsertFeedRow({ id: "f1", title: "A", xmlUrl: "https://a.example/rss", folderId: parent, nextPollAt: new Date().toISOString() }, { setFolder: true });
-    store.upsertFeedRow({ id: "f2", title: "B", xmlUrl: "https://b.example/rss", folderId: child, nextPollAt: new Date().toISOString() }, { setFolder: true });
-    store.upsertFeedRow({ id: "f3", title: "C", xmlUrl: "https://c.example/rss", folderId: null, nextPollAt: new Date().toISOString() });
-    const scope = { mode: "folders" as const, folderIds: [parent] };
-    const ids = feedIdsInScope(store, scope)!;
-    assert.deepEqual(new Set(ids), new Set(["f1", "f2"]));
-    assert.equal(store.list({ feedIds: ids }).length, 0);
-    store.ingestParsed("f2", [{ title: "x", link: "https://b.example/1", guid: "1" }], new Date());
-    assert.equal(store.list({ feedIds: ids }).length, 1);
-    assert.equal(folderIdsForScope(store, scope).includes(child), true);
-  } finally {
-    store.close();
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("settings: applySettings validates feed scope and tabs rename", () => {
+test("settings: applySettings retains sidebar renames", () => {
   const next = applySettings(DEFAULT_SETTINGS, {
-    feedScope: { mode: "folders", folderIds: ["abc"] },
-    sidebarTabs: applySidebarTabsPatch(DEFAULT_SETTINGS.sidebarTabs, [{ id: "news", label: "Reader" }]),
+    sidebarTabs: applySidebarTabsPatch(DEFAULT_SETTINGS.sidebarTabs, [{ id: "notes", label: "Writing" }]),
   });
-  assert.equal(next.feedScope.mode, "folders");
-  assert.equal(next.sidebarTabs.find((t) => t.id === "news")!.label, "Reader");
+  assert.equal(next.sidebarTabs.find((t) => t.id === "notes")!.label, "Writing");
 });
 
 test("settings: view preferences customize page defaults and retain other defaults", () => {
@@ -88,7 +76,7 @@ test("settings: view preferences customize page defaults and retain other defaul
   assert.equal(next.viewPreferences.density, "compact");
   assert.equal(next.viewPreferences.calendar.weekStartsOn, "sunday");
   assert.equal(next.viewPreferences.activity.limit, 50);
-  assert.equal(next.viewPreferences.news.layout, "dense");
+  assert.equal(next.viewPreferences.notes.fontSize, "medium");
   assert.equal(next.viewPreferences.dashboard.hobie, true);
   assert.throws(
     () => applySettings(DEFAULT_SETTINGS, { viewPreferences: { calendar: { weekStartsOn: "friday" } } }),

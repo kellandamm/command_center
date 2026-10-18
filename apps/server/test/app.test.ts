@@ -4,13 +4,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
-import { BriefingService } from "../src/briefing/service";
-import { AiSecurityService } from "../src/ai-security/service";
 import { DailyBriefingService } from "../src/daily-briefing/service";
 import { loadConfig, assertAuthConfigured, llmConfigured } from "../src/config";
 import { makeAuthenticator } from "../src/auth";
-import { NewsPrefsStore } from "../src/feeds/news-prefs";
-import { FeedsStore } from "../src/feeds/store";
 import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
@@ -50,10 +46,6 @@ async function harness(env: Record<string, string> = {}) {
   });
   const settings = new SettingsStore(dir);
   await settings.load();
-  const feeds = await FeedsStore.open(dir);
-  const newsPrefs = await NewsPrefsStore.open(dir);
-  const briefing = await BriefingService.open(dir, cfg.tz);
-  const aiSecurity = await AiSecurityService.open(dir);
   const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
   const notes = await NotesStore.open(dir);
   const integration = await openIntegrationStores(dir, cfg);
@@ -61,21 +53,17 @@ async function harness(env: Record<string, string> = {}) {
     cfg,
     auth: makeAuthenticator(cfg),
     settings,
-    feeds,
-    briefing,
-    aiSecurity,
     dailyBriefing,
-    newsPrefs,
     notes,
     ...integration,
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const close = async () => {
-    await closeIntegrationServer(server, feeds, integration);
+    await closeIntegrationServer(server, integration);
     await rm(dir, { recursive: true, force: true });
   };
-  return { base, settings, feeds, briefing, close, cfg };
+  return { base, settings, close, cfg };
 }
 const authz = { authorization: `Bearer ${TOKEN}` };
 
@@ -93,6 +81,23 @@ test("config: refuses to start without any authentication", () => {
 test("config: llm is optional", () => {
   const cfg = loadConfig({ ADMIN_TOKEN: TOKEN, ALLOW_INSECURE_NO_AUTH: "1" });
   assert.equal(llmConfigured(cfg), false);
+});
+
+test("former AI Security token does not authorize publishing or dashboard access", async () => {
+  const oldToken = "s".repeat(32);
+  const h = await harness({ AI_SECURITY_TOKEN: oldToken });
+  try {
+    assert.equal("aiSecurityToken" in h.cfg, false);
+    assert.doesNotThrow(() => loadConfig({ ADMIN_TOKEN: TOKEN, AI_SECURITY_TOKEN: "short-ignored" }));
+    for (const path of ["/api/ai-security/roundups", "/api/state"]) {
+      const response = await fetch(`${h.base}${path}`, {
+        method: "POST", headers: { authorization: `Bearer ${oldToken}`, "x-ah": "1" },
+      });
+      assert.equal(response.status, 401);
+    }
+  } finally {
+    await h.close();
+  }
 });
 
 test("http: healthz is open; everything else needs auth; CSRF header is required for writes", async () => {
@@ -126,7 +131,7 @@ test("http: Cloudflare Access JWT is verified; a bad one is refused", async () =
   assert.equal((await auth(mk({ "cf-access-jwt-assertion": "bad" }), url)).ok, false);
 });
 
-test("settings API validates schedule and feed scope", async () => {
+test("settings API validates daily schedule without retired integration settings", async () => {
   const h = await harness();
   try {
     const put = (body: unknown) =>
@@ -135,11 +140,13 @@ test("settings API validates schedule and feed scope", async () => {
         headers: { ...authz, "x-ah": "1", "content-type": "application/json" },
         body: JSON.stringify(body),
       });
-    const ok = await put({ fetchIntervalMinutes: 20, feedScope: { mode: "all", folderIds: [] } });
+    const ok = await put({ briefingTime: "08:30", fetchIntervalMinutes: 20, feedScope: { mode: "all", folderIds: [] } });
     assert.equal(ok.status, 200);
     const j: any = await ok.json();
-    assert.equal(typeof j.feedCount, "number");
-    assert.equal(h.settings.get().fetchIntervalMinutes, 20);
+    assert.equal("feedCount" in j, false);
+    assert.equal("fetchIntervalMinutes" in j.settings, false);
+    assert.equal("feedScope" in j.settings, false);
+    assert.equal(h.settings.get().briefingTime, "08:30");
     assert.equal((await put({ briefingTime: "99:99" })).status, 400);
   } finally {
     await h.close();
@@ -566,13 +573,32 @@ test("daily briefing API lists days and returns null before first run", async ()
   }
 });
 
-test("briefing generate without LLM returns graceful error", async () => {
-  const h = await harness({ LLM_API_KEY: "", LLM_BASE_URL: "", LLM_MODEL: "" });
+test("retired News, Summaries, and AI Security routes return 404", async () => {
+  const h = await harness();
   try {
-    const r = await fetch(`${h.base}/api/briefing/generate`, { method: "POST", headers: { ...authz, "x-ah": "1" } });
-    assert.equal(r.status, 200);
-    const j: any = await r.json();
-    assert.match(j.briefing.error, /LLM not configured/);
+    for (const path of ["/news", "/summaries", "/ai-security", "/api/feeds", "/api/news", "/api/rss/tree",
+      "/api/rss/entries", "/api/rss/entries/example", "/api/rss/opml/export", "/api/summaries",
+      "/api/briefing", "/api/ai-security/roundups", "/api/ai-security/roundups/2026-10-14"]) {
+      const r = await fetch(`${h.base}${path}`, { headers: authz });
+      assert.equal(r.status, 404, path);
+    }
+    for (const path of ["/api/feeds/fetch", "/api/feeds/read", "/api/rss/opml/import", "/api/rss/poll",
+      "/api/rss/recallio", "/api/rss/summarize", "/api/rss/read", "/api/rss/read-all", "/api/rss/star",
+      "/api/rss/feeds", "/api/rss/folders", "/api/briefing/generate", "/api/ai-security/roundups"]) {
+      const r = await fetch(`${h.base}${path}`, { method: "POST", headers: { ...authz, "x-ah": "1" } });
+      assert.equal(r.status, 404, path);
+    }
+    for (const [path, method] of [
+      ["/api/news/prefs", "PUT"], ["/api/rss/feeds/example", "PATCH"], ["/api/rss/feeds/example", "DELETE"],
+      ["/api/rss/folders/example", "PATCH"], ["/api/rss/folders/example", "DELETE"],
+    ]) {
+      const r = await fetch(`${h.base}${path}`, { method, headers: { ...authz, "x-ah": "1" } });
+      assert.equal(r.status, 404, `${method} ${path}`);
+    }
+    const state = await (await fetch(`${h.base}/api/state`, { headers: authz })).json();
+    assert.equal("feedCount" in state, false);
+    assert.equal("unread" in state, false);
+    assert.equal("briefing" in state, false);
   } finally {
     await h.close();
   }

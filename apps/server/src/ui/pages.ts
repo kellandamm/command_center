@@ -12,7 +12,6 @@ export function dashboardPage(nav?: NavLink[]): string {
     <h2>Needs attention</h2>
     <div class="dashboard-metrics">
       <a class="dashboard-metric" href="/board"><span>Hobie board</span><strong id="dashboard-hobie-count">Loading…</strong><span class="dim" id="dashboard-hobie-detail"></span></a>
-      <a class="dashboard-metric" href="/news"><span>Unread news</span><strong id="dashboard-news-count">Loading…</strong><span class="dim">Open News reader</span></a>
     </div>
   </section>
   <section class="card dashboard-overview-card" data-dashboard-card="calendar">
@@ -46,11 +45,6 @@ function loadDashboardHobie(){
     document.getElementById("dashboard-hobie-detail").textContent=ready||waiting?ready+" ready · "+waiting+" waiting":"Open board";
   }).catch(function(err){dashboardSetError("dashboard-hobie-count",err)});
 }
-function loadDashboardNews(){
-  return api("/api/feeds").then(function(r){
-    document.getElementById("dashboard-news-count").textContent=String(r.unread||0);
-  }).catch(function(err){dashboardSetError("dashboard-news-count",err)});
-}
 function loadDashboardCalendar(){
   return api("/api/calendar?horizonDays=7").then(function(r){
     var el=document.getElementById("dashboard-calendar-status");
@@ -83,13 +77,10 @@ window.viewPreferencesReady.then(function(prefs){
   var dashboard=prefs&&prefs.dashboard||{};
   document.querySelectorAll("[data-dashboard-card]").forEach(function(card){
     var key=card.dataset.dashboardCard;
-    if(key==="attention"&&dashboard.hobie===false&&dashboard.news===false)card.hidden=true;
-    else if(key==="attention"&&dashboard.hobie===false)card.querySelector('a[href="/board"]').hidden=true;
-    else if(key==="attention"&&dashboard.news===false)card.querySelector('a[href="/news"]').hidden=true;
+    if(key==="attention"&&dashboard.hobie===false)card.hidden=true;
     else if(key!=="attention"&&dashboard[key]===false)card.hidden=true;
   });
   if(dashboard.hobie!==false)loadDashboardHobie();
-  if(dashboard.news!==false)loadDashboardNews();
   if(dashboard.calendar!==false)loadDashboardCalendar();
   if(dashboard.briefing!==false)loadDashboardBriefing();
   if(dashboard.activity!==false)loadDashboardActivity();
@@ -114,32 +105,20 @@ export function settingsPage(nav?: NavLink[]): string {
 <div class="settings-options-grid">
 <div class="settings-option"><label for="pref-density">Page density</label><select id="pref-density" data-pref="density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select><p class="dim">Compact reduces spacing across supported pages.</p></div>
 <fieldset class="settings-option"><legend>Dashboard cards</legend>
-<label class="row choice-row"><input type="checkbox" data-pref="dashboard.hobie"/> Hobie board</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.news"/> Unread news</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.calendar"/> Next calendar event</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.briefing"/> Daily briefing</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.activity"/> Agent activity</label></fieldset>
+<label class="row choice-row"><input type="checkbox" data-pref="dashboard.hobie"/> Hobie board</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.calendar"/> Next calendar event</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.briefing"/> Daily briefing</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.activity"/> Agent activity</label></fieldset>
 <fieldset class="settings-option"><legend>Daily Briefing sections</legend>
-<label class="row choice-row"><input type="checkbox" data-pref="briefing.news"/> News stories</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.ai"/> AI editor’s note</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.todoist"/> Todoist tasks</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.weather"/> Weather</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.calendar"/> Calendar</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.github"/> GitHub</label></fieldset>
-<div class="settings-option"><label for="pref-news-layout">News article layout</label><select id="pref-news-layout" data-pref="news.layout"><option value="dense">Dense list</option><option value="card">Cards</option></select><label class="row choice-row"><input type="checkbox" data-pref="news.unreadOnly"/> Show unread only by default</label></div>
+<label class="row choice-row"><input type="checkbox" data-pref="briefing.todoist"/> Todoist tasks</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.weather"/> Weather</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.calendar"/> Calendar</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.github"/> GitHub</label></fieldset>
 <div class="settings-option"><label for="pref-hobie-status">Hobie queue filter</label><select id="pref-hobie-status" data-pref="hobie.status"><option value="all">All tasks</option><option value="pending">Pending</option><option value="claimed">Claimed</option><option value="done">Done</option></select></div>
 <div class="settings-option"><label for="pref-calendar-week">Calendar week starts on</label><select id="pref-calendar-week" data-pref="calendar.weekStartsOn"><option value="monday">Monday</option><option value="sunday">Sunday</option></select></div>
 <div class="settings-option"><label for="pref-activity-limit">Activity entries</label><select id="pref-activity-limit" data-pref="activity.limit"><option value="25">25</option><option value="50">50</option><option value="100">100</option><option value="200">200</option></select></div>
-<div class="settings-option"><label for="pref-summary-limit">Summaries shown</label><select id="pref-summary-limit" data-pref="summaries.limit"><option value="20">20</option><option value="50">50</option><option value="80">80</option><option value="150">150</option></select></div>
 <div class="settings-option"><label for="pref-notes-size">Notes text size</label><select id="pref-notes-size" data-pref="notes.fontSize"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></div>
-<div class="settings-option"><label class="row choice-row"><input type="checkbox" data-pref="aiSecurity.showArchive"/> Show the AI Security archive</label></div>
 </div>
 <div class="row" style="margin-top:1rem"><button type="button" id="views-save">Save view preferences</button><span id="saved-views" class="dim"></span></div>
 </div>
 <div class="card settings-card settings-tab-panel" id="tab-schedule">
 <form id="f-schedule">
-<p class="dim">News for the dashboard, AI briefing, and scheduled fetch comes from the <a href="/news">News reader</a> (OPML import). Choose all feeds or specific folders below.</p>
-<div class="row" style="gap:16px;margin-top:1rem">
-<div style="flex:1"><label for="fetchInterval">Fetch interval (minutes)</label><input id="fetchInterval" type="number" min="5" max="1440"></div>
-<div style="flex:1"><label for="briefingTime">Daily briefing time</label><input id="briefingTime" placeholder="07:00"></div>
-</div>
-<fieldset style="margin-top:1rem;border:0;padding:0">
-<legend style="font-weight:600;font-size:.875rem">Feed scope</legend>
-<label class="row choice-row" style="margin:.5rem 0"><input type="radio" name="feedScope" value="all" id="scope-all"/> All feeds in News reader</label>
-<label class="row choice-row" style="margin:.5rem 0"><input type="radio" name="feedScope" value="folders" id="scope-folders"/> Selected folders only</label>
-<div id="scope-folder-list" class="scope-folder-grid dim"></div>
-</fieldset>
+<p class="dim">Prepare your daily calendar, weather, tasks, GitHub activity, and wins at this time in the server's configured timezone.</p>
+<label for="briefingTime">Daily briefing time</label><input id="briefingTime" type="time" required>
 <div class="row" style="margin-top:18px"><button type="submit">Save schedule</button><span id="saved-schedule" class="dim"></span></div>
 </form></div>
 <div class="card settings-card settings-tab-panel" id="tab-tabs">
@@ -148,7 +127,7 @@ export function settingsPage(nav?: NavLink[]): string {
 <div class="row" style="margin-top:1rem"><button type="button" id="tabs-save">Save tabs</button><span id="saved-tabs" class="dim"></span></div>
 </div>`,
     script: `
-var settingsState={feedScope:{mode:"all",folderIds:[]},sidebarTabs:[],viewPreferences:{}};
+var settingsState={sidebarTabs:[],viewPreferences:{}};
 function showTab(name){
   document.querySelectorAll(".settings-tabs button").forEach(function(b){b.classList.toggle("on",b.dataset.tab===name)});
   document.querySelectorAll(".settings-tab-panel").forEach(function(p){p.classList.toggle("on",p.id==="tab-"+name)});
@@ -168,30 +147,9 @@ function bindViewPreferences(){
     if(el.type==="checkbox")el.checked=!!value;
     else el.value=String(value);
     el.onchange=function(){
-      var numeric=path==="summaries.limit"||path==="activity.limit";
+      var numeric=path==="activity.limit";
       setPref(path,el.type==="checkbox"?el.checked:(numeric?Number(el.value):el.value));
     };
-  });
-}
-function renderFolderScope(){
-  return api("/api/rss/tree").then(function(r){
-    var tree=r.tree;var box=document.getElementById("scope-folder-list");
-    if(!tree||!tree.folders||!tree.folders.length){box.innerHTML="<p>No folders yet — import OPML on News.</p>";return;}
-    function walk(nodes,prefix){
-      var html="";
-      nodes.forEach(function(f){
-        var id=f.id;var checked=settingsState.feedScope.folderIds.indexOf(id)>=0;
-        html+='<label class="row choice-row" style="margin:.15rem 0"><input type="checkbox" class="scope-folder" data-id="'+esc(id)+'"'+(checked?" checked":"")+'/> '+esc(prefix+f.name)+'</label>';
-        if(f.folders&&f.folders.length)html+=walk(f.folders,prefix+f.name+" / ");
-      });
-      return html;
-    }
-    box.innerHTML=walk(tree.folders,"");
-    box.querySelectorAll(".scope-folder").forEach(function(cb){cb.onchange=function(){
-      var id=cb.dataset.id;var ids=settingsState.feedScope.folderIds.slice();
-      var i=ids.indexOf(id);if(cb.checked&&i<0)ids.push(id);if(!cb.checked&&i>=0)ids.splice(i,1);
-      settingsState.feedScope.folderIds=ids;
-    }});
   });
 }
 function renderTabsEditor(){
@@ -226,21 +184,15 @@ function renderTabsEditor(){
 function loadSettings(){
   return api("/api/settings").then(function(r){
     var s=r.settings;
-    settingsState.feedScope=s.feedScope||{mode:"all",folderIds:[]};
     settingsState.sidebarTabs=s.sidebarTabs||[];
     settingsState.viewPreferences=s.viewPreferences||{};
-    document.getElementById("fetchInterval").value=s.fetchIntervalMinutes;
     document.getElementById("briefingTime").value=s.briefingTime;
-    document.getElementById("scope-all").checked=settingsState.feedScope.mode!=="folders";
-    document.getElementById("scope-folders").checked=settingsState.feedScope.mode==="folders";
-    renderFolderScope();renderTabsEditor();bindViewPreferences();
+    renderTabsEditor();bindViewPreferences();
   });
 }
 document.getElementById("f-schedule").onsubmit=function(e){e.preventDefault();
-  var mode=document.getElementById("scope-folders").checked?"folders":"all";
   document.getElementById("saved-schedule").textContent="Saving…";
-  api("/api/settings","PUT",{fetchIntervalMinutes:document.getElementById("fetchInterval").value,briefingTime:document.getElementById("briefingTime").value,
-    feedScope:{mode:mode,folderIds:settingsState.feedScope.folderIds}})
+  api("/api/settings","PUT",{briefingTime:document.getElementById("briefingTime").value})
     .then(function(){document.getElementById("saved-schedule").textContent="Saved";location.reload()})
     .catch(function(err){document.getElementById("saved-schedule").textContent=err.message});
 };

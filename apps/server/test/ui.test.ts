@@ -1,10 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Script } from "node:vm";
-import { aiSecurityPage } from "../src/ui/ai-security-page";
 import { dailyBriefingPage } from "../src/ui/daily-briefing-page";
-import { newsPage } from "../src/ui/news-page";
-import { summariesPage } from "../src/ui/summaries-page";
 import { activityPage } from "../src/ui/activity-page";
 import { calendarPage } from "../src/ui/calendar-page";
 import { boardPage } from "../src/ui/board-page";
@@ -20,31 +17,19 @@ test("ui: dashboard shows concise status summaries with links to full pages", ()
   assert.match(html, /class="dashboard-overview"/);
   assert.match(html, /Needs attention/);
   assert.match(html, /Hobie board/);
-  assert.match(html, /Unread news/);
   assert.match(html, /Next up/);
   assert.match(html, /Today's briefing/);
   assert.match(html, /Recent agent activity/);
   assert.match(html, /id="theme-toggle"/);
   assert.match(html, /href="\/board"/);
-  assert.match(html, /href="\/news"/);
+  assert.doesNotMatch(html, /href="\/(?:news|summaries|ai-security)"/);
   assert.match(html, /href="\/calendar"/);
   assert.match(html, /href="\/briefing"/);
   assert.match(html, /href="\/activity"/);
-  assert.match(html, /\/api\/feeds/);
+  assert.doesNotMatch(html, /\/api\/(?:feeds|news|rss|summaries|ai-security)/);
   assert.match(html, /\/api\/calendar\?horizonDays=7/);
   assert.match(html, /\/api\/daily-briefing/);
   assert.doesNotMatch(html, /dashboard-grid|dashboard-reset-layout|data-panel-id=/);
-});
-
-test("ui: ai security page has archive and empty state", () => {
-  const html = aiSecurityPage();
-  assert.match(html, /href="\/ai-security" class="on"/);
-  assert.match(html, /id="as-empty"/);
-  assert.match(html, /id="as-empty-title">No editions yet/);
-  assert.match(html, /weekly AI Security roundup will appear here when the first edition is published/);
-  assert.match(html, /Couldn't load roundups/);
-  assert.doesNotMatch(html, /Publish the first edition|AI_SECURITY_TOKEN|Authorization: Bearer/);
-  assert.match(html, /id="as-archive"/);
 });
 
 test("ui: daily briefing page has source sections and nav link", () => {
@@ -53,11 +38,9 @@ test("ui: daily briefing page has source sections and nav link", () => {
   assert.match(html, /class="morning-briefing"/);
   assert.match(html, /class="morning-masthead"/);
   assert.match(html, /The Morning Briefing/);
-  assert.match(html, /Stories worth your time/);
+  assert.doesNotMatch(html, /Stories worth your time|db-news|db-ai/);
   assert.match(html, /class="briefing-rail"/);
   assert.match(html, /The almanac/);
-  assert.match(html, /id="db-news"/);
-  assert.match(html, /id="db-ai"/);
   assert.match(html, /id="db-calendar"/);
   assert.match(html, /id="db-weather"/);
   assert.match(html, /id="db-todoist"/);
@@ -69,27 +52,6 @@ test("ui: daily briefing page has source sections and nav link", () => {
   assert.match(html, /id="db-error"/);
 });
 
-test("ui: news reader has feed tree and article list", () => {
-  const html = newsPage();
-  assert.match(html, /href="\/news" class="on"/);
-  assert.match(html, /id="news-focus-chips"/);
-  assert.match(html, /id="rss-tree"/);
-  assert.match(html, /id="rss-articles"/);
-  assert.match(html, /id="rss-read-pane"/);
-  assert.match(html, /Saved for later/);
-  assert.match(html, /id="rss-read-toggle"/);
-  assert.match(html, /data-article-action="save"/);
-  assert.match(html, /data-article-action="read"/);
-  assert.match(html, /if\(sc==="saved"\)document\.getElementById\("rss-unread-only"\)\.checked=false/);
-});
-
-test("ui: summaries page has search and auto settings", () => {
-  const html = summariesPage();
-  assert.match(html, /href="\/summaries" class="on"/);
-  assert.match(html, /id="sum-list"/);
-  assert.match(html, /id="sum-auto-star"/);
-});
-
 test("ui: settings page has schedule and tabs sections", () => {
   const html = settingsPage();
   assert.match(html, /settings-card settings-tab-panel/);
@@ -97,12 +59,21 @@ test("ui: settings page has schedule and tabs sections", () => {
   assert.match(html, /id="tab-schedule"/);
   assert.match(html, /id="tab-views"/);
   assert.match(html, /id="tab-tabs"/);
-  assert.match(html, /id="scope-all"/);
+  assert.doesNotMatch(html, /scope-all|fetchInterval|data-pref="(?:news|summaries|aiSecurity|briefing\.news|briefing\.ai)/);
   assert.match(html, /data-pref="dashboard.hobie"/);
   assert.match(html, /data-pref="briefing.github"/);
   assert.match(html, /data-pref="calendar.weekStartsOn"/);
   assert.match(html, /data-pref="activity.limit"/);
   assert.match(html, /id="views-save"/);
+});
+
+test("ui: retained dashboard, settings and briefing scripts parse without retired integrations", () => {
+  for (const html of [dashboardPage(), settingsPage(), dailyBriefingPage()]) {
+    assert.doesNotMatch(html, /\/api\/(?:feeds|rss|news|summaries|ai-security|briefing\/generate)/);
+    for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+      assert.doesNotThrow(() => new Script(match[1]!));
+    }
+  }
 });
 
 test("ui: full sidebar pages render", () => {

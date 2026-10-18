@@ -51,31 +51,8 @@ export const dashboardGridCss = `
   content:"";position:absolute;right:2px;bottom:2px;width:10px;height:10px;
   border-right:2px solid var(--muted-foreground);border-bottom:2px solid var(--muted-foreground);opacity:.7}
 .dashboard-item.is-collapsed .dashboard-resize{display:none}
-.feeds-panel-scroll{flex:1;min-height:0;overflow:auto;border:1px solid var(--border);
-  border-radius:calc(var(--radius) - 2px);padding:0 .5rem}
-.feed-headline{display:flex;gap:.35rem;align-items:flex-start;justify-content:space-between}
-.feed-headline summary{cursor:pointer;list-style:none;font-weight:600}
-.feed-headline summary::-webkit-details-marker{display:none}
-.feed-headline summary::before{content:"▸ ";font-size:.7rem;color:var(--muted-foreground)}
-details.feed-item[open] .feed-headline summary::before{content:"▾ "}
-.feed-item .feed-summary{margin:.25rem 0 .35rem;font-size:.8125rem}
-.feed-item .feed-meta{margin:0;font-size:.75rem}
 #panel-notes #notes-editor{min-height:3rem;flex:1;max-height:100%;resize:none;font-size:.8125rem}
-#panel-briefing #briefing-body{flex:1;min-height:0;max-height:none;margin:0;font-size:.75rem}
 #panel-notes .dim{font-size:.75rem;margin:0}
-#panel-feeds{flex:1;min-height:0;display:flex;flex-direction:column}
-#panel-feeds .dashboard-panel-body{flex:1;min-height:0}
-#panel-feeds .feeds-full-link{margin:.25rem 0 0;font-size:.8125rem;flex-shrink:0}
-#panel-feeds .feeds-full-link a{text-decoration:underline;text-underline-offset:2px}
-#panel-feeds .row{flex-shrink:0}
-#panel-feeds #feeds-status{flex-shrink:0;margin:0;font-size:.8125rem}
-#panel-feeds .feeds-full-link,#panel-feeds .row:last-of-type{display:none}
-#panel-feeds .feed-item{margin:0;border-bottom:1px solid var(--border)}
-#panel-feeds .feed-item:last-child{border-bottom:0}
-#panel-feeds .feed-headline summary{font-size:.8125rem;font-weight:500;line-height:1.25}
-#panel-feeds .feed-meta{display:none}
-#panel-feeds .feed-item .feed-summary{display:none}
-#panel-feeds .feed-headline .ghost.mark-read{font-size:.6875rem;padding:.05rem .3rem;min-height:auto}
 @media(max-width:900px){
   .dashboard-grid{grid-template-columns:repeat(6,minmax(0,1fr))}
   .dashboard-item{grid-column:1/-1!important;grid-row:auto!important;height:auto!important}
@@ -157,9 +134,8 @@ export function dashboardGridScript(): string {
 
   function titleFor(id){
     var map={
-      activity:"Activity",hobie:"Hobie queue","tagged-news":"Tagged news","daily-briefing":"Daily briefing",
-      "ai-security":"AI Security",weather:"Weather",calendar:"Calendar",notes:"Notes",
-      feeds:"News feeds",briefing:"AI briefing","host-health":"Host health",
+      activity:"Activity",hobie:"Hobie queue","daily-briefing":"Daily briefing",
+      weather:"Weather",calendar:"Calendar",notes:"Notes","host-health":"Host health",
       recallio:"Recallio"
     };
     return map[id]||id;

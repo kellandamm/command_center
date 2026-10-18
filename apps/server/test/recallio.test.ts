@@ -12,12 +12,8 @@ import {
   recallioSearchUrl,
   searchRecallio,
 } from "../src/recallio/client";
-import { BriefingService } from "../src/briefing/service";
-import { AiSecurityService } from "../src/ai-security/service";
 import { DailyBriefingService } from "../src/daily-briefing/service";
 import { makeAuthenticator } from "../src/auth";
-import { NewsPrefsStore } from "../src/feeds/news-prefs";
-import { FeedsStore } from "../src/feeds/store";
 import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
@@ -66,14 +62,10 @@ test("recallio: API route returns graceful JSON", async () => {
   const cfg = loadConfig({ DATA_DIR: dir, ADMIN_TOKEN: TOKEN, RECALLIO_URL: "https://recall.example" });
   const settings = new SettingsStore(dir);
   await settings.load();
-  const feeds = await FeedsStore.open(dir);
-  const newsPrefs = await NewsPrefsStore.open(dir);
-  const briefing = await BriefingService.open(dir, cfg.tz);
-  const aiSecurity = await AiSecurityService.open(dir);
   const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
   const notes = await NotesStore.open(dir);
   const integration = await openIntegrationStores(dir, cfg);
-  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, feeds, briefing, aiSecurity, dailyBriefing, newsPrefs, notes, ...integration });
+  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, dailyBriefing, notes, ...integration });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const authz = { authorization: `Bearer ${TOKEN}` };
@@ -86,7 +78,7 @@ test("recallio: API route returns graceful JSON", async () => {
     assert.ok(j.error);
     assert.deepEqual(j.results, []);
   } finally {
-    await closeIntegrationServer(server, feeds, integration);
+    await closeIntegrationServer(server, integration);
     await rm(dir, { recursive: true, force: true });
   }
 });

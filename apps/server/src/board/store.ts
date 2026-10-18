@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { initSchema } from "../feeds/schema";
+import { DATABASE_FILE, initSchema } from "../database";
 import type { HobieQueueStore, HobieTask } from "../stores/hobie-queue";
 import type { WinsStore } from "../wins/store";
 import {
@@ -38,7 +38,7 @@ export class BoardStore {
   private constructor(private db: DatabaseSync) {}
 
   static open(dataDir: string): BoardStore {
-    const db = new DatabaseSync(join(dataDir, "rss.sqlite"));
+    const db = new DatabaseSync(join(dataDir, DATABASE_FILE));
     initSchema(db);
     return new BoardStore(db);
   }
