@@ -244,11 +244,19 @@ const THEME_SCRIPT = `
 `;
 
 export function page(opts: { title: string; body: string; active?: string; script?: string; nav?: NavLink[]; extraCss?: string }): string {
+  const agentSections = [
+    ["/board", "board", "Board"], ["/agent/queue", "queue", "Queue"],
+    ["/wins", "wins", "Wins"], ["/assistant", "assistant", "Assistant"], ["/activity", "activity", "Activity"],
+  ];
+  const agentSection = agentSections.find(([path]) => path === opts.active);
+  const active = agentSection ? "/agent" : opts.active;
+  const agentNav = agentSection ? `<nav class="agent-tabs" aria-label="Agent sections">${agentSections.map(([, id, label]) =>
+    `<a href="/agent?view=${id}"${id === agentSection[1] ? ' aria-current="page"' : ""}>${label}</a>`).join("")}</nav>` : "";
   const links = opts.nav ?? visibleNavTabs(DEFAULT_SIDEBAR_TABS);
   const nav = links
     .map(
       ({ href, label }) =>
-        `<a href="${href}"${opts.active === href ? ' class="on"' : ""}><span>${esc(label)}</span></a>`,
+        `<a href="${href}"${active === href ? ' class="on"' : ""}><span>${esc(label)}</span></a>`,
     )
     .join("");
   const shell = `<div class="app-shell">
@@ -259,7 +267,7 @@ export function page(opts: { title: string; body: string; active?: string; scrip
     <button type="button" class="ghost theme-toggle icon-btn" id="theme-toggle" aria-label="Toggle theme">Theme</button>
   </div>
 </aside>
-<div class="app-main"><div class="page-content">${opts.body}</div></div>
+<div class="app-main"><div class="page-content">${agentNav}${opts.body}</div></div>
 </div>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -267,7 +275,11 @@ export function page(opts: { title: string; body: string; active?: string; scrip
 <link rel="icon" href="/icon-192.png"><link rel="apple-touch-icon" href="/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<title>${esc(opts.title)}</title><style>${CSS}${opts.extraCss ?? ""}html,body{font-family:Inter,ui-sans-serif,system-ui,sans-serif}</style></head>
+<title>${esc(agentSection ? `Agent · ${agentSection[2]} — Command Center` : opts.title)}</title><style>${CSS}${opts.extraCss ?? ""}
+.agent-tabs{display:flex;gap:1.5rem;border-bottom:1px solid var(--border);margin-bottom:1.5rem;overflow:auto}
+.agent-tabs a{padding:.75rem 0;white-space:nowrap;color:var(--muted-foreground)}
+.agent-tabs a[aria-current=page]{color:var(--foreground);border-bottom:2px solid var(--foreground);font-weight:600}
+html,body{font-family:Inter,ui-sans-serif,system-ui,sans-serif}</style></head>
 <body>${shell}
 <script>
 ${THEME_SCRIPT}

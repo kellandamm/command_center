@@ -26,13 +26,13 @@ test("ui: dashboard shows concise status summaries with links to full pages", ()
   assert.match(html, /Today's briefing/);
   assert.match(html, /Recent agent activity/);
   assert.match(html, /id="theme-toggle"/);
-  assert.match(html, /href="\/board"/);
+  assert.match(html, /href="\/agent\?view=board"/);
   assert.match(html, /href="\/library\?view=inbox"/);
   assert.match(html, /\/api\/read-later/);
   assert.doesNotMatch(html, /href="\/(?:news|summaries|ai-security)"/);
   assert.match(html, /href="\/calendar"/);
   assert.match(html, /href="\/briefing"/);
-  assert.match(html, /href="\/activity"/);
+  assert.match(html, /href="\/agent\?view=activity"/);
   assert.doesNotMatch(html, /\/api\/(?:feeds|news|rss|summaries|ai-security)/);
   assert.match(html, /\/api\/calendar\?horizonDays=7/);
   assert.match(html, /\/api\/daily-briefing/);
@@ -69,12 +69,14 @@ test("ui: Library combines saved links, Read later, and summaries", () => {
   for (const view of ["all", "inbox", "summarized", "archive"]) {
     assert.match(html, new RegExp(`data-library-view="${view}"`));
   }
-  for (const id of ["source-space-filter", "source-tag-filter", "source-sort", "source-list-view", "source-card-view"]) {
+  for (const id of ["source-space-filter", "source-tag-filter", "source-sort", "source-compact-view", "source-list-view", "source-card-view", "folder-list", "tag-list", "folder-form", "capture-space", "capture-tags", "source-next", "source-prev"]) {
     assert.ok(html.includes(`id="${id}"`));
   }
   assert.equal((html.match(/href="\/library" class="on"/g) ?? []).length, 1);
   assert.doesNotMatch(html, /href="\/read-later"/);
   assert.match(sourceDetailPage(), /id="source-summarize"/);
+  assert.match(html, /<h1>Read Later<\/h1>/);
+  assert.match(html, /pageSize=50/);
 });
 
 test("ui: spaces, assistant and capture pages render", () => {
@@ -109,8 +111,9 @@ test("ui: retained dashboard, settings and briefing scripts parse without retire
 });
 
 test("ui: full sidebar pages render", () => {
-  assert.match(boardPage(), /href="\/board" class="on"/);
-  assert.match(winsPage(), /href="\/wins" class="on"/);
+  assert.match(boardPage(), /href="\/agent" class="on"/);
+  assert.match(boardPage(), /href="\/agent\?view=board" aria-current="page"/);
+  assert.match(winsPage(), /href="\/agent\?view=wins" aria-current="page"/);
   assert.match(notesPage(), /id="knowledge-note-list"/);
   assert.match(noteToolsPage(undefined, false), /Export Markdown/);
   assert.match(noteToolsPage(undefined, true), /Connections/);

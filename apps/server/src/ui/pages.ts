@@ -11,7 +11,7 @@ export function dashboardPage(nav?: NavLink[]): string {
   <section class="card dashboard-overview-card dashboard-attention-card" data-dashboard-card="attention">
     <h2>Needs attention</h2>
     <div class="dashboard-metrics">
-      <a class="dashboard-metric" href="/board"><span>Hobie board</span><strong id="dashboard-hobie-count">Loading…</strong><span class="dim" id="dashboard-hobie-detail"></span></a>
+      <a class="dashboard-metric" href="/agent?view=board"><span>Hobie board</span><strong id="dashboard-hobie-count">Loading…</strong><span class="dim" id="dashboard-hobie-detail"></span></a>
       <a class="dashboard-metric" href="/library?view=inbox"><span>Read later</span><strong id="dashboard-news-count">Loading…</strong><span class="dim">Open your inbox</span></a>
     </div>
   </section>
@@ -28,7 +28,7 @@ export function dashboardPage(nav?: NavLink[]): string {
   <section class="card dashboard-overview-card" data-dashboard-card="activity">
     <h2>Recent agent activity</h2>
     <p id="dashboard-activity-status" class="dashboard-summary">Loading activity…</p>
-    <a href="/activity" class="dashboard-card-link">Open activity</a>
+    <a href="/agent?view=activity" class="dashboard-card-link">Open activity</a>
   </section>
 </div></div>`,
     script: `
@@ -83,7 +83,7 @@ window.viewPreferencesReady.then(function(prefs){
   var dashboard=prefs&&prefs.dashboard||{};
   document.querySelectorAll("[data-dashboard-card]").forEach(function(card){
     var key=card.dataset.dashboardCard;
-    if(key==="attention"&&dashboard.hobie===false)card.querySelector('a[href="/board"]').hidden=true;
+    if(key==="attention"&&dashboard.hobie===false)card.querySelector('a[href="/agent?view=board"]').hidden=true;
     else if(key!=="attention"&&dashboard[key]===false)card.hidden=true;
   });
   if(dashboard.hobie!==false)loadDashboardHobie();
