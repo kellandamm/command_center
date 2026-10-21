@@ -71,10 +71,16 @@ test("read later: pages, redirects, and extension download", async () => {
     for (const path of ["/read-later", "/library", "/spaces", "/assistant", "/settings/capture", "/notes/connections"]) {
       assert.equal((await fetch(`${h.base}${path}`, { headers: admin })).status, 200, path);
     }
-    for (const [path, target] of [["/news", "/read-later"], ["/summaries", "/library"]]) {
+    for (const [path, target] of [
+      ["/news", "/library?view=inbox"],
+      ["/summaries", "/library?view=summarized"],
+      ["/read-later", "/library?view=inbox"],
+      ["/read-later?view=archive&q=example", "/library?view=archive&q=example"],
+      ["/read-later/abc?from=saved", "/library/abc?from=saved"],
+    ]) {
       const redirect = await fetch(`${h.base}${path}`, { headers: admin, redirect: "manual" });
-      assert.equal(redirect.status, 302);
-      assert.equal(redirect.headers.get("location"), target);
+      assert.equal(redirect.status, 302, path);
+      assert.equal(redirect.headers.get("location"), target, path);
     }
     const zipRes = await fetch(`${h.base}/capture-extension.zip`, { headers: admin });
     const bytes = Buffer.from(await zipRes.arrayBuffer());

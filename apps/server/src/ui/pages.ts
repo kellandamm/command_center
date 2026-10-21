@@ -12,7 +12,7 @@ export function dashboardPage(nav?: NavLink[]): string {
     <h2>Needs attention</h2>
     <div class="dashboard-metrics">
       <a class="dashboard-metric" href="/board"><span>Hobie board</span><strong id="dashboard-hobie-count">Loading…</strong><span class="dim" id="dashboard-hobie-detail"></span></a>
-      <a class="dashboard-metric" href="/read-later"><span>Read later</span><strong id="dashboard-news-count">Loading…</strong><span class="dim">Open your inbox</span></a>
+      <a class="dashboard-metric" href="/library?view=inbox"><span>Read later</span><strong id="dashboard-news-count">Loading…</strong><span class="dim">Open your inbox</span></a>
     </div>
   </section>
   <section class="card dashboard-overview-card" data-dashboard-card="calendar">

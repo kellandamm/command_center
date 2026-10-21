@@ -1,52 +1,109 @@
 import type { NavLink } from "./layout";
-import { workspacePage, workspaceTabs } from "./workspace";
+import { workspacePage } from "./workspace";
 
-export function sourcesPage(nav?: NavLink[], library = false): string {
+export function sourcesPage(nav?: NavLink[]): string {
   return workspacePage({
-    title: library ? "Library" : "Read later",
-    description: library ? "Find the articles and source material you chose to keep." : "Only what you choose to save. No feeds, subscriptions, or unread treadmill.",
-    active: library ? "/library" : "/read-later", nav,
-    actions: '<a class="btn ghost" href="/settings/capture">Set up Chrome capture</a>',
-    tabs: workspaceTabs(library ? [["/library", "All saved"], ["/library?view=summarized", "Summarized"], ["/library?view=archive", "Archived"]] :
-      [["/read-later", "Inbox"], ["/library", "Browse library"]], library ? "/library" : "/read-later"),
-    body: `<div class="workspace-toolbar"><label class="sr-only" for="source-search">Search saved pages</label><input id="source-search" type="search" placeholder="Search titles, text, and summaries"></div>
-${library ? "" : `<details class="workspace-details"><summary>Save a page without the extension</summary>
+    title: "Library",
+    description: "Good finds, kept together. Save now, make time for them later.",
+    active: "/library", nav,
+    actions: '<button id="source-add" type="button">Save a link</button>',
+    body: `<details id="capture-panel" class="workspace-details library-capture"><summary>Save a link without the extension</summary>
+<p class="dim">For one-click saving, <a href="/settings/capture">set up Chrome capture</a>.</p>
 <form id="capture-form" class="workspace-inline-form"><label for="capture-url">Page URL</label><input id="capture-url" type="url" required placeholder="https://">
 <label for="capture-title">Title</label><input id="capture-title" maxlength="240" placeholder="Optional">
-<label for="capture-text">Article text</label><textarea id="capture-text" maxlength="20000" placeholder="Paste the text you want to keep or summarize. We never fetch private pages behind your back."></textarea>
-<div class="row"><button type="submit" value="save">Save</button><button type="submit" value="summarize" class="ghost">Save &amp; summarize</button></div></form></details>`}
-<div id="source-list" class="workspace-list"></div>`,
+<label for="capture-text">Page text</label><textarea id="capture-text" maxlength="20000" placeholder="Paste text to read or summarize. Chrome capture can do this for you."></textarea>
+<div class="row"><button type="submit" value="save">Save</button><button type="submit" value="summarize" class="ghost">Save &amp; summarize</button></div></form></details>
+<nav class="workspace-tabs library-views" aria-label="Library filters">
+<a href="/library" data-library-view="all">All saved <span id="count-all">0</span></a>
+<a href="/library?view=inbox" data-library-view="inbox">Read later <span id="count-inbox">0</span></a>
+<a href="/library?view=summarized" data-library-view="summarized">Summarized <span id="count-summarized">0</span></a>
+<a href="/library?view=archive" data-library-view="archive">Archived <span id="count-archive">0</span></a></nav>
+<div class="library-controls">
+<div class="library-search"><label class="sr-only" for="source-search">Search saved links</label><input id="source-search" type="search" placeholder="Search links, text, tags, summaries"></div>
+<div><label for="source-space-filter">Space</label><select id="source-space-filter"><option value="">All spaces</option></select></div>
+<div><label for="source-tag-filter">Tag</label><select id="source-tag-filter"><option value="">All tags</option></select></div>
+<div><label for="source-sort">Sort</label><select id="source-sort"><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="title">Title A-Z</option></select></div>
+</div>
+<div class="library-results"><p id="source-count" class="dim" role="status">Loading saved links...</p>
+<div class="row" role="group" aria-label="Link layout"><button id="source-list-view" class="ghost" type="button" aria-pressed="true">List</button><button id="source-card-view" class="ghost" type="button" aria-pressed="false">Cards</button></div></div>
+<div id="source-list" class="library-items" aria-busy="true"></div>`,
     script: `
-var sources=[],library=${library};
-var view=new URLSearchParams(location.search).get("view")||(library?"all":"inbox");
-document.querySelectorAll(".workspace-tabs a").forEach(function(a){a.toggleAttribute("aria-current",a.getAttribute("href")===location.pathname+location.search);if(a.hasAttribute("aria-current"))a.setAttribute("aria-current","page");});
+var sources=[],spaces=[],params=new URLSearchParams(location.search);
+var view=["all","inbox","summarized","archive"].includes(params.get("view"))?params.get("view"):"all";
+var cards=params.get("layout")==="cards";
+function updateUrl(){
+  var next=new URLSearchParams();
+  if(view!=="all")next.set("view",view);
+  [["q","source-search"],["space","source-space-filter"],["tag","source-tag-filter"]].forEach(function(pair){if($(pair[1]).value)next.set(pair[0],$(pair[1]).value);});
+  if($("source-sort").value!=="newest")next.set("sort",$("source-sort").value);
+  if(cards)next.set("layout","cards");
+  history.replaceState(null,"","/library"+(next.size?"?"+next.toString():""));
+}
 function renderSources(){
-  var q=$("source-search").value.toLowerCase(),box=$("source-list");box.replaceChildren();
-  var rows=sources.filter(function(s){return (view!=="summarized"||s.summary)&&(s.title+" "+s.excerpt+" "+(s.summary||"")+" "+s.tags.join(" ")).toLowerCase().includes(q);});
-  if(!rows.length){emptyState(box,q?"Nothing matches that search":library?"Your library is ready for something worth keeping":"Nothing waiting to be read",q?"Try a different title, phrase, or tag.":"Save a page with Chrome capture, or paste an article into Read later.");return;}
+  var q=$("source-search").value.trim().toLowerCase(),space=$("source-space-filter").value,tag=$("source-tag-filter").value,box=$("source-list");
+  box.replaceChildren();box.classList.toggle("library-cards",cards);box.setAttribute("aria-busy","false");
+  $("source-list-view").setAttribute("aria-pressed",String(!cards));$("source-card-view").setAttribute("aria-pressed",String(cards));
+  document.querySelectorAll("[data-library-view]").forEach(function(a){if(a.dataset.libraryView===view)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current");});
+  $("count-all").textContent=sources.length;$("count-inbox").textContent=sources.filter(function(s){return !s.archivedAt;}).length;
+  $("count-summarized").textContent=sources.filter(function(s){return !!s.summary;}).length;$("count-archive").textContent=sources.filter(function(s){return !!s.archivedAt;}).length;
+  var rows=sources.filter(function(s){return (view!=="inbox"||!s.archivedAt)&&(view!=="archive"||s.archivedAt)&&(view!=="summarized"||s.summary)&&(!space||(space==="unfiled"?!s.spaceId:s.spaceId===space))&&(!tag||s.tags.includes(tag))&&(s.title+" "+(s.url||"")+" "+s.excerpt+" "+(s.summary||"")+" "+s.tags.join(" ")).toLowerCase().includes(q);});
+  var sort=$("source-sort").value;
+  rows.sort(function(a,b){return sort==="title"?a.title.localeCompare(b.title):sort==="oldest"?a.createdAt.localeCompare(b.createdAt):b.createdAt.localeCompare(a.createdAt);});
+  $("source-count").textContent=rows.length+" "+(rows.length===1?"link":"links")+(sources.length!==rows.length?" of "+sources.length+" saved":"");
+  if(!rows.length){emptyState(box,sources.length?"No links here yet":"Keep something worth coming back to",sources.length?"Try All saved, another filter, or a different search.":"Save your first link above, or use Chrome capture to keep the page and its text.");return;}
   rows.forEach(function(s){
-    var row=element("a",undefined,"workspace-item");row.href=(library?"/library/":"/read-later/")+encodeURIComponent(s.id);
-    var text=element("div");text.append(element("div",s.title,"workspace-item-title"),element("p",host(s.url)+" · "+(s.summary?"Summary ready":"Not summarized")+(s.archivedAt?" · Archived":"")));
-    if(s.summary)text.append(element("p",s.summary.slice(0,180)+(s.summary.length>180?"…":"")));
-    row.append(text,element("span",new Date(s.createdAt).toLocaleDateString(),"workspace-meta"));box.append(row);
+    var row=element("article",undefined,"library-item"),text=element("div",undefined,"library-item-content");
+    var heading=element("h2");heading.append(appLink(s.title,"/library/"+encodeURIComponent(s.id)));
+    var domain=host(s.url),mark=element("span",domain.charAt(0).toUpperCase(),"library-domain-mark");mark.setAttribute("aria-hidden","true");
+    text.append(element("p",domain+" · "+new Date(s.createdAt).toLocaleDateString(),"library-origin"),heading);
+    var preview=s.summary||s.excerpt;if(preview)text.append(element("p",preview.slice(0,200)+(preview.length>200?"…":""),"library-preview"));
+    var meta=element("div",undefined,"library-labels");
+    if(s.summary)meta.append(element("span","Summary ready","library-summary-label"));
+    if(s.archivedAt)meta.append(element("span","Archived"));
+    var collection=spaces.find(function(item){return item.id===s.spaceId;});if(collection)meta.append(appLink(collection.name,"/spaces/"+encodeURIComponent(collection.id)));
+    s.tags.forEach(function(t){var chip=element("button","#"+t,"library-tag");chip.type="button";chip.onclick=function(){$("source-tag-filter").value=t;updateUrl();renderSources();};meta.append(chip);});
+    text.append(meta);
+    var actions=element("div",undefined,"library-item-actions");
+    if(!s.summary){var summarize=element("button","Summarize","ghost");summarize.type="button";summarize.setAttribute("aria-label","Summarize "+s.title);summarize.onclick=function(){busy(this,async function(){
+      message("Summarizing "+s.title+"...");
+      var r=await api("/api/read-later/"+encodeURIComponent(s.id)+"/summarize","POST",{});sources=sources.map(function(item){return item.id===s.id?r.source:item;});renderSources();message("Summary ready.");
+    });};actions.append(summarize);}
+    var archive=element("button",s.archivedAt?"Read later":"Archive","ghost");archive.type="button";archive.setAttribute("aria-label",(s.archivedAt?"Move to Read later: ":"Archive ")+s.title);
+    archive.onclick=function(){busy(this,async function(){var r=await api("/api/knowledge/sources/"+encodeURIComponent(s.id),"PUT",{archived:!s.archivedAt});sources=sources.map(function(item){return item.id===s.id?r.source:item;});renderSources();message(s.archivedAt?"Moved to Read later.":"Archived. Still in All saved.");});};actions.append(archive);
+    row.append(mark,text,actions);box.append(row);
   });
 }
-async function loadSources(){var r=await api("/api/read-later?view="+encodeURIComponent(view==="summarized"?"all":view));sources=r.sources;renderSources();}
-$("source-search").oninput=renderSources;
+async function loadSources(){
+  var r=await api("/api/knowledge");sources=r.sources;spaces=r.spaces;
+  var oldSpace=$("source-space-filter").value,oldTag=$("source-tag-filter").value;
+  spaceOptions($("source-space-filter"),spaces,"All spaces");$("source-space-filter").add(new Option("No space","unfiled"));
+  $("source-tag-filter").replaceChildren(new Option("All tags",""));
+  Array.from(new Set(sources.flatMap(function(s){return s.tags;}))).sort().forEach(function(t){$("source-tag-filter").add(new Option(t,t));});
+  $("source-space-filter").value=oldSpace;$("source-tag-filter").value=oldTag;
+}
+$("source-add").onclick=function(){$("capture-panel").open=true;$("capture-url").focus();};
+document.querySelectorAll("[data-library-view]").forEach(function(a){a.onclick=function(e){if(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;e.preventDefault();view=a.dataset.libraryView;updateUrl();renderSources();};});
+$("source-search").oninput=function(){updateUrl();renderSources();};
+["source-space-filter","source-tag-filter","source-sort"].forEach(function(id){$(id).onchange=function(){updateUrl();renderSources();};});
+$("source-list-view").onclick=function(){cards=false;updateUrl();renderSources();};$("source-card-view").onclick=function(){cards=true;updateUrl();renderSources();};
 var form=$("capture-form");
-if(form)form.onsubmit=function(e){e.preventDefault();var summarize=e.submitter.value==="summarize";busy(e.submitter,async function(){
+form.onsubmit=function(e){e.preventDefault();var button=e.submitter||form.querySelector("button"),summarize=button.value==="summarize";busy(button,async function(){
   var r=await api("/api/read-later","POST",{url:$("capture-url").value,title:$("capture-title").value||undefined,excerpt:$("capture-text").value,summarize:summarize});
-  await loadSources();message((r.duplicate?"Already in your library.":"Page saved.")+(r.summaryError?" Summary failed: "+r.summaryError:""),!!r.summaryError);
-  if(!r.summaryError)form.reset();
+  await loadSources();view=r.source.archivedAt?"archive":"inbox";$("source-search").value="";$("source-space-filter").value="";$("source-tag-filter").value="";updateUrl();renderSources();
+  message((r.duplicate?"Already in your library.":"Link saved.")+(r.summaryError?" Summary failed: "+r.summaryError:""),!!r.summaryError);
+  if(!r.summaryError){form.reset();$("capture-panel").open=false;}
 });};
-loadSources().catch(fail);`,
+loadSources().then(function(){
+  $("source-search").value=params.get("q")||"";$("source-space-filter").value=params.get("space")||"";$("source-tag-filter").value=params.get("tag")||"";
+  $("source-sort").value=["newest","oldest","title"].includes(params.get("sort"))?params.get("sort"):"newest";renderSources();
+}).catch(function(err){$("source-count").textContent="Could not load saved links.";$("source-list").setAttribute("aria-busy","false");fail(err);});`,
   });
 }
 
 export function sourceDetailPage(nav?: NavLink[]): string {
   return workspacePage({
-    title: "Saved page", description: "Read, understand, and put a useful idea to work.", active: "/read-later", nav,
-    actions: '<a class="btn ghost" href="/read-later">Back to Read later</a>',
+    title: "Saved page", description: "Read, understand, and put a useful idea to work.", active: "/library", nav,
+    actions: '<a class="btn ghost" href="/library">Back to Library</a>',
     body: `<main class="reading-column" id="source-detail" hidden><p id="source-origin" class="dim"></p><h1 id="source-title"></h1>
 <div class="reading-actions"><a id="source-original" class="btn ghost" target="_blank" rel="noopener noreferrer">Open original</a><button id="source-summarize" type="button">Summarize</button><button id="source-archive" class="ghost" type="button">Archive</button></div>
 <section class="reading-summary"><h2>Summary</h2><p id="source-summary" class="reading-text"></p></section>
@@ -74,13 +131,13 @@ function renderSource(){
 }
 async function updateSource(body){var r=await api("/api/knowledge/sources/"+encodeURIComponent(id),"PUT",body);source=r.source;renderSource();}
 $("source-summarize").onclick=function(){busy(this,async function(){message("Summarizing…");var r=await api("/api/read-later/"+encodeURIComponent(id)+"/summarize","POST",{});source=r.source;renderSource();message("Summary ready.");});};
-$("source-archive").onclick=function(){busy(this,async function(){await updateSource({archived:!source.archivedAt});message(source.archivedAt?"Archived. Still available in Library and its space.":"Moved to Read later.");});};
+$("source-archive").onclick=function(){busy(this,async function(){await updateSource({archived:!source.archivedAt});message(source.archivedAt?"Archived. Still in All saved and its space.":"Moved to Read later.");});};
 $("source-space-save").onclick=function(){var selected=$("source-space").value;busy(this,async function(){await updateSource({spaceId:selected||null});message("Space updated.");});};
 $("source-note").onclick=function(){busy(this,async function(){var r=await api("/api/knowledge/notes","POST",{title:source.title,content:source.summary||source.excerpt,sourceUrl:source.url,tags:source.tags,spaceId:source.spaceId});var box=$("source-result");box.replaceChildren(appLink("Note created. Open it →","/notes?note="+encodeURIComponent(r.note.id)));});};
 $("source-task-toggle").onclick=function(){$("source-task-form").hidden=!$("source-task-form").hidden;$("source-task-title").value=source.title;$("source-task-title").focus();};
 $("source-task-form").onsubmit=function(e){e.preventDefault();busy(e.submitter,async function(){await api("/api/board/cards","POST",{title:$("source-task-title").value,notes:((source.url||"")+"\\n\\n"+(source.summary||source.excerpt)).slice(0,8000)});$("source-task-form").hidden=true;$("source-result").replaceChildren(appLink("Task created. Open board →","/board"));});};
 $("source-edit-form").onsubmit=function(e){e.preventDefault();busy(e.submitter,async function(){await updateSource({title:$("source-edit-title").value,excerpt:$("source-edit-text").value,tags:$("source-tags").value.split(",").map(function(t){return t.trim();}).filter(Boolean)});message("Changes saved.");});};
-api("/api/knowledge").then(function(data){source=data.sources.find(function(s){return s.id===id;});spaces=data.spaces;if(!source)throw new Error("Saved page not found. Return to Read later.");renderSource();}).catch(fail);
+api("/api/knowledge").then(function(data){source=data.sources.find(function(s){return s.id===id;});spaces=data.spaces;if(!source)throw new Error("Saved page not found. Return to Library.");renderSource();}).catch(fail);
 `,
   });
 }

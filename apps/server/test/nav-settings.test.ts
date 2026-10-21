@@ -13,7 +13,7 @@ test("nav: dashboard and settings tabs always visible", () => {
   const visible = visibleNavTabs(tabs);
   assert.ok(visible.some((t) => t.href === "/"));
   assert.ok(visible.some((t) => t.href === "/settings"));
-  assert.ok(!visible.some((t) => t.href === "/read-later"));
+  assert.ok(!visible.some((t) => t.href === "/library"));
 });
 
 test("nav: existing sidebar settings gain the Bookmarks tab without changing saved preferences", () => {
@@ -63,6 +63,25 @@ test("settings: applySettings retains sidebar renames", () => {
     sidebarTabs: applySidebarTabsPatch(DEFAULT_SETTINGS.sidebarTabs, [{ id: "notes", label: "Writing" }]),
   });
   assert.equal(next.sidebarTabs.find((t) => t.id === "notes")!.label, "Writing");
+});
+
+test("nav: old saved-link destinations collapse into Library without overriding its settings", () => {
+  const legacy = normalizeSidebarTabs([
+    { id: "news", label: "News", visible: true, order: 30 },
+    { id: "read-later", label: "Read later", visible: true, order: 30 },
+    { id: "summaries", label: "Summaries", visible: true, order: 40 },
+  ]);
+  assert.equal(legacy.filter((tab) => tab.id === "library").length, 1);
+  assert.equal(legacy.find((tab) => tab.id === "library")!.label, "Library");
+  for (const rows of [
+    [{ id: "library", label: "My links", visible: false, order: 21 }, { id: "read-later", label: "Read later", visible: true }],
+    [{ id: "read-later", label: "Read later", visible: true }, { id: "library", label: "My links", visible: false, order: 21 }],
+  ]) {
+    const tab = normalizeSidebarTabs(rows).find((item) => item.id === "library")!;
+    assert.equal(tab.label, "My links");
+    assert.equal(tab.visible, false);
+    assert.equal(tab.order, 21);
+  }
 });
 
 test("settings: view preferences customize page defaults and retain other defaults", () => {

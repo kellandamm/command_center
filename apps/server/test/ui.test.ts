@@ -27,7 +27,7 @@ test("ui: dashboard shows concise status summaries with links to full pages", ()
   assert.match(html, /Recent agent activity/);
   assert.match(html, /id="theme-toggle"/);
   assert.match(html, /href="\/board"/);
-  assert.match(html, /href="\/read-later"/);
+  assert.match(html, /href="\/library\?view=inbox"/);
   assert.match(html, /\/api\/read-later/);
   assert.doesNotMatch(html, /href="\/(?:news|summaries|ai-security)"/);
   assert.match(html, /href="\/calendar"/);
@@ -59,14 +59,21 @@ test("ui: daily briefing page has source sections and nav link", () => {
   assert.match(html, /id="db-error"/);
 });
 
-test("ui: read later saves only what you choose", () => {
+test("ui: Library combines saved links, Read later, and summaries", () => {
   const html = sourcesPage();
-  assert.match(html, /href="\/read-later" class="on"/);
+  assert.match(html, /href="\/library" class="on"/);
   assert.match(html, /id="capture-form"/);
   assert.match(html, /Save &amp; summarize/);
-  assert.match(html, /Set up Chrome capture/);
+  assert.match(html, /set up Chrome capture/);
   assert.doesNotMatch(html, /OPML|feed tree|RSS reader/i);
-  assert.match(sourcesPage(undefined, true), /href="\/library" class="on"/);
+  for (const view of ["all", "inbox", "summarized", "archive"]) {
+    assert.match(html, new RegExp(`data-library-view="${view}"`));
+  }
+  for (const id of ["source-space-filter", "source-tag-filter", "source-sort", "source-list-view", "source-card-view"]) {
+    assert.ok(html.includes(`id="${id}"`));
+  }
+  assert.equal((html.match(/href="\/library" class="on"/g) ?? []).length, 1);
+  assert.doesNotMatch(html, /href="\/read-later"/);
   assert.match(sourceDetailPage(), /id="source-summarize"/);
 });
 

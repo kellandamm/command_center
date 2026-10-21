@@ -164,13 +164,20 @@ export function createApp(app: App): Server {
 
       if (get && path === "/") return send(res, 200, dashboardPage(nav()), undefined, extra);
       if (get && path === "/briefing") return send(res, 200, dailyBriefingPage(nav()), undefined, extra);
-      if (get && (path === "/news" || path === "/summaries")) {
-        res.writeHead(302, { location: path === "/news" ? "/read-later" : "/library", ...SECURITY, ...extra });
+      if (get && (path === "/news" || path === "/summaries" || path === "/read-later")) {
+        const query = new URLSearchParams(url.search);
+        if (!query.has("view")) query.set("view", path === "/summaries" ? "summarized" : "inbox");
+        res.writeHead(302, { location: `/library?${query}`, ...SECURITY, ...extra });
         res.end();
         return;
       }
-      if (get && (path === "/read-later" || path === "/library")) return send(res, 200, sourcesPage(nav(), path === "/library"), undefined, extra);
-      if (get && /^\/(read-later|library)\/[^/]+$/.test(path)) return send(res, 200, sourceDetailPage(nav()), undefined, extra);
+      if (get && path === "/library") return send(res, 200, sourcesPage(nav()), undefined, extra);
+      if (get && /^\/read-later\/[^/]+$/.test(path)) {
+        res.writeHead(302, { location: path.replace("/read-later/", "/library/") + url.search, ...SECURITY, ...extra });
+        res.end();
+        return;
+      }
+      if (get && /^\/library\/[^/]+$/.test(path)) return send(res, 200, sourceDetailPage(nav()), undefined, extra);
       if (get && path === "/spaces") return send(res, 200, spacesPage(nav()), undefined, extra);
       if (get && /^\/spaces\/[^/]+$/.test(path)) return send(res, 200, spaceDetailPage(nav()), undefined, extra);
       if (get && path === "/assistant") return send(res, 200, assistantPage(nav()), undefined, extra);
