@@ -1,9 +1,10 @@
 import type { Config } from "../config";
 import { llmConfig } from "../config";
 import { chatCompletion, type FetchLike } from "../llm/provider";
-import { DEFAULT_SUMMARIZE_MAX_PER_HOUR } from "../feeds/summary-store";
 import { groupWinsByIsoWeek, type WinsStore } from "./store";
 import type { Win } from "./types";
+
+const MAX_WEEK_SUMMARIES_PER_HOUR = 10;
 
 export class WinsRollupService {
   constructor(
@@ -20,7 +21,7 @@ export class WinsRollupService {
     if (!llm || !weekWins.length) return null;
 
     const since = new Date(now.getTime() - 60 * 60_000).toISOString();
-    if (this.wins.countSummariesSince(since) >= DEFAULT_SUMMARIZE_MAX_PER_HOUR) return null;
+    if (this.wins.countSummariesSince(since) >= MAX_WEEK_SUMMARIES_PER_HOUR) return null;
 
     const lines = weekWins.map((w) => `- ${w.title} (${w.source})`).join("\n");
     try {

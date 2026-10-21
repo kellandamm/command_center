@@ -1,8 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { NotesStore } from "../notes/store";
 import { ValidationError } from "../settings";
-import { SummaryRateLimitError } from "../feeds/summary-service";
-import type { ReadLaterService } from "./service";
+import { SummaryRateLimitError, type ReadLaterService } from "./service";
 import type { CaptureAccess } from "./capture-access";
 
 export async function handleReadLaterRoutes(

@@ -4,8 +4,6 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { AddressInfo } from "node:net";
-import { AiSecurityService } from "../src/ai-security/service";
-import { BriefingService } from "../src/briefing/service";
 import { DailyBriefingService } from "../src/daily-briefing/service";
 import { defaultDashboardLayout } from "../src/dashboard-layout/defaults";
 import { normalizeDashboardLayout } from "../src/dashboard-layout/normalize";
@@ -13,8 +11,6 @@ import { packAfterMove, rectanglesOverlap } from "../src/dashboard-layout/pack";
 import { DashboardLayoutStore } from "../src/dashboard-layout/storage";
 import { loadConfig } from "../src/config";
 import { makeAuthenticator } from "../src/auth";
-import { NewsPrefsStore } from "../src/feeds/news-prefs";
-import { FeedsStore } from "../src/feeds/store";
 import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { panels } from "../src/panels/registry";
@@ -49,11 +45,9 @@ test("dashboard layout: missing panels append below saved layout", () => {
     panels: [{ id: "weather", x: 0, y: 0, w: 3, h: 3 }],
   };
   const next = normalizeDashboardLayout(raw, PANEL_IDS);
-  assert.ok(next.panels.find((p) => p.id === "tagged-news"));
   assert.ok(next.panels.find((p) => p.id === "daily-briefing"));
-  assert.ok(next.panels.find((p) => p.id === "ai-security"));
   const weatherBottom = 3;
-  for (const id of ["tagged-news", "daily-briefing", "ai-security"]) {
+  for (const id of ["calendar", "daily-briefing", "notes"]) {
     const p = next.panels.find((x) => x.id === id)!;
     assert.ok(p.y >= weatherBottom, `${id} should append below saved panels`);
   }
@@ -65,7 +59,11 @@ test("dashboard layout: v1 saved file maps positions into v2 grid", () => {
     cols: 12,
     rowHeight: 36,
     panels: [
-      { id: "feeds", x: 0, y: 0, w: 12, h: 12 },
+      { id: "daily-briefing", x: 0, y: 0, w: 12, h: 12 },
+      { id: "feeds", x: 0, y: 5, w: 8, h: 5 },
+      { id: "tagged-news", x: 8, y: 5, w: 4, h: 2 },
+      { id: "briefing", x: 8, y: 7, w: 4, h: 2 },
+      { id: "ai-security", x: 8, y: 9, w: 4, h: 2 },
       { id: "weather", x: 0, y: 0, w: 3, h: 3, collapsed: true },
       { id: "removed-panel", x: 1, y: 1, w: 3, h: 3 },
     ],
@@ -74,16 +72,19 @@ test("dashboard layout: v1 saved file maps positions into v2 grid", () => {
   assert.equal(next.version, 2);
   assert.equal(next.panels.length, PANEL_IDS.length);
   assert.equal(next.panels.find((p) => p.id === "weather")?.collapsed, true);
-  const feeds = next.panels.find((p) => p.id === "feeds")!;
-  assert.equal(feeds.w, 12);
-  assert.equal(feeds.h, 12);
+  const briefing = next.panels.find((p) => p.id === "daily-briefing")!;
+  assert.equal(briefing.w, 12);
+  assert.equal(briefing.h, 12);
+  for (const id of ["feeds", "tagged-news", "briefing", "ai-security"]) {
+    assert.ok(!next.panels.some((p) => p.id === id), id);
+  }
   assert.ok(!next.panels.some((p) => p.id === "removed-panel"));
 });
 
-test("dashboard layout: default collapses low-priority panels and enlarges feeds", () => {
+test("dashboard layout: default collapses low-priority panels without retired tiles", () => {
   const layout = defaultDashboardLayout(PANEL_IDS);
-  const feeds = layout.panels.find((p) => p.id === "feeds")!;
-  assert.ok(feeds.w >= 8 && feeds.h >= 5);
+  assert.ok(layout.panels.find((p) => p.id === "daily-briefing"));
+  assert.ok(!layout.panels.find((p) => p.id === "feeds"));
   assert.equal(layout.panels.find((p) => p.id === "calendar")?.collapsed, true);
   assert.equal(layout.panels.find((p) => p.id === "notes")?.collapsed, true);
   const maxEnd = layout.panels.reduce((m, p) => Math.max(m, p.y + (p.collapsed ? 1 : p.h)), 0);
@@ -99,7 +100,7 @@ test("dashboard layout: normalize adds missing panels and drops unknown ids", ()
   };
   const next = normalizeDashboardLayout(raw, PANEL_IDS);
   assert.equal(next.panels.find((p) => p.id === "weather")?.collapsed, true);
-  assert.ok(next.panels.find((p) => p.id === "feeds"));
+  assert.ok(next.panels.find((p) => p.id === "daily-briefing"));
   assert.equal(next.panels.length, PANEL_IDS.length);
 });
 
@@ -108,10 +109,6 @@ test("dashboard layout API persists under data dir", async () => {
   const cfg = loadConfig({ DATA_DIR: dir, ADMIN_TOKEN: TOKEN, ALLOW_INSECURE_NO_AUTH: "1" });
   const settings = new SettingsStore(dir);
   await settings.load();
-  const feeds = await FeedsStore.open(dir);
-  const newsPrefs = await NewsPrefsStore.open(dir);
-  const briefing = await BriefingService.open(dir, cfg.tz);
-  const aiSecurity = await AiSecurityService.open(dir);
   const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
   const notes = await NotesStore.open(dir);
   const integration = await openIntegrationStores(dir, cfg);
@@ -119,11 +116,7 @@ test("dashboard layout API persists under data dir", async () => {
     cfg,
     auth: makeAuthenticator(cfg),
     settings,
-    feeds,
-    briefing,
-    aiSecurity,
     dailyBriefing,
-    newsPrefs,
     notes,
     ...integration,
   });
@@ -148,7 +141,7 @@ test("dashboard layout API persists under data dir", async () => {
     const body: any = await reset.json();
     assert.deepEqual(body.layout.panels.map((p: { id: string }) => p.id), PANEL_IDS);
   } finally {
-    await closeIntegrationServer(server, feeds, integration);
+    await closeIntegrationServer(server, integration);
     await rm(dir, { recursive: true, force: true });
   }
 });

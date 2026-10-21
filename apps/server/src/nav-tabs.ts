@@ -2,7 +2,6 @@ import type { Settings } from "./settings";
 
 export type SidebarTabId =
   | "dashboard"
-  | "ai-security"
   | "briefing"
   | "read-later"
   | "library"
@@ -11,6 +10,7 @@ export type SidebarTabId =
   | "board"
   | "wins"
   | "notes"
+  | "bookmarks"
   | "calendar"
   | "activity"
   | "settings";
@@ -29,7 +29,6 @@ const LOCKED = new Set<SidebarTabId>(["dashboard", "settings"]);
 
 export const DEFAULT_SIDEBAR_TABS: SidebarTab[] = [
   { id: "dashboard", href: "/", label: "Dashboard", visible: true, order: 0, locked: true },
-  { id: "ai-security", href: "/ai-security", label: "AI Security", visible: true, order: 10 },
   { id: "briefing", href: "/briefing", label: "Daily Briefing", visible: true, order: 20 },
   { id: "read-later", href: "/read-later", label: "Read later", visible: true, order: 30 },
   { id: "library", href: "/library", label: "Library", visible: true, order: 40 },
@@ -38,6 +37,7 @@ export const DEFAULT_SIDEBAR_TABS: SidebarTab[] = [
   { id: "notes", href: "/notes", label: "Notes", visible: true, order: 60 },
   { id: "spaces", href: "/spaces", label: "Spaces", visible: true, order: 62 },
   { id: "assistant", href: "/assistant", label: "Assistant", visible: true, order: 65 },
+  { id: "bookmarks", href: "/bookmarks", label: "Bookmarks", visible: true, order: 67 },
   { id: "calendar", href: "/calendar", label: "Calendar", visible: true, order: 70 },
   { id: "activity", href: "/activity", label: "Activity", visible: true, order: 80 },
   { id: "settings", href: "/settings", label: "Settings", visible: true, order: 90, locked: true },

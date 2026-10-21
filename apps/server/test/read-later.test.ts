@@ -1,19 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
-import { BriefingService } from "../src/briefing/service";
-import { AiSecurityService } from "../src/ai-security/service";
+import { DatabaseSync } from "node:sqlite";
 import { DailyBriefingService } from "../src/daily-briefing/service";
 import { loadConfig } from "../src/config";
 import { makeAuthenticator } from "../src/auth";
-import { NewsPrefsStore } from "../src/feeds/news-prefs";
-import { FeedsStore } from "../src/feeds/store";
 import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
+import { DATABASE_FILE } from "../src/database";
+import { migrateSavedArticles } from "../src/read-later/service";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
 const TOKEN = "t".repeat(32);
@@ -24,20 +23,16 @@ async function harness() {
   const cfg = loadConfig({ DATA_DIR: dir, ADMIN_TOKEN: TOKEN, TZ: "UTC" });
   const settings = new SettingsStore(dir);
   await settings.load();
-  const feeds = await FeedsStore.open(dir);
   const integration = await openIntegrationStores(dir, cfg);
   const server = createApp({
-    cfg, auth: makeAuthenticator(cfg), settings, feeds,
-    briefing: await BriefingService.open(dir, cfg.tz),
-    aiSecurity: await AiSecurityService.open(dir),
+    cfg, auth: makeAuthenticator(cfg), settings,
     dailyBriefing: await DailyBriefingService.open(dir, cfg.tz),
-    newsPrefs: await NewsPrefsStore.open(dir),
     notes: await NotesStore.open(dir),
     ...integration,
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  return { base, close: async () => { await closeIntegrationServer(server, feeds, integration); await rm(dir, { recursive: true, force: true }); } };
+  return { base, close: async () => { await closeIntegrationServer(server, integration); await rm(dir, { recursive: true, force: true }); } };
 }
 
 test("read later: scoped capture token saves pages and nothing else", async () => {
@@ -76,14 +71,79 @@ test("read later: pages, redirects, and extension download", async () => {
     for (const path of ["/read-later", "/library", "/spaces", "/assistant", "/settings/capture", "/notes/connections"]) {
       assert.equal((await fetch(`${h.base}${path}`, { headers: admin })).status, 200, path);
     }
-    const redirect = await fetch(`${h.base}/news`, { headers: admin, redirect: "manual" });
-    assert.equal(redirect.status, 302);
-    assert.equal(redirect.headers.get("location"), "/read-later");
+    for (const [path, target] of [["/news", "/read-later"], ["/summaries", "/library"]]) {
+      const redirect = await fetch(`${h.base}${path}`, { headers: admin, redirect: "manual" });
+      assert.equal(redirect.status, 302);
+      assert.equal(redirect.headers.get("location"), target);
+    }
     const zipRes = await fetch(`${h.base}/capture-extension.zip`, { headers: admin });
     const bytes = Buffer.from(await zipRes.arrayBuffer());
     assert.equal(bytes.readUInt32LE(0), 0x04034b50);
     assert.ok(bytes.includes(Buffer.from("manifest.json")));
   } finally {
     await h.close();
+  }
+});
+
+test("read later: migration skips missing databases and databases without legacy tables", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-rl-migration-"));
+  try {
+    const notes = await NotesStore.open(dir);
+    const path = join(dir, DATABASE_FILE);
+    assert.equal(await migrateSavedArticles(dir, notes), 0);
+    await assert.rejects(readFile(path), { code: "ENOENT" });
+    const db = new DatabaseSync(path);
+    try {
+      db.exec("CREATE TABLE cards (id TEXT PRIMARY KEY)");
+    } finally {
+      db.close();
+    }
+    const original = await readFile(path);
+    assert.equal(await migrateSavedArticles(dir, notes), 0);
+    assert.deepEqual(await readFile(path), original);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("read later: migration preserves starred articles and summaries without modifying legacy data", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-rl-migration-"));
+  try {
+    const path = join(dir, DATABASE_FILE);
+    const db = new DatabaseSync(path);
+    const at = "2026-10-14T12:00:00.000Z";
+    try {
+      db.exec(`
+        CREATE TABLE entries (id TEXT PRIMARY KEY, title TEXT, link TEXT, snippet TEXT,
+          content_html TEXT, first_seen_at TEXT, starred INTEGER);
+        CREATE TABLE summaries (id TEXT PRIMARY KEY, entry_id TEXT, title TEXT, url TEXT,
+          summary TEXT, model TEXT, created_at TEXT);
+      `);
+      const insertEntry = db.prepare("INSERT INTO entries VALUES (?, ?, ?, ?, ?, ?, ?)");
+      insertEntry.run("star", "Saved article", "https://example.com/star", "Snippet", "<p>Captured text</p>", at, 1);
+      insertEntry.run("other", "Other article", "https://example.com/other", "Not saved", null, at, 0);
+      const insertSummary = db.prepare("INSERT INTO summaries VALUES (?, ?, ?, ?, ?, ?, ?)");
+      insertSummary.run("first", "star", "Saved article", "https://example.com/star", "Saved summary", "model", at);
+      insertSummary.run("second", "other", "Other article", "https://example.com/other", "Archived summary", "model", at);
+      insertSummary.run("third", null, "Standalone", null, "Standalone summary", "model", at);
+    } finally {
+      db.close();
+    }
+    const original = await readFile(path);
+    const notes = await NotesStore.open(dir);
+    assert.equal(await migrateSavedArticles(dir, notes), 3);
+    const saved = notes.listSources().find((source) => source.originKey === "rss:star")!;
+    assert.equal(saved.summary, "Saved summary");
+    assert.equal(saved.summaryModel, "model");
+    assert.equal(saved.summarizedAt, at);
+    assert.equal(saved.archivedAt, null);
+    assert.match(saved.excerpt, /Captured text/);
+    assert.doesNotMatch(saved.excerpt, /<p>/);
+    assert.equal(notes.listSources().find((source) => source.originKey === "summary:second")?.archivedAt, at);
+    assert.equal(notes.listSources().find((source) => source.originKey === "summary:third")?.summary, "Standalone summary");
+    assert.equal(await migrateSavedArticles(dir, await NotesStore.open(dir)), 0);
+    assert.deepEqual(await readFile(path), original);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });

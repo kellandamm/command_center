@@ -10,7 +10,7 @@ export function dailyBriefingPage(nav?: NavLink[]): string {
   <header class="morning-masthead">
     <div class="morning-kicker"><span>YOUR PERSONAL EDITION</span><span>THE DAILY READ</span><span>ONE OPEN TAB</span></div>
     <h1>The Morning Briefing</h1>
-    <p class="morning-deck">A considered look at your corner of the internet.</p>
+    <p class="morning-deck">Your schedule, priorities, and progress for the day ahead.</p>
   </header>
   <div class="morning-edition">
     <label><span class="visually-hidden">Briefing day</span><select id="db-day" aria-label="Briefing day"></select></label>
@@ -19,14 +19,6 @@ export function dailyBriefingPage(nav?: NavLink[]): string {
   </div>
   <div id="db-error" class="morning-error" role="status" hidden></div>
   <div class="briefing-grid" id="db-sections">
-    <section class="briefing-section briefing-news" id="db-news">
-      <div class="section-head"><div><p class="briefing-kicker">FROM YOUR FEEDS</p><h2>Stories worth your time</h2></div><span class="status-pill dim" id="db-news-status">…</span></div>
-      <div id="db-news-body"></div>
-    </section>
-    <section class="briefing-section briefing-ai" id="db-ai">
-      <div class="section-head"><div><p class="briefing-kicker">THE EDITOR'S NOTE</p><h2>What matters today</h2></div><span class="status-pill dim" id="db-ai-status">…</span></div>
-      <pre class="briefing" id="db-ai-body"></pre>
-    </section>
     <aside class="briefing-rail" aria-label="Your day">
       <section class="briefing-section briefing-rail-card" id="db-calendar"><div class="section-head"><h2>Your day</h2><span class="status-pill dim" id="db-calendar-status">…</span></div><div id="db-calendar-body"></div></section>
       <section class="briefing-section briefing-rail-card" id="db-weather"><div class="section-head"><h2>The almanac</h2><span class="status-pill dim" id="db-weather-status">…</span></div><div id="db-weather-body"></div></section>
@@ -60,27 +52,6 @@ function fmtWhen(iso){
 function fmtEventWhen(ev){
   if(ev.allDay)return ev.start.slice(0,10)+" (all day)";
   return new Date(ev.start).toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
-}
-function renderNews(s){
-  pill(document.getElementById("db-news-status"),s.status);
-  var body=document.getElementById("db-news-body");
-  if(s.status==="not_configured"||s.status==="error"){body.innerHTML='<p class="bad">'+esc(s.message||"Unavailable")+'</p>';return}
-  var items=(s.data&&s.data.items)||[];
-  if(!items.length){body.innerHTML='<p class="dim">'+esc(s.message||"No items.")+'</p>';return}
-  var stories=items.slice(0,8);
-  body.innerHTML=stories.map(function(it,index){
-    return '<article class="briefing-story'+(index===0?" featured":"")+'"><h3>'+(it.link?'<a href="'+esc(it.link)+'" target="_blank" rel="noopener">'+esc(it.title)+'</a>':esc(it.title))+'</h3>'
-      +(it.summary?'<p>'+esc(it.summary.slice(0,index===0?420:240))+(it.summary.length>(index===0?420:240)?"…":"")+'</p>':'')+'</article>';
-  }).join("")+(items.length>stories.length?'<p><a href="/news">Read all stories in News →</a></p>':"");
-}
-function renderAi(s){
-  pill(document.getElementById("db-ai-status"),s.status);
-  var pre=document.getElementById("db-ai-body");
-  pre.classList.remove("bad");
-  if(s.status==="not_configured"){pre.textContent=s.message||"Not configured.";return}
-  if(s.status==="error"){pre.textContent=s.message||"Error";pre.classList.add("bad");return}
-  if(s.status==="empty"){pre.textContent=s.message||"Nothing to summarize.";return}
-  pre.textContent=(s.data&&s.data.content)||"";
 }
 function renderTodoist(s){
   pill(document.getElementById("db-todoist-status"),s.status);
@@ -162,8 +133,7 @@ function renderGithub(s){
 function renderBriefing(b){
   var meta=document.getElementById("db-meta");
   briefingError("");
-  if(!b){meta.textContent="No briefing stored for this day yet — use Refresh briefing.";renderNews({status:"empty",message:"Generate a briefing to load feed highlights."});
-    renderAi({status:"not_configured",message:"Generate a briefing to build the AI summary."});
+  if(!b){meta.textContent="No briefing stored for this day yet — use Refresh edition.";
     renderTodoist({status:"not_configured",message:"Generate a briefing to load tasks."});
     renderWeather({status:"empty",message:"Generate a briefing to load weather."});
     renderCalendar({status:"not_configured",message:"Generate a briefing to load calendar."});
@@ -174,8 +144,6 @@ function renderBriefing(b){
     return;}
   meta.textContent="Generated "+fmtWhen(b.generatedAt)+" · "+b.trigger;
   var src=b.sources||{};
-  renderNews(src.news||{status:"error",message:"Missing news section"});
-  renderAi(src.ai||{status:"error",message:"Missing AI section"});
   renderTodoist(src.todoist||{status:"error",message:"Missing Todoist section"});
   renderWeather(src.weather||{status:"error",message:"Missing weather section"});
   renderCalendar(src.calendar||{status:"error",message:"Missing calendar section"});
@@ -218,7 +186,7 @@ refreshBtn.onclick=function(){
 };
 window.viewPreferencesReady.then(function(prefs){
   var sections=prefs&&prefs.briefing||{};
-  [["news","news"],["ai","ai"],["todoist","todoist"],["weather","weather"],["calendar","calendar"],["github","github"]].forEach(function(pair){
+  [["todoist","todoist"],["weather","weather"],["calendar","calendar"],["github","github"]].forEach(function(pair){
     if(sections[pair[0]]===false)document.getElementById("db-"+pair[1]).hidden=true;
   });
 });

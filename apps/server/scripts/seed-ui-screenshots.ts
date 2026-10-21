@@ -1,12 +1,10 @@
 /**
- * Seed all local data for UI screenshot capture (OPML tree, dashboard panels, Hobie, activity).
+ * Seed local data for UI screenshot capture (dashboard panels, Hobie, activity).
  * Usage: DATA_DIR=/tmp/cc-ui-shot tsx scripts/seed-ui-screenshots.ts
  */
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { FeedsStore } from "../src/feeds/store";
-import { SettingsStore } from "../src/settings";
 
 const dir = process.env.DATA_DIR;
 if (!dir) {
@@ -28,23 +26,7 @@ function run(script: string) {
 }
 
 async function main() {
-  await run("scripts/seed-rss-opml.ts");
   await run("scripts/seed-dashboard-screenshot.ts");
-  const feeds = await FeedsStore.open(dir);
-  const tree = feeds.tree();
-  const folderIds: string[] = [];
-  const walk = (nodes: typeof tree.folders) => {
-    for (const f of nodes) {
-      folderIds.push(f.id);
-      if (f.folders.length) walk(f.folders);
-    }
-  };
-  walk(tree.folders);
-  const settings = new SettingsStore(dir);
-  await settings.load();
-  await settings.update({
-    feedScope: { mode: "folders", folderIds: folderIds.slice(0, 8) },
-  });
   console.log("seed-ui-screenshots complete at", dir);
 }
 

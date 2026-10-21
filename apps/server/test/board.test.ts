@@ -7,13 +7,12 @@ import { DatabaseSync } from "node:sqlite";
 import { BoardStore } from "../src/board/store";
 import { READY_FOR_HOBIE, WAITING, DONE } from "../src/board/types";
 import { DailyBriefingService } from "../src/daily-briefing/service";
-import { initSchema } from "../src/feeds/schema";
+import { initSchema } from "../src/database";
 import { loadConfig } from "../src/config";
 import { HobieQueueStore } from "../src/stores/hobie-queue";
 import { wireHobieBoardSync } from "../src/board/hobie-sync";
 import { pollMergedPullRequestWins } from "../src/wins/github-poll";
 import { WinsStore } from "../src/wins/store";
-import { FeedsStore } from "../src/feeds/store";
 
 test("board: move to Ready creates Hobie task; claim → Waiting; done → Done + one win", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-board-"));
@@ -65,6 +64,27 @@ test("wins: dedupe by source+ref", async () => {
   }
 });
 
+test("database: fresh Board and Wins stores create no retired integration tables", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-personal-db-"));
+  const board = BoardStore.open(dir);
+  const wins = WinsStore.open(dir);
+  try {
+    board.create({ title: "Keep my board" });
+    wins.add({ source: "manual", ref: "keep", title: "Keep my wins" });
+    const db = new DatabaseSync(join(dir, "rss.sqlite"));
+    try {
+      const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as { name: string }[];
+      assert.deepEqual(tables.map((row) => row.name), ["card_events", "cards", "sqlite_sequence", "win_week_summaries", "wins"]);
+    } finally {
+      db.close();
+    }
+  } finally {
+    board.close();
+    wins.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("github wins poll without token does not throw", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-gh-win-"));
   const wins = WinsStore.open(dir);
@@ -87,7 +107,6 @@ test("daily briefing board sections on seeded DB", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-db-brief-"));
   const board = BoardStore.open(dir);
   const wins = WinsStore.open(dir);
-  const feeds = await FeedsStore.open(dir);
   try {
     const hobie = await HobieQueueStore.open(dir);
     const cfg = loadConfig({ ADMIN_TOKEN: "t".repeat(32), ALLOW_INSECURE_NO_AUTH: "1", DATA_DIR: dir, TZ: "UTC" });
@@ -101,7 +120,6 @@ test("daily briefing board sections on seeded DB", async () => {
 
     const rec = await daily.generate({
       cfg,
-      feeds,
       board,
       wins,
       trigger: "manual",
@@ -112,7 +130,6 @@ test("daily briefing board sections on seeded DB", async () => {
     assert.ok(rec.sources.board.data!.moved.length >= 1);
     assert.ok(rec.sources.board.data!.wins.some((w) => w.title === "Yesterday win"));
   } finally {
-    feeds.close();
     board.close();
     wins.close();
     await rm(dir, { recursive: true, force: true });

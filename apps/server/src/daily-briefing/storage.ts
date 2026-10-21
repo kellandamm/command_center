@@ -22,7 +22,9 @@ async function writeAtomic(path: string, data: string): Promise<void> {
 
 export async function readBriefingFile(path: string): Promise<DailyBriefingRecord | undefined> {
   try {
-    return JSON.parse(await readFile(path, "utf8")) as DailyBriefingRecord;
+    const record = JSON.parse(await readFile(path, "utf8")) as DailyBriefingRecord;
+    const { todoist, weather, calendar, github, board } = record.sources;
+    return { day: record.day, generatedAt: record.generatedAt, trigger: record.trigger, sources: { todoist, weather, calendar, github, board } };
   } catch (err: unknown) {
     if (err && typeof err === "object" && "code" in err && (err as { code: string }).code === "ENOENT") return undefined;
     throw err;

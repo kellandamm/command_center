@@ -1,4 +1,5 @@
 import { BoardStore } from "../src/board/store";
+import { BookmarksStore } from "../src/bookmarks/store";
 import { wireHobieBoardSync } from "../src/board/hobie-sync";
 import { DashboardLayoutStore } from "../src/dashboard-layout/storage";
 import { panels } from "../src/panels/registry";
@@ -8,17 +9,14 @@ import { WinsStore } from "../src/wins/store";
 import { WinsRollupService } from "../src/wins/rollup-service";
 import type { Config } from "../src/config";
 import type { Server } from "node:http";
-import type { FeedsStore } from "../src/feeds/store";
 
 export async function closeIntegrationServer(
   server: Server,
-  feeds: FeedsStore,
   integration: { board: BoardStore; wins: WinsStore },
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     server.close((err) => err ? reject(err) : resolve());
   });
-  feeds.close();
   integration.board.close();
   integration.wins.close();
 }
@@ -34,6 +32,7 @@ export async function openIntegrationStores(dataDir: string, cfg?: Config) {
     wins,
   );
   return {
+    bookmarks: await BookmarksStore.open(dataDir),
     panelUpdates,
     hobieQueue,
     board,

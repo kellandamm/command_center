@@ -1,6 +1,6 @@
 # Self-hosting the command center
 
-`apps/server` is a single-container personal dashboard: pluggable panels, a Read later inbox with a Chrome capture extension, notes, spaces and a cited assistant, and an optional daily AI briefing via any OpenAI-compatible `/chat/completions` endpoint (including [Command Code Provider API](https://api.commandcode.ai/provider/v1)).
+`apps/server` is a single-container personal dashboard with Notes, Read later, Library, Spaces, Assistant, Bookmarks, Calendar, Board, Wins, and a scheduled Daily Briefing. Chrome capture saves selected pages; optional summaries and cited answers use an OpenAI-compatible `/chat/completions` endpoint (including [Command Code Provider API](https://api.commandcode.ai/provider/v1)).
 
 ## Quick start
 
@@ -14,22 +14,21 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 
 | Variable | Notes |
 |---|---|
-| `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | Optional. When all three are set, the **AI briefing** panel can generate summaries. Example base URL: `https://api.commandcode.ai/provider/v1`. Without them the dashboard still runs; briefing shows a clear disabled message. |
+| `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | Optional. Enable **Notes space questions** and **weekly Wins summaries**. Example base URL: `https://api.commandcode.ai/provider/v1`. Daily Briefing does not require an LLM. |
 | `TODOIST_API_TOKEN` | Optional. [Todoist REST API](https://developer.todoist.com/rest/v2/) token for the **Todoist** panel (today/overdue tasks, quick-add, complete). Without it the panel shows a clear disabled message. |
 | `GITHUB_TOKEN` | Optional. Personal access token (classic or fine-grained) for the **GitHub** panel. Public data works without it; the panel degrades gracefully on rate limits. |
 | `GITHUB_USERNAME` | GitHub login for open issues/PRs and public events. Default `kellandamm`. |
 | `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` | Cloudflare Access JWT on every request (`Cf-Access-Jwt-Assertion`). Set both or neither. |
 | `ADMIN_TOKEN` | ≥ 24 chars. `Authorization: Bearer …`, or `/?token=…` once (HttpOnly cookie; needs HTTPS). |
-| `AI_SECURITY_TOKEN` | Optional. ≥ 24 chars. **Publish-only** credential for `POST /api/ai-security/roundups` (`Authorization: Bearer …` plus `x-ah: 1`). Does not grant dashboard or settings access. `ADMIN_TOKEN` still works for publish (backward compatibility for scripts that already use it). |
 | `ALLOW_INSECURE_NO_AUTH=1` | Localhost only. Without any auth setting the server refuses to start. |
-| `TZ` | Feed fetch schedule, briefing day boundary, and settings times use this zone. |
+| `TZ` | Calendar dates, briefing day boundary, and settings times use this zone. |
 | `HOST_PORT` | Compose publish port on loopback. |
 | `DATA_DIR` | Default `/data` (Docker volume). |
 | `DOCKER_SOCKET` | Optional. Unix path to the Docker Engine API socket (e.g. `/var/run/docker.sock`). When set and readable, the **Server health** panel lists containers (read-only). When unset, host CPU/memory/disk still work; the container section explains that Docker is not configured. |
 | `RECALLIO_URL` | Optional. Base URL for the **Recallio search** panel (e.g. `https://recall.gobison.io`). Without it the panel shows a disabled message; the rest of the dashboard is unchanged. |
 | `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | Optional **outbound** Cloudflare Access service token. Sent as `CF-Access-Client-Id` / `CF-Access-Client-Secret` when the server calls Recallio behind Access. Set both if Recallio requires them; omit if Recallio is reachable without a service token. |
 | `WEATHER_LAT`, `WEATHER_LON` | Optional. Open-Meteo coordinates for the **Weather** panel (no API key). Default **Chicago** (`41.8781`, `-87.6298`) when unset. |
-| `ICS_URLS` | Optional. Comma-separated **https** iCal feed URLs for the **Calendar** panel. When unset, the panel explains how to enable it. Feeds are fetched server-side with the same SSRF rules as RSS. |
+| `ICS_URLS` | Optional. Comma-separated **https** iCal subscription URLs for the **Calendar** panel. When unset, the panel explains how to enable it. Requests use server-side SSRF protection. |
 | `MCP_CF_CLIENT_MAP` | **Required** for `/mcp` and the Power Automate webhook. Non-empty JSON: MCP client id → service token id (must match verified JWT `common_name`). If unset, empty, or unknown id → **403**. Invalid JSON prevents startup. |
 | `MCP_APP_TOKENS` | JSON map of MCP client id → bearer token (≥ 24 chars). Used with `/mcp` after CF client id checks. |
 | `WEBHOOK_SECRET` | ≥ 24 chars. Webhook requires **`X-Webhook-Secret`** plus a verified **`Cf-Access-Jwt-Assertion`** (Access injects this for service tokens). `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD` must be set. |
@@ -101,35 +100,71 @@ The private **kellan-damm/Recallio** repo was not available from this environmen
 
 `POST {RECALLIO_URL}/api/search` with JSON body `{ "q": "<query>", "limit": 10 }`
 
-**Save article from News:** `POST {RECALLIO_URL}/api/memories` with JSON `{ "title", "content", "url", "source": "command-center-news" }` (same Cloudflare Access service-token headers as search when `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` are set).
-
-and accepts JSON either as an array of hits or as `{ results | items | memories | data: [...] }`. Each item may use Recallio-style fields (`content`, `similarityScore`) or generic ones (`title`, `snippet`, `url`, `score`). If your instance uses a different path or method, adjust `apps/server/src/recallio/client.ts` or open an issue with the expected contract.
+The search accepts JSON either as an array of hits or as `{ results | items | memories | data: [...] }`. Each item may use Recallio-style fields (`content`, `similarityScore`) or generic ones (`title`, `snippet`, `url`, `score`). If your instance uses a different path or method, adjust `apps/server/src/recallio/client.ts` or open an issue with the expected contract.
 
 ## Data layout (`/data`)
 
-- `settings.json` — feed list, fetch interval, briefing time
-- `rss.sqlite` — legacy RSS data. Feeds are no longer fetched; starred articles and summaries are copied into Read later at startup and the original data is kept
-- `feeds.json.migrated` — optional legacy cache after one-time migration from older releases
-- `news-prefs.json` — tagged news view: muted topics and focus chips
-- `briefing.json` — latest briefing and short history
+- `settings.json` — daily briefing time, sidebar tabs, and view preferences
+- `rss.sqlite` — Board cards/events and Wins, including weekly summaries (WAL mode); legacy starred articles and summaries are copied into Read later at startup without modifying the original tables
+- `daily-briefings/` — per-day calendar, weather, tasks, GitHub, Board activity, and Wins snapshots
 - `state.json` — scheduler timestamps
 - `capture-access.json` — SHA-256 hash of the Chrome capture token (create or revoke it at `/settings/capture`)
 - `knowledge.json` — individual Markdown notes, captured links, tags, and personal spaces
+- `bookmarks.json` — separate bookmark groups, ordered links, and launchpad layout preferences
 - `notes.md` — legacy plain-Markdown Notes file; its contents are copied into the knowledge store on first startup and the original file is kept as a backup
 - `panel-updates.json` — **Activity** panel (agent updates via MCP/webhook)
 - `hobie-queue.json` — **Hobie queue** (tasks for the owner assistant)
-- `ai-security/` — weekly AI Security roundups (`YYYY-MM-DD.json`, keyed by `weekOf`)
 
-Back up the volume to keep feeds, read state, briefings, and personal knowledge. The Notes page can export an ordinary Markdown bundle or a complete JSON backup; JSON imports merge records without overwriting existing entries.
+Back up the volume to keep Board, Wins, briefings, and personal knowledge. The Notes page can export an ordinary Markdown bundle or a complete JSON backup; JSON imports merge records without overwriting existing entries.
+
+### Daily Briefing and removed integrations
+
+Settings controls the daily briefing time (default `06:00`, using `TZ`). The briefing retains calendar, weather, Todoist tasks, GitHub activity, Board blockers/moves, and yesterday's wins. It does not fetch news or request AI news summaries.
+
+RSS/OPML import and polling, article actions, legacy Summaries APIs, and AI Security publishing/archive APIs have been removed, including their scheduled jobs and publish-only credentials. News and Summaries page URLs redirect to Read later and Library. Remove obsolete `AI_SECURITY_TOKEN` values from deployment secrets and stop any external jobs posting roundups; those API endpoints now return 404 for authenticated requests.
+
+Existing archives are not automatically erased. Old `feeds.json`, `feeds.json.migrated`, `news-prefs.json`, `briefing.json`, and `ai-security/` data is no longer read or written. Legacy Daily Briefing files remain on disk, but responses omit retired news and AI sections. Old News/Summaries/AI Security sidebar entries and settings are ignored and omitted when settings are next saved. Legacy news tables in `rss.sqlite` are read only for the idempotent saved-article migration; **do not delete this database**, because it also contains Board and Wins. Back up first before manually removing obsolete files or tables.
+
+Run `pnpm --filter @homepage/server test:personal-dashboard-browser` for the retained Dashboard, Settings, and Daily Briefing workflow (requires Playwright Chromium).
+
+### Writing in Notes
+
+The writing-first Notes workspace takes inspiration from [Tagdown](https://github.com/sthix/tagdown): a searchable note library, Source / Split / Preview views, a Markdown formatting toolbar, and focus mode. Existing notes, spaces, captured links, Board/Calendar references, graph, and imports/exports remain available; properties and secondary tools are collapsed until needed.
+
+Edits autosave to the server after 900 ms without typing. Save status distinguishes pending changes, successful writes, and failures. Switching notes waits for pending saves; a failed save keeps the current draft open. Leaving with unsaved changes prompts a warning. This requires a connection to the server; it is not an offline vault or version-history system.
+
+Use Ctrl/Cmd+S to save immediately, Ctrl/Cmd+1/2/3 for Source/Split/Preview, Ctrl/Cmd+B or I to format selected text, and Ctrl/Cmd+Shift+F to toggle focus mode (Escape exits). Narrow screens stack Split panes. Task checkboxes in the preview are read-only; edit their Markdown in Source. Preview rendering stays on your server, sanitizes HTML, and does not load remote images.
+
+The dedicated writing-workflow regression runs with `pnpm --filter @homepage/server test:notes-browser` (requires the Playwright Chromium browser installed via `pnpm --filter @homepage/server exec playwright install chromium`).
 
 Read later pages are saved only when you press Save or Save & summarize in the extension (or the Read later page). The extension sends the page URL, title, and up to 20,000 characters of selected or readable text; the capture token can only save pages and cannot read your library. Download the extension from `/settings/capture`, unzip it, and load it unpacked in Chrome.
 
 Questions in the Assistant, a space, or a saved page use the configured LLM and include up to 24,000 characters of source text, titles, URLs, and separators. Only sources included in that context are returned as citations. Each knowledge store allows up to 10 questions per hour.
 
+### Calendar workspace
+
+The read-only `/calendar` workspace is inspired by Fantastical's information layout: mini-month navigation, a period agenda, Day/Week/Month views, a Today shortcut, event search, and color-coded calendar filters. Choose an event to read its dates, location, description, and optional HTTP/HTTPS event link. Existing `ICS_URLS` and `ICS_LOCAL_FILES` subscriptions remain the data source; configure calendars on the server rather than inside the page. Calendar names use `X-WR-CALNAME` when supplied, with generic names as fallback.
+
+Dates and times use the server's `TZ` (shown above the calendar), including each event's `TZID` when supplied. All-day and overnight events span their occupied dates; all-day `DTEND` is exclusive. Week starts follow Settings' existing Monday/Sunday preference. Week/day timelines display overlapping events side by side; small screens scroll the timeline horizontally and keep an agenda above it. Calendar filters and the selected view are temporary page state.
+
+The page requests the displayed date range, including past dates, rather than the dashboard's default 12 upcoming events. `/api/calendar?start=YYYY-MM-DD&end=YYYY-MM-DD` accepts an exclusive end date, at most 62 days, and returns at most 2,000 events with an explicit truncation warning. The dashboard's existing horizon-based API remains compatible. Failed feeds and refresh failures are shown explicitly.
+
+This is not a Fantastical service integration: event creation/editing, account synchronization, scheduling, and natural-language entry are not included. The existing lightweight ICS parser reads explicit VEVENT occurrences; it does not expand RRULE recurrence rules. Use feeds that include individual occurrences when recurring instances are needed. Run `pnpm --filter @homepage/server test:calendar-browser` for the dedicated browser regression.
+
+### Bookmarks launchpad
+
+The separate `/bookmarks` page is inspired by [Tinypad](https://www.tinypad.app/): grouped quick-access links, instant search, and a responsive grid. It does not change Dashboard or Notes' captured links. Create and rename groups, add/edit/remove links, move links between groups in the edit dialog, and reorder groups or links using their Manage menus. Only empty groups can be deleted.
+
+Layout & files saves comfortable/compact spacing and 1-4 columns to the server (narrow screens reduce columns automatically). Import a Netscape-style browser bookmarks HTML export from Chrome, Edge, Firefox, or Safari, or restore a Bookmarks JSON backup. Folder paths become group names; imports merge matching group names and skip duplicate URLs within each group. Imports are limited to 5 MB, 100 groups and 5,000 links including existing records; invalid JSON imports fail without partial changes. HTML imports skip unsupported URL schemes and report the count. Only HTTP/HTTPS links without embedded credentials are accepted.
+
+Links open in new tabs. Site initials replace remotely fetched favicons: the launchpad does not contact bookmarked sites or third-party icon services until you open a link. Back up `bookmarks.json` with your data volume, or use Download backup on the page. This is a server-backed launchpad, not automatic browser synchronization.
+
+Run the dedicated browser workflow with `pnpm --filter @homepage/server test:bookmarks-browser` (uses the same Playwright Chromium installation as the Notes regression).
+
 ## Security
 
-- Auth on every route except `/healthz`; writes need same-origin `Origin` and `x-ah: 1` (CSRF). The AI Security publish endpoint also accepts `AI_SECURITY_TOKEN` (or `ADMIN_TOKEN`) in `Authorization` without a browser session.
-- Feed URLs are fetched server-side with SSRF checks (public IPs only, DNS re-checked).
+- Auth on every route except `/healthz`; browser writes need same-origin `Origin` and `x-ah: 1` (CSRF). The Chrome capture token authorizes only `POST /api/capture`, without a browser session.
+- Calendar subscriptions and other outbound URLs use server-side SSRF checks (public IPs only, DNS re-checked).
 - Container runs as non-root with capabilities dropped (`compose.yml`).
 
 ## Cloudflare tunnel + Access
@@ -142,7 +177,7 @@ Questions in the Assistant, a space, or a saved page use the configured LLM and 
 
 1. Create `apps/server/src/panels/your-panel.ts` exporting a `PanelModule` (`id`, `title`, `dashboardHtml`, optional `handle` for API routes).
 2. Register it in `apps/server/src/panels/registry.ts`.
-3. If the panel needs client-side behavior, add a small script from `ui/pages.ts` (see the feeds and briefing panels).
+3. If the panel needs client-side behavior, add a small script from `ui/pages.ts` (see the calendar and daily briefing panels).
 
 ## Development
 

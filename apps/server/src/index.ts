@@ -1,16 +1,12 @@
 import { join } from "node:path";
-import { assertAuthConfigured, llmConfigured, loadConfig } from "./config";
+import { assertAuthConfigured, loadConfig } from "./config";
 import { makeAuthenticator } from "./auth";
-import { BriefingService } from "./briefing/service";
-import { AiSecurityService } from "./ai-security/service";
 import { DailyBriefingService } from "./daily-briefing/service";
-import { NewsPrefsStore } from "./feeds/news-prefs";
-import { FeedsStore } from "./feeds/store";
 import { createApp } from "./http";
 import { Scheduler } from "./scheduler";
-import { SummaryService } from "./feeds/summary-service";
 import { SettingsStore } from "./settings";
 import { NotesStore } from "./notes/store";
+import { BookmarksStore } from "./bookmarks/store";
 import { BoardStore } from "./board/store";
 import { wireHobieBoardSync } from "./board/hobie-sync";
 import { HobieQueueStore } from "./stores/hobie-queue";
@@ -32,15 +28,11 @@ async function main() {
   const kv = await FileKV.open(join(cfg.dataDir, "state.json"));
   const settings = new SettingsStore(cfg.dataDir);
   await settings.load();
-  const legacyFeeds = settings.consumeLegacyFeeds();
-  const feeds = await FeedsStore.open(cfg.dataDir, { settingsFeeds: legacyFeeds });
-  const newsPrefs = await NewsPrefsStore.open(cfg.dataDir);
-  const briefing = await BriefingService.open(cfg.dataDir, cfg.tz);
-  const aiSecurity = await AiSecurityService.open(cfg.dataDir);
   const dailyBriefing = await DailyBriefingService.open(cfg.dataDir, cfg.tz);
   const notes = await NotesStore.open(cfg.dataDir);
-  const migrated = await migrateSavedArticles(feeds, notes);
+  const migrated = await migrateSavedArticles(cfg.dataDir, notes);
   if (migrated) console.log(`Moved ${migrated} saved articles into Read later`);
+  const bookmarks = await BookmarksStore.open(cfg.dataDir);
   const panelUpdates = await PanelUpdatesStore.open(cfg.dataDir);
   const hobieQueue = await HobieQueueStore.open(cfg.dataDir);
   const board = BoardStore.open(cfg.dataDir);
@@ -49,16 +41,11 @@ async function main() {
   const winsRollup = new WinsRollupService(cfg, wins);
   const dashboardLayout = await DashboardLayoutStore.open(cfg.dataDir, panels.map((p) => p.id));
 
-  const summaryService = new SummaryService(cfg, feeds, feeds.summaries);
   const scheduler = new Scheduler({
     cfg,
     settings,
     kv,
-    feeds,
-    briefing,
     dailyBriefing,
-    newsPrefs,
-    summaryService,
     board,
     wins,
   });
@@ -66,12 +53,9 @@ async function main() {
     cfg,
     auth: makeAuthenticator(cfg),
     settings,
-    feeds,
-    briefing,
-    aiSecurity,
     dailyBriefing,
-    newsPrefs,
     notes,
+    bookmarks,
     panelUpdates,
     hobieQueue,
     board,
@@ -81,7 +65,6 @@ async function main() {
   });
   server.listen(cfg.port, cfg.host, () => {
     console.log(`command-center ${cfg.version} listening on ${cfg.host}:${cfg.port} (tz ${cfg.tz})`);
-    console.log(llmConfigured(cfg) ? "LLM: configured" : "LLM: not set (briefing disabled)");
   });
   scheduler.start();
 

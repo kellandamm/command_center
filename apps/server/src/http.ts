@@ -1,15 +1,13 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { BriefingService } from "./briefing/service";
-import { handleAiSecurityRoutes } from "./ai-security/routes";
-import type { AiSecurityService } from "./ai-security/service";
 import type { DailyBriefingService } from "./daily-briefing/service";
 import { handleDailyBriefingRoutes } from "./daily-briefing/routes";
 import { llmConfigured, type Config } from "./config";
 import { recallioConfigured } from "./recallio/client";
 import type { Authenticator } from "./auth";
-import { csrfOk, tokenEquals } from "./auth";
-import type { FeedsStore } from "./feeds/store";
+import { bearerToken, csrfOk } from "./auth";
 import type { NotesStore } from "./notes/store";
+import type { BookmarksStore } from "./bookmarks/store";
+import { bookmarksPage } from "./ui/bookmarks-page";
 import { handlePowerAutomateWebhook } from "./integrations/power-automate";
 import { handleHobieAgentRoutes } from "./mcp/hobie-routes";
 import { handleMcpRoute } from "./mcp/handler";
@@ -22,11 +20,7 @@ import type { PanelContext } from "./panels/types";
 import type { SettingsStore } from "./settings";
 import { ValidationError } from "./settings";
 import { MANIFEST, SERVICE_WORKER, iconPng } from "./pwa";
-import { aiSecurityPage } from "./ui/ai-security-page";
 import { dailyBriefingPage } from "./ui/daily-briefing-page";
-import { handleNewsRoutes } from "./feeds/news-routes";
-import { handleRssRoutes } from "./feeds/rss-routes";
-import type { NewsPrefsStore } from "./feeds/news-prefs";
 import type { DashboardLayoutStore } from "./dashboard-layout/storage";
 import { activityPage } from "./ui/activity-page";
 import { calendarPage } from "./ui/calendar-page";
@@ -48,19 +42,14 @@ import { CaptureAccess } from "./read-later/capture-access";
 import { captureExtensionFiles } from "./read-later/extension";
 import { zip } from "./read-later/zip";
 import { dashboardPage, settingsPage } from "./ui/pages";
-import { handleArticleActionRoutes } from "./feeds/article-actions-routes";
-import { SummaryService } from "./feeds/summary-service";
 
 export interface App {
   cfg: Config;
   auth: Authenticator;
   settings: SettingsStore;
-  feeds: FeedsStore;
-  briefing: BriefingService;
-  aiSecurity: AiSecurityService;
   dailyBriefing: DailyBriefingService;
-  newsPrefs: NewsPrefsStore;
   notes: NotesStore;
+  bookmarks: BookmarksStore;
   panelUpdates: PanelUpdatesStore;
   hobieQueue: HobieQueueStore;
   board: BoardStore;
@@ -101,22 +90,6 @@ async function readBody(req: IncomingMessage, limit = 200_000): Promise<unknown>
 const icons = new Map<string, Buffer>();
 const icon = (name: string, size: number, maskable = false) => icons.get(name) ?? (icons.set(name, iconPng(size, maskable)), icons.get(name)!);
 
-function bearerToken(req: IncomingMessage): string | undefined {
-  const authorization = req.headers.authorization;
-  if (!authorization || authorization.slice(0, 6).toLowerCase() !== "bearer") return undefined;
-  let tokenStart = 6;
-  while (authorization[tokenStart] === " " || authorization[tokenStart] === "\t") tokenStart++;
-  return tokenStart > 6 && tokenStart < authorization.length ? authorization.slice(tokenStart) : undefined;
-}
-
-/** POST /api/ai-security/roundups may use AI_SECURITY_TOKEN instead of dashboard session auth. */
-export function aiSecurityPublishAuthorized(cfg: Config, req: IncomingMessage, path: string, method: string): boolean {
-  if (method !== "POST" || path !== "/api/ai-security/roundups") return false;
-  const token = bearerToken(req);
-  if (!token || !cfg.aiSecurityToken) return false;
-  return tokenEquals(token, cfg.aiSecurityToken);
-}
-
 export function createApp(app: App): Server {
   const integrationDeps = (): IntegrationDeps => ({
     cfg: app.cfg,
@@ -130,8 +103,6 @@ export function createApp(app: App): Server {
   const ctx = (): PanelContext => ({
     cfg: app.cfg,
     settings: app.settings,
-    feeds: app.feeds,
-    briefing: app.briefing,
     notes: app.notes,
     panelUpdates: app.panelUpdates,
     hobieQueue: app.hobieQueue,
@@ -177,8 +148,7 @@ export function createApp(app: App): Server {
         }
       }
 
-      const publishOnly = aiSecurityPublishAuthorized(app.cfg, req, path, method);
-      const who = publishOnly ? { ok: true as const, who: "ai-security-publish" } : await app.auth(req, url);
+      const who = await app.auth(req, url);
       if (!who.ok) return send(res, who.status, `<h1>${who.status}</h1><p>${who.reason}</p>`);
       const extra: Record<string, string> = who.setCookie ? { "set-cookie": who.setCookie } : {};
       if (!csrfOk(req)) return json(res, 403, { error: "cross-site request refused" });
@@ -193,7 +163,6 @@ export function createApp(app: App): Server {
       const nav = () => visibleNavTabs(app.settings.get().sidebarTabs);
 
       if (get && path === "/") return send(res, 200, dashboardPage(nav()), undefined, extra);
-      if (get && path === "/ai-security") return send(res, 200, aiSecurityPage(nav()), undefined, extra);
       if (get && path === "/briefing") return send(res, 200, dailyBriefingPage(nav()), undefined, extra);
       if (get && (path === "/news" || path === "/summaries")) {
         res.writeHead(302, { location: path === "/news" ? "/read-later" : "/library", ...SECURITY, ...extra });
@@ -220,9 +189,37 @@ export function createApp(app: App): Server {
       if (get && path === "/board") return send(res, 200, boardPage(nav()), undefined, extra);
       if (get && path === "/wins") return send(res, 200, winsPage(nav()), undefined, extra);
       if (get && path === "/notes") return send(res, 200, notesPage(nav()), undefined, extra);
+      if (get && path === "/bookmarks") return send(res, 200, bookmarksPage(nav()), undefined, extra);
       if (get && path === "/calendar") return send(res, 200, calendarPage(nav()), undefined, extra);
       if (get && path === "/activity") return send(res, 200, activityPage(nav()), undefined, extra);
       if (get && path === "/settings") return send(res, 200, settingsPage(nav()), undefined, extra);
+
+      if (get && path === "/api/bookmarks") return json(res, 200, app.bookmarks.list());
+      if (get && path === "/api/bookmarks/export.json") {
+        return send(res, 200, JSON.stringify(app.bookmarks.list(), null, 2), "application/json", {
+          ...extra, "content-disposition": 'attachment; filename="command-center-bookmarks.json"',
+        });
+      }
+      if (path.startsWith("/api/bookmarks/")) {
+        if (!["POST", "PATCH", "DELETE", "PUT"].includes(method)) return json(res, 405, { error: "method not allowed" });
+        const body = await readBody(req, 5_000_000);
+        if (path === "/api/bookmarks/groups") {
+          if (method === "POST") return json(res, 201, { group: await app.bookmarks.createGroup(body) });
+          if (method === "PATCH") { await app.bookmarks.updateGroup(body); return json(res, 200, { ok: true }); }
+          if (method === "DELETE") { await app.bookmarks.deleteGroup(body); return json(res, 200, { ok: true }); }
+        }
+        if (path === "/api/bookmarks/items") {
+          if (method === "POST" || method === "PUT") return json(res, method === "POST" ? 201 : 200, { bookmark: await app.bookmarks.saveBookmark(body, method === "PUT") });
+          if (method === "DELETE") { await app.bookmarks.deleteBookmark(body); return json(res, 200, { ok: true }); }
+          if (method === "PATCH") { await app.bookmarks.moveBookmark(body); return json(res, 200, { ok: true }); }
+        }
+        if (path === "/api/bookmarks/preferences" && method === "PUT") {
+          await app.bookmarks.preferences(body);
+          return json(res, 200, { ok: true });
+        }
+        if (path === "/api/bookmarks/import" && method === "POST") return json(res, 200, await app.bookmarks.import(body));
+        return json(res, 404, { error: "bookmark route not found" });
+      }
 
       if (get && path === "/api/state") {
         return json(res, 200, {
@@ -230,9 +227,6 @@ export function createApp(app: App): Server {
           tz: app.cfg.tz,
           llmEnabled: llmConfigured(app.cfg),
           recallioEnabled: recallioConfigured(app.cfg),
-          unread: app.feeds.list({ unreadOnly: true }).length,
-          feedCount: app.feeds.feedCount(),
-          briefing: app.briefing.get() ?? null,
         });
       }
       if (get && path === "/api/dashboard-layout") return json(res, 200, { layout: app.dashboardLayout.get() });
@@ -248,24 +242,18 @@ export function createApp(app: App): Server {
       if (get && path === "/api/settings") return json(res, 200, { settings: app.settings.get() });
       if (req.method === "PUT" && path === "/api/settings") {
         const next = await app.settings.update(await readBody(req));
-        return json(res, 200, { settings: next, feedCount: app.feeds.feedCount() });
+        return json(res, 200, { settings: next });
       }
 
       if (path.startsWith("/api/capture") || path.startsWith("/api/read-later")) {
         if (await handleReadLaterRoutes(app.notes, readLater, captureAccess, req, res, path, readBody)) return;
       }
-      if (await handleAiSecurityRoutes(app.aiSecurity, req, res, path, readBody)) return;
       if (await handleDailyBriefingRoutes(app, app.dailyBriefing, req, res, path)) return;
       if (path.startsWith("/api/board") || path.startsWith("/api/wins")) {
         const bodyForApi = get ? undefined : await readBody(req);
         if (await handleBoardRoutes(app.board, app.hobieQueue, app.wins, app.cfg, req, res, path, bodyForApi)) return;
         if (await handleWinsRoutes(app.wins, app.cfg, app.winsRollup, req, res, path, bodyForApi)) return;
       }
-      const summarySvc = new SummaryService(app.cfg, app.feeds, app.feeds.summaries);
-      const rssOpts = { cfg: app.cfg, prefs: app.newsPrefs, summaries: summarySvc };
-      if (await handleArticleActionRoutes(app.cfg, app.feeds, app.newsPrefs, summarySvc, req, res, path, readBody)) return;
-      if (await handleRssRoutes(app.feeds, req, res, path, (r) => readBody(r, path === "/api/rss/opml/import" ? 8_000_000 : 200_000), rssOpts)) return;
-      if (await handleNewsRoutes(app.feeds, app.newsPrefs, req, res, path, readBody)) return;
 
       for (const panel of panels) {
         if (panel.handle && (await panel.handle(ctx(), req, res, path))) return;
