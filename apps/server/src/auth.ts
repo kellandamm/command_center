@@ -19,7 +19,7 @@ function cookie(req: IncomingMessage, name: string): string | undefined {
 export type Authenticator = (req: IncomingMessage, url: URL) => Promise<AuthResult>;
 
 export function bearerToken(req: IncomingMessage): string | undefined {
-  return req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+  return req.headers.authorization?.match(/^Bearer[ \t]+(\S+)$/i)?.[1];
 }
 
 export function makeAuthenticator(cfg: Config, verifyJwt?: (token: string) => Promise<string>): Authenticator {
@@ -49,7 +49,7 @@ export function makeAuthenticator(cfg: Config, verifyJwt?: (token: string) => Pr
     }
 
     if (cfg.adminToken) {
-      const header = req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+      const header = bearerToken(req);
       const queryToken = url.searchParams.get("token");
       const presented = header ?? queryToken ?? cookie(req, "ah_token");
       if (presented && tokenEquals(presented, cfg.adminToken)) {

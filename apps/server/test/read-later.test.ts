@@ -4,10 +4,11 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
+import type { IncomingMessage } from "node:http";
 import { DatabaseSync } from "node:sqlite";
 import { DailyBriefingService } from "../src/daily-briefing/service";
 import { loadConfig } from "../src/config";
-import { makeAuthenticator } from "../src/auth";
+import { bearerToken, makeAuthenticator } from "../src/auth";
 import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
@@ -17,6 +18,15 @@ import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
 const TOKEN = "t".repeat(32);
 const admin = { authorization: `Bearer ${TOKEN}`, "x-ah": "1", "content-type": "application/json" };
+
+test("read later: bearer tokens accept HTTP whitespace but reject whitespace inside credentials", () => {
+  const parse = (authorization?: string) => bearerToken({ headers: { authorization } } as IncomingMessage);
+  assert.equal(parse(`bEaReR \t${TOKEN}`), TOKEN);
+  assert.equal(parse(), undefined);
+  assert.equal(parse("Basic credentials"), undefined);
+  assert.equal(parse(["Bearer", TOKEN, TOKEN].join(" ")), undefined);
+  assert.equal(parse(`Bearer${"\t".repeat(10_000)}`), undefined);
+});
 
 async function harness() {
   const dir = await mkdtemp(join(tmpdir(), "cc-rl-"));
