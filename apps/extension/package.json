@@ -20,7 +20,7 @@
     "@homepage/agent-core": "workspace:*",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "sanitize-html": "^2.17.0",
+    "sanitize-html": "^2.18.1",
     "sucrase": "^3.35.0"
   },
   "devDependencies": {
