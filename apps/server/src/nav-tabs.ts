@@ -3,7 +3,6 @@ import type { Settings } from "./settings";
 export type SidebarTabId =
   | "dashboard"
   | "briefing"
-  | "read-later"
   | "library"
   | "spaces"
   | "assistant"
@@ -30,8 +29,7 @@ const LOCKED = new Set<SidebarTabId>(["dashboard", "settings"]);
 export const DEFAULT_SIDEBAR_TABS: SidebarTab[] = [
   { id: "dashboard", href: "/", label: "Dashboard", visible: true, order: 0, locked: true },
   { id: "briefing", href: "/briefing", label: "Daily Briefing", visible: true, order: 20 },
-  { id: "read-later", href: "/read-later", label: "Read later", visible: true, order: 30 },
-  { id: "library", href: "/library", label: "Library", visible: true, order: 40 },
+  { id: "library", href: "/library", label: "Library", visible: true, order: 30 },
   { id: "board", href: "/board", label: "Board", visible: true, order: 50 },
   { id: "wins", href: "/wins", label: "Wins", visible: true, order: 55 },
   { id: "notes", href: "/notes", label: "Notes", visible: true, order: 60 },
@@ -44,7 +42,7 @@ export const DEFAULT_SIDEBAR_TABS: SidebarTab[] = [
 ];
 
 const DEFAULT_BY_ID = new Map(DEFAULT_SIDEBAR_TABS.map((t) => [t.id, t]));
-const migratedId = (id: string) => ({ hobie: "board", news: "read-later", summaries: "library" }[id] ?? id) as SidebarTabId;
+const migratedId = (id: string) => ({ hobie: "board", news: "library", "read-later": "library", summaries: "library" }[id] ?? id) as SidebarTabId;
 
 export function normalizeSidebarTabs(input: unknown): SidebarTab[] {
   const byId = new Map<SidebarTabId, SidebarTab>();
@@ -58,9 +56,10 @@ export function normalizeSidebarTabs(input: unknown): SidebarTab[] {
       if (typeof idRaw !== "string") continue;
       const id = migratedId(idRaw);
       if (!DEFAULT_BY_ID.has(id)) continue;
+      if (id === "library" && idRaw !== "library" && input.some((item) => item?.id === "library")) continue;
       const base = byId.get(id)!;
       let label = typeof (row as SidebarTab).label === "string" ? (row as SidebarTab).label.trim() : base.label;
-      if ((idRaw === "news" && label === "News") || (idRaw === "summaries" && label === "Summaries")) label = base.label;
+      if ((idRaw === "news" && label === "News") || (idRaw === "read-later" && label === "Read later") || (idRaw === "summaries" && label === "Summaries")) label = base.label;
       const visible = LOCKED.has(id) ? true : Boolean((row as SidebarTab).visible);
       const order = Number.isFinite((row as SidebarTab).order) ? Number((row as SidebarTab).order) : base.order;
       byId.set(id, {

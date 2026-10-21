@@ -4,8 +4,8 @@ import { workspacePage } from "./workspace";
 export function capturePage(nav?: NavLink[]): string {
   return workspacePage({
     title: "Chrome capture", description: "Save the page you are reading with one click. Nothing is collected until you press a button.",
-    active: "/read-later", nav,
-    actions: '<a class="btn ghost" href="/read-later">Back to Read later</a>',
+    active: "/library", nav,
+    actions: '<a class="btn ghost" href="/library">Back to Library</a>',
     body: `<main class="workspace-form"><h2>1. Install the extension</h2>
 <p>Download the extension, unzip it, open <code>chrome://extensions</code>, turn on Developer mode, and choose Load unpacked.</p>
 <a class="btn" href="/capture-extension.zip" download>Download extension</a>

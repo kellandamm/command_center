@@ -137,7 +137,9 @@ Use Ctrl/Cmd+S to save immediately, Ctrl/Cmd+1/2/3 for Source/Split/Preview, Ctr
 
 The dedicated writing-workflow regression runs with `pnpm --filter @homepage/server test:notes-browser` (requires the Playwright Chromium browser installed via `pnpm --filter @homepage/server exec playwright install chromium`).
 
-Read later pages are saved only when you press Save or Save & summarize in the extension (or the Read later page). The extension sends the page URL, title, and up to 20,000 characters of selected or readable text; the capture token can only save pages and cannot read your library. Download the extension from `/settings/capture`, unzip it, and load it unpacked in Chrome.
+Library (`/library`) is the single home for saved links. All saved includes everything; Read later shows unarchived links; Summarized shows links with a summary; Archived keeps finished reading out of the queue without deleting it. Search titles, URLs, captured text, summaries and tags, filter by space or tag, sort by date or title, and choose a list or card layout. Filters and layout are preserved in the URL. Existing `/read-later`, `/news`, and `/summaries` links redirect into Library; saved-link APIs and Chrome capture remain compatible.
+
+Pages are saved only when you press Save or Save & summarize in the extension (or Library). Summarize is also available on each unsummarized link and in its reading view, alongside space assignment, tags, Assistant, and note/task creation. The extension sends the page URL, title, and up to 20,000 characters of selected or readable text; the capture token can only save pages and cannot read your library. Download the extension from `/settings/capture`, unzip it, and load it unpacked in Chrome.
 
 Questions in the Assistant, a space, or a saved page use the configured LLM and include up to 24,000 characters of source text, titles, URLs, and separators. Only sources included in that context are returned as citations. Each knowledge store allows up to 10 questions per hour.
 
