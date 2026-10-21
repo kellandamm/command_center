@@ -2,11 +2,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Script } from "node:vm";
 import { dailyBriefingPage } from "../src/ui/daily-briefing-page";
+import { sourceDetailPage, sourcesPage } from "../src/ui/sources-page";
+import { spaceDetailPage, spacesPage } from "../src/ui/spaces-page";
+import { assistantPage } from "../src/ui/assistant-page";
+import { capturePage } from "../src/ui/capture-page";
 import { activityPage } from "../src/ui/activity-page";
 import { calendarPage } from "../src/ui/calendar-page";
 import { boardPage } from "../src/ui/board-page";
 import { winsPage } from "../src/ui/wins-page";
-import { notesPage } from "../src/ui/notes-page";
+import { noteToolsPage, notesPage } from "../src/ui/notes-page";
 import { bookmarksPage } from "../src/ui/bookmarks-page";
 import { dashboardPage, settingsPage } from "../src/ui/pages";
 
@@ -17,11 +21,14 @@ test("ui: dashboard shows concise status summaries with links to full pages", ()
   assert.match(html, /class="dashboard-overview"/);
   assert.match(html, /Needs attention/);
   assert.match(html, /Hobie board/);
+  assert.match(html, /Read later/);
   assert.match(html, /Next up/);
   assert.match(html, /Today's briefing/);
   assert.match(html, /Recent agent activity/);
   assert.match(html, /id="theme-toggle"/);
   assert.match(html, /href="\/board"/);
+  assert.match(html, /href="\/read-later"/);
+  assert.match(html, /\/api\/read-later/);
   assert.doesNotMatch(html, /href="\/(?:news|summaries|ai-security)"/);
   assert.match(html, /href="\/calendar"/);
   assert.match(html, /href="\/briefing"/);
@@ -52,6 +59,24 @@ test("ui: daily briefing page has source sections and nav link", () => {
   assert.match(html, /id="db-error"/);
 });
 
+test("ui: read later saves only what you choose", () => {
+  const html = sourcesPage();
+  assert.match(html, /href="\/read-later" class="on"/);
+  assert.match(html, /id="capture-form"/);
+  assert.match(html, /Save &amp; summarize/);
+  assert.match(html, /Set up Chrome capture/);
+  assert.doesNotMatch(html, /OPML|feed tree|RSS reader/i);
+  assert.match(sourcesPage(undefined, true), /href="\/library" class="on"/);
+  assert.match(sourceDetailPage(), /id="source-summarize"/);
+});
+
+test("ui: spaces, assistant and capture pages render", () => {
+  assert.match(spacesPage(), /id="space-form"/);
+  assert.match(spaceDetailPage(), /id="space-ask"/);
+  assert.match(assistantPage(), /id="ask-scope"/);
+  assert.match(capturePage(), /\/capture-extension\.zip/);
+});
+
 test("ui: settings page has schedule and tabs sections", () => {
   const html = settingsPage();
   assert.match(html, /settings-card settings-tab-panel/);
@@ -80,8 +105,8 @@ test("ui: full sidebar pages render", () => {
   assert.match(boardPage(), /href="\/board" class="on"/);
   assert.match(winsPage(), /href="\/wins" class="on"/);
   assert.match(notesPage(), /id="knowledge-note-list"/);
-  assert.match(notesPage(), /Export Markdown/);
-  assert.match(notesPage(), /Note link graph/);
+  assert.match(noteToolsPage(undefined, false), /Export Markdown/);
+  assert.match(noteToolsPage(undefined, true), /Connections/);
   assert.doesNotMatch(notesPage(), /RSS reader|feed subscriptions/i);
   assert.match(calendarPage(), /id="cal-week-grid"/);
   assert.match(activityPage(), /id="activity-full-list"/);

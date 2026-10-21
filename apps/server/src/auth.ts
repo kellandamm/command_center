@@ -18,6 +18,10 @@ function cookie(req: IncomingMessage, name: string): string | undefined {
 
 export type Authenticator = (req: IncomingMessage, url: URL) => Promise<AuthResult>;
 
+export function bearerToken(req: IncomingMessage): string | undefined {
+  return req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+}
+
 export function makeAuthenticator(cfg: Config, verifyJwt?: (token: string) => Promise<string>): Authenticator {
   let verify = verifyJwt;
   if (!verify) {

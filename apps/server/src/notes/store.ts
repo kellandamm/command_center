@@ -28,6 +28,11 @@ export interface KnowledgeSource {
   excerpt: string;
   tags: string[];
   spaceId: string | null;
+  archivedAt?: string | null;
+  summary?: string;
+  summaryModel?: string;
+  summarizedAt?: string;
+  originKey?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -332,7 +337,7 @@ export class NotesStore {
   listSources(query = ""): KnowledgeSource[] {
     const needle = query.trim().toLowerCase();
     return this.data.sources
-      .filter((source) => !needle || `${source.title}\n${source.url}\n${source.excerpt}\n${source.tags.join(" ")}`.toLowerCase().includes(needle))
+      .filter((source) => !needle || `${source.title}\n${source.url}\n${source.excerpt}\n${source.summary ?? ""}\n${source.tags.join(" ")}`.toLowerCase().includes(needle))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
@@ -355,6 +360,63 @@ export class NotesStore {
     });
   }
 
+  async captureSource(input: Record<string, unknown>): Promise<{ source: KnowledgeSource; duplicate: boolean }> {
+    const url = optionalUrl(input.url, "url");
+    if (!url) throw new ValidationError("url is required");
+    const normalized = new URL(url);
+    normalized.hash = "";
+    if (normalized.username || normalized.password) throw new ValidationError("URL credentials are not allowed");
+    const title = text(input.title ?? normalized.hostname, "title", 240, true);
+    const excerpt = text(input.excerpt ?? "", "excerpt", 20_000);
+    return this.updateData(() => {
+      const existing = this.data.sources.find((source) => source.url === normalized.href);
+      if (existing) return { source: existing, duplicate: true };
+      const now = new Date().toISOString();
+      const source: KnowledgeSource = {
+        id: randomUUID(), title, url: normalized.href, excerpt, tags: [],
+        spaceId: null, archivedAt: null, createdAt: now, updatedAt: now,
+      };
+      this.data.sources.push(source);
+      return { source, duplicate: false };
+    });
+  }
+
+  async saveSourceSummary(id: string, summary: string, model: string, excerpt: string): Promise<KnowledgeSource> {
+    return this.updateData(() => {
+      const source = this.data.sources.find((item) => item.id === id);
+      if (!source) throw new ValidationError("source no longer exists");
+      if (source.excerpt !== excerpt) throw new ValidationError("Source text changed; summarize it again.");
+      source.summary = text(summary, "summary", 20_000, true);
+      source.summaryModel = model;
+      source.summarizedAt = new Date().toISOString();
+      source.updatedAt = source.summarizedAt;
+      return source;
+    });
+  }
+
+  async importSavedSources(items: Array<Omit<KnowledgeSource, "id" | "tags" | "spaceId" | "updatedAt">>): Promise<number> {
+    return this.updateData(() => {
+      let added = 0;
+      for (const item of items) {
+        if (!item.originKey || this.data.sources.some((source) => source.originKey === item.originKey)) continue;
+        const source = this.data.sources.find((source) => item.url && source.url === item.url);
+        if (source) {
+          if (!source.summary && item.summary) {
+            source.summary = item.summary;
+            source.summaryModel = item.summaryModel;
+            source.summarizedAt = item.summarizedAt;
+          }
+          continue;
+        }
+        this.data.sources.push({
+          ...item, id: randomUUID(), tags: [], spaceId: null, updatedAt: item.createdAt,
+        });
+        added++;
+      }
+      return added;
+    });
+  }
+
   async updateSource(id: string, input: Record<string, unknown>): Promise<KnowledgeSource | undefined> {
     return this.updateData(() => {
       const source = this.data.sources.find((item) => item.id === id);
@@ -363,7 +425,19 @@ export class NotesStore {
       if (input.url !== undefined) {
         source.url = optionalUrl(input.url, "url");
       }
-      if (input.excerpt !== undefined) source.excerpt = text(input.excerpt, "excerpt", 20_000);
+      if (input.excerpt !== undefined) {
+        const excerpt = text(input.excerpt, "excerpt", 20_000);
+        if (excerpt !== source.excerpt) {
+          delete source.summary;
+          delete source.summaryModel;
+          delete source.summarizedAt;
+        }
+        source.excerpt = excerpt;
+      }
+      if (input.archived !== undefined) {
+        if (typeof input.archived !== "boolean") throw new ValidationError("archived must be a boolean");
+        source.archivedAt = input.archived ? new Date().toISOString() : null;
+      }
       if (input.tags !== undefined) source.tags = tags(input.tags);
       if (input.spaceId !== undefined) source.spaceId = this.spaceId(input.spaceId);
       source.updatedAt = new Date().toISOString();
@@ -540,6 +614,11 @@ export class NotesStore {
           title: text(item.title, "source title", 240, true),
           url: optionalUrl(item.url, "source url"),
           excerpt: text(item.excerpt ?? "", "source excerpt", 20_000),
+          summary: item.summary === undefined ? undefined : text(item.summary, "source summary", 20_000),
+          summaryModel: item.summaryModel === undefined ? undefined : text(item.summaryModel, "summary model", 240),
+          summarizedAt: item.summarizedAt === undefined ? undefined : text(item.summarizedAt, "summary date", 100),
+          archivedAt: item.archivedAt ? text(item.archivedAt, "archive date", 100) : null,
+          originKey: item.originKey === undefined ? undefined : text(item.originKey, "source origin", 300),
           tags: tags(item.tags),
           spaceId: item.spaceId ? importedSpaceIds.get(item.spaceId) ?? (this.data.spaces.some((space) => space.id === item.spaceId) ? item.spaceId : null) : null,
           createdAt: typeof item.createdAt === "string" ? item.createdAt : now,

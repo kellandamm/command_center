@@ -1,6 +1,6 @@
 # Self-hosting the command center
 
-`apps/server` is a single-container personal dashboard with Notes, Bookmarks, Calendar, Board, Wins, and a scheduled Daily Briefing. Optional Notes questions and weekly Wins summaries use an OpenAI-compatible `/chat/completions` endpoint (including [Command Code Provider API](https://api.commandcode.ai/provider/v1)).
+`apps/server` is a single-container personal dashboard with Notes, Read later, Library, Spaces, Assistant, Bookmarks, Calendar, Board, Wins, and a scheduled Daily Briefing. Chrome capture saves selected pages; optional summaries and cited answers use an OpenAI-compatible `/chat/completions` endpoint (including [Command Code Provider API](https://api.commandcode.ai/provider/v1)).
 
 ## Quick start
 
@@ -105,9 +105,10 @@ The search accepts JSON either as an array of hits or as `{ results | items | me
 ## Data layout (`/data`)
 
 - `settings.json` — daily briefing time, sidebar tabs, and view preferences
-- `rss.sqlite` — Board cards/events and Wins, including weekly summaries (WAL mode); the legacy filename is retained to preserve existing records
+- `rss.sqlite` — Board cards/events and Wins, including weekly summaries (WAL mode); legacy starred articles and summaries are copied into Read later at startup without modifying the original tables
 - `daily-briefings/` — per-day calendar, weather, tasks, GitHub, Board activity, and Wins snapshots
 - `state.json` — scheduler timestamps
+- `capture-access.json` — SHA-256 hash of the Chrome capture token (create or revoke it at `/settings/capture`)
 - `knowledge.json` — individual Markdown notes, captured links, tags, and personal spaces
 - `bookmarks.json` — separate bookmark groups, ordered links, and launchpad layout preferences
 - `notes.md` — legacy plain-Markdown Notes file; its contents are copied into the knowledge store on first startup and the original file is kept as a backup
@@ -120,9 +121,9 @@ Back up the volume to keep Board, Wins, briefings, and personal knowledge. The N
 
 Settings controls the daily briefing time (default `06:00`, using `TZ`). The briefing retains calendar, weather, Todoist tasks, GitHub activity, Board blockers/moves, and yesterday's wins. It does not fetch news or request AI news summaries.
 
-News, RSS/OPML import and polling, article actions, Summaries, and AI Security publishing/archive APIs have been removed, including their scheduled jobs and publish-only credentials. Remove obsolete `AI_SECURITY_TOKEN` values from deployment secrets and stop any external jobs posting roundups; those endpoints now return 404 for authenticated requests.
+RSS/OPML import and polling, article actions, legacy Summaries APIs, and AI Security publishing/archive APIs have been removed, including their scheduled jobs and publish-only credentials. News and Summaries page URLs redirect to Read later and Library. Remove obsolete `AI_SECURITY_TOKEN` values from deployment secrets and stop any external jobs posting roundups; those API endpoints now return 404 for authenticated requests.
 
-Existing archives are not automatically erased. Old `feeds.json`, `feeds.json.migrated`, `news-prefs.json`, `briefing.json`, and `ai-security/` data is no longer read or written. Legacy Daily Briefing files remain on disk, but responses omit retired news and AI sections. Old News/Summaries/AI Security sidebar entries and settings are ignored and omitted when settings are next saved. Legacy news tables in `rss.sqlite` are untouched and unused; **do not delete this database**, because it also contains Board and Wins. Back up first before manually removing obsolete files or tables.
+Existing archives are not automatically erased. Old `feeds.json`, `feeds.json.migrated`, `news-prefs.json`, `briefing.json`, and `ai-security/` data is no longer read or written. Legacy Daily Briefing files remain on disk, but responses omit retired news and AI sections. Old News/Summaries/AI Security sidebar entries and settings are ignored and omitted when settings are next saved. Legacy news tables in `rss.sqlite` are read only for the idempotent saved-article migration; **do not delete this database**, because it also contains Board and Wins. Back up first before manually removing obsolete files or tables.
 
 Run `pnpm --filter @homepage/server test:personal-dashboard-browser` for the retained Dashboard, Settings, and Daily Briefing workflow (requires Playwright Chromium).
 
@@ -136,7 +137,9 @@ Use Ctrl/Cmd+S to save immediately, Ctrl/Cmd+1/2/3 for Source/Split/Preview, Ctr
 
 The dedicated writing-workflow regression runs with `pnpm --filter @homepage/server test:notes-browser` (requires the Playwright Chromium browser installed via `pnpm --filter @homepage/server exec playwright install chromium`).
 
-Questions in a personal space use the configured LLM and include up to 24,000 characters of source text, titles, URLs, and separators. Only sources included in that context are returned as citations. Each knowledge store allows up to 10 questions per hour.
+Read later pages are saved only when you press Save or Save & summarize in the extension (or the Read later page). The extension sends the page URL, title, and up to 20,000 characters of selected or readable text; the capture token can only save pages and cannot read your library. Download the extension from `/settings/capture`, unzip it, and load it unpacked in Chrome.
+
+Questions in the Assistant, a space, or a saved page use the configured LLM and include up to 24,000 characters of source text, titles, URLs, and separators. Only sources included in that context are returned as citations. Each knowledge store allows up to 10 questions per hour.
 
 ### Calendar workspace
 
@@ -160,7 +163,7 @@ Run the dedicated browser workflow with `pnpm --filter @homepage/server test:boo
 
 ## Security
 
-- Auth on every route except `/healthz`; writes need same-origin `Origin` and `x-ah: 1` (CSRF).
+- Auth on every route except `/healthz`; browser writes need same-origin `Origin` and `x-ah: 1` (CSRF). The Chrome capture token authorizes only `POST /api/capture`, without a browser session.
 - Calendar subscriptions and other outbound URLs use server-side SSRF checks (public IPs only, DNS re-checked).
 - Container runs as non-root with capabilities dropped (`compose.yml`).
 

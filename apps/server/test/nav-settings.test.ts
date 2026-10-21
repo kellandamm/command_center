@@ -13,7 +13,7 @@ test("nav: dashboard and settings tabs always visible", () => {
   const visible = visibleNavTabs(tabs);
   assert.ok(visible.some((t) => t.href === "/"));
   assert.ok(visible.some((t) => t.href === "/settings"));
-  assert.ok(!visible.some((t) => t.href === "/news"));
+  assert.ok(!visible.some((t) => t.href === "/read-later"));
 });
 
 test("nav: existing sidebar settings gain the Bookmarks tab without changing saved preferences", () => {

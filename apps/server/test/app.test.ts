@@ -573,10 +573,10 @@ test("daily briefing API lists days and returns null before first run", async ()
   }
 });
 
-test("retired News, Summaries, and AI Security routes return 404", async () => {
+test("retired integration APIs and AI Security pages return 404", async () => {
   const h = await harness();
   try {
-    for (const path of ["/news", "/summaries", "/ai-security", "/api/feeds", "/api/news", "/api/rss/tree",
+    for (const path of ["/ai-security", "/api/feeds", "/api/news", "/api/rss/tree",
       "/api/rss/entries", "/api/rss/entries/example", "/api/rss/opml/export", "/api/summaries",
       "/api/briefing", "/api/ai-security/roundups", "/api/ai-security/roundups/2026-10-14"]) {
       const r = await fetch(`${h.base}${path}`, { headers: authz });

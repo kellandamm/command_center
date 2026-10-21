@@ -1,5 +1,34 @@
 import type { NavLink } from "./layout";
 import { page } from "./layout";
+import { workspacePage, workspaceTabs } from "./workspace";
+
+const tabs = (active: string) => workspaceTabs([
+  ["/notes", "My notes"], ["/notes/connections", "Connections"], ["/notes/transfer", "Import & export"],
+], active);
+
+export function noteToolsPage(nav: NavLink[] | undefined, connections: boolean): string {
+  return workspacePage({
+    title: connections ? "Connections" : "Import & export",
+    description: connections ? "Follow the links between your notes." : "Your material stays yours. Transfer Markdown or back up the complete workspace.",
+    active: "/notes", nav, tabs: tabs(connections ? "/notes/connections" : "/notes/transfer"),
+    body: connections ? '<p class="dim">Connect notes by writing [[Note title]] in the note body.</p><div id="note-connections" class="workspace-list"></div>' :
+      `<div class="workspace-form"><h2>Export</h2><div class="row"><a class="btn ghost" href="/api/knowledge/export.md">Export Markdown</a><a class="btn ghost" href="/api/knowledge/export.json">Download full backup</a></div>
+<p class="dim">The JSON backup includes notes, sources, summaries, archive status, and spaces.</p>
+<div class="workspace-details"><h2>Import</h2><label for="transfer-file">Markdown note or JSON backup</label><input id="transfer-file" type="file" accept=".md,.json"><button id="transfer-import" type="button">Import file</button><p class="dim">Backups merge without overwriting existing records.</p></div></div>`,
+    script: connections ? `
+api("/api/knowledge/graph").then(function(graph){
+  var box=$("note-connections");
+  if(!graph.edges.length){emptyState(box,"No connections yet","Add a [[link]] to another note, then come back here.");return;}
+  graph.edges.forEach(function(edge){var a=graph.nodes.find(function(n){return n.id===edge.from;}),b=graph.nodes.find(function(n){return n.id===edge.to;});if(!a||!b)return;var row=element("div",undefined,"workspace-item");row.append(appLink(a.title,"/notes?note="+encodeURIComponent(a.id)),element("span","links to","dim"),appLink(b.title,"/notes?note="+encodeURIComponent(b.id)));box.append(row);});
+}).catch(fail);` : `
+$("transfer-import").onclick=function(){busy(this,async function(){
+  var file=$("transfer-file").files[0];if(!file)throw new Error("Choose a Markdown file or JSON backup first.");
+  var text=await file.text();
+  if(/\\.json$/i.test(file.name)){var result=await api("/api/knowledge/import.json","POST",JSON.parse(text));message("Imported "+result.notes+" notes, "+result.sources+" sources, and "+result.spaces+" spaces. "+result.skipped+" duplicates skipped.");}
+  else {await api("/api/knowledge/import","POST",{title:file.name.replace(/\\.md$/i,""),markdown:text});message("Note imported. Find it in My notes.");}
+});};`,
+  });
+}
 
 export function notesPage(nav?: NavLink[]): string {
   return page({
@@ -11,7 +40,7 @@ export function notesPage(nav?: NavLink[]): string {
   <button id="knowledge-new-note" type="button" disabled>New note</button>
   <button id="knowledge-focus" class="ghost" type="button" aria-pressed="false" title="Focus mode (Ctrl/Cmd + Shift + F)">Focus mode</button>
 </div>
-</header>
+</header>${tabs("/notes")}
 <div class="notes-workspace">
   <aside class="notes-library" aria-label="Note library">
     <label for="knowledge-search">Search notes &amp; links</label>

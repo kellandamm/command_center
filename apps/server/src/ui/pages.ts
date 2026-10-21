@@ -12,6 +12,7 @@ export function dashboardPage(nav?: NavLink[]): string {
     <h2>Needs attention</h2>
     <div class="dashboard-metrics">
       <a class="dashboard-metric" href="/board"><span>Hobie board</span><strong id="dashboard-hobie-count">Loading…</strong><span class="dim" id="dashboard-hobie-detail"></span></a>
+      <a class="dashboard-metric" href="/read-later"><span>Read later</span><strong id="dashboard-news-count">Loading…</strong><span class="dim">Open your inbox</span></a>
     </div>
   </section>
   <section class="card dashboard-overview-card" data-dashboard-card="calendar">
@@ -45,6 +46,11 @@ function loadDashboardHobie(){
     document.getElementById("dashboard-hobie-detail").textContent=ready||waiting?ready+" ready · "+waiting+" waiting":"Open board";
   }).catch(function(err){dashboardSetError("dashboard-hobie-count",err)});
 }
+function loadDashboardNews(){
+  return api("/api/read-later").then(function(r){
+    document.getElementById("dashboard-news-count").textContent=String(r.inboxCount||0);
+  }).catch(function(err){dashboardSetError("dashboard-news-count",err)});
+}
 function loadDashboardCalendar(){
   return api("/api/calendar?horizonDays=7").then(function(r){
     var el=document.getElementById("dashboard-calendar-status");
@@ -77,10 +83,11 @@ window.viewPreferencesReady.then(function(prefs){
   var dashboard=prefs&&prefs.dashboard||{};
   document.querySelectorAll("[data-dashboard-card]").forEach(function(card){
     var key=card.dataset.dashboardCard;
-    if(key==="attention"&&dashboard.hobie===false)card.hidden=true;
+    if(key==="attention"&&dashboard.hobie===false)card.querySelector('a[href="/board"]').hidden=true;
     else if(key!=="attention"&&dashboard[key]===false)card.hidden=true;
   });
   if(dashboard.hobie!==false)loadDashboardHobie();
+  loadDashboardNews();
   if(dashboard.calendar!==false)loadDashboardCalendar();
   if(dashboard.briefing!==false)loadDashboardBriefing();
   if(dashboard.activity!==false)loadDashboardActivity();
