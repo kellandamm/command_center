@@ -373,8 +373,8 @@ export class NotesStore {
       if (existing) return { source: existing, duplicate: true };
       const now = new Date().toISOString();
       const source: KnowledgeSource = {
-        id: randomUUID(), title, url: normalized.href, excerpt, tags: [],
-        spaceId: null, archivedAt: null, createdAt: now, updatedAt: now,
+        id: randomUUID(), title, url: normalized.href, excerpt, tags: tags(input.tags),
+        spaceId: this.spaceId(input.spaceId), archivedAt: null, createdAt: now, updatedAt: now,
       };
       this.data.sources.push(source);
       return { source, duplicate: false };

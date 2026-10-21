@@ -30,6 +30,7 @@ import type { WinsStore } from "./wins/store";
 import { handleWinsRoutes } from "./wins/routes";
 import type { WinsRollupService } from "./wins/rollup-service";
 import { boardPage } from "./ui/board-page";
+import { agentQueuePage } from "./ui/agent-queue-page";
 import { winsPage } from "./ui/wins-page";
 import { noteToolsPage, notesPage } from "./ui/notes-page";
 import { sourceDetailPage, sourcesPage } from "./ui/sources-page";
@@ -180,7 +181,20 @@ export function createApp(app: App): Server {
       if (get && /^\/library\/[^/]+$/.test(path)) return send(res, 200, sourceDetailPage(nav()), undefined, extra);
       if (get && path === "/spaces") return send(res, 200, spacesPage(nav()), undefined, extra);
       if (get && /^\/spaces\/[^/]+$/.test(path)) return send(res, 200, spaceDetailPage(nav()), undefined, extra);
-      if (get && path === "/assistant") return send(res, 200, assistantPage(nav()), undefined, extra);
+      if (get && path === "/agent") {
+        const view = url.searchParams.get("view") ?? "board";
+        const render = { board: boardPage, queue: agentQueuePage, wins: winsPage, assistant: assistantPage, activity: activityPage };
+        if (!Object.hasOwn(render, view)) return json(res, 400, { error: "unknown Agent view" });
+        return send(res, 200, render[view as keyof typeof render](nav()), undefined, extra);
+      }
+      const legacyAgentViews: Record<string, string> = { "/board": "board", "/hobie": "queue", "/hobie/queue": "queue", "/wins": "wins", "/assistant": "assistant", "/activity": "activity" };
+      if (get && Object.hasOwn(legacyAgentViews, path)) {
+        const query = new URLSearchParams(url.search);
+        query.set("view", legacyAgentViews[path]!);
+        res.writeHead(302, { location: `/agent?${query}`, ...SECURITY, ...extra });
+        res.end();
+        return;
+      }
       if (get && path === "/settings/capture") return send(res, 200, capturePage(nav()), undefined, extra);
       if (get && path === "/capture-extension.zip") {
         return send(res, 200, extensionZip, "application/zip", { ...extra, "content-disposition": 'attachment; filename="command-center-capture.zip"' });
@@ -188,17 +202,9 @@ export function createApp(app: App): Server {
       if (get && (path === "/notes/connections" || path === "/notes/transfer")) {
         return send(res, 200, noteToolsPage(nav(), path === "/notes/connections"), undefined, extra);
       }
-      if (get && path === "/hobie") {
-        res.writeHead(302, { location: "/board", ...SECURITY, ...extra });
-        res.end();
-        return;
-      }
-      if (get && path === "/board") return send(res, 200, boardPage(nav()), undefined, extra);
-      if (get && path === "/wins") return send(res, 200, winsPage(nav()), undefined, extra);
       if (get && path === "/notes") return send(res, 200, notesPage(nav()), undefined, extra);
       if (get && path === "/bookmarks") return send(res, 200, bookmarksPage(nav()), undefined, extra);
       if (get && path === "/calendar") return send(res, 200, calendarPage(nav()), undefined, extra);
-      if (get && path === "/activity") return send(res, 200, activityPage(nav()), undefined, extra);
       if (get && path === "/settings") return send(res, 200, settingsPage(nav()), undefined, extra);
 
       if (get && path === "/api/bookmarks") return json(res, 200, app.bookmarks.list());

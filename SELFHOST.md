@@ -1,6 +1,6 @@
 # Self-hosting the command center
 
-`apps/server` is a single-container personal dashboard with Notes, Read later, Library, Spaces, Assistant, Bookmarks, Calendar, Board, Wins, and a scheduled Daily Briefing. Chrome capture saves selected pages; optional summaries and cited answers use an OpenAI-compatible `/chat/completions` endpoint (including [Command Code Provider API](https://api.commandcode.ai/provider/v1)).
+`apps/server` is a single-container personal dashboard with Notes, Read Later, Spaces, Agent, Bookmarks, Calendar, and a scheduled Daily Briefing. Agent brings Board, Hobie Queue, Wins, Assistant, and Activity into a single tabbed destination. Chrome capture saves selected pages; optional summaries and cited answers use an OpenAI-compatible `/chat/completions` endpoint (including [Command Code Provider API](https://api.commandcode.ai/provider/v1)).
 
 ## Quick start
 
@@ -121,7 +121,7 @@ Back up the volume to keep Board, Wins, briefings, and personal knowledge. The N
 
 Settings controls the daily briefing time (default `06:00`, using `TZ`). The briefing retains calendar, weather, Todoist tasks, GitHub activity, Board blockers/moves, and yesterday's wins. It does not fetch news or request AI news summaries.
 
-RSS/OPML import and polling, article actions, legacy Summaries APIs, and AI Security publishing/archive APIs have been removed, including their scheduled jobs and publish-only credentials. News and Summaries page URLs redirect to Read later and Library. Remove obsolete `AI_SECURITY_TOKEN` values from deployment secrets and stop any external jobs posting roundups; those API endpoints now return 404 for authenticated requests.
+RSS/OPML import and polling, article actions, legacy Summaries APIs, and AI Security publishing/archive APIs have been removed, including their scheduled jobs and publish-only credentials. News and Summaries page URLs redirect to filtered views in Read Later. Remove obsolete `AI_SECURITY_TOKEN` values from deployment secrets and stop any external jobs posting roundups; those API endpoints now return 404 for authenticated requests.
 
 Existing archives are not automatically erased. Old `feeds.json`, `feeds.json.migrated`, `news-prefs.json`, `briefing.json`, and `ai-security/` data is no longer read or written. Legacy Daily Briefing files remain on disk, but responses omit retired news and AI sections. Old News/Summaries/AI Security sidebar entries and settings are ignored and omitted when settings are next saved. Legacy news tables in `rss.sqlite` are read only for the idempotent saved-article migration; **do not delete this database**, because it also contains Board and Wins. Back up first before manually removing obsolete files or tables.
 
@@ -137,9 +137,13 @@ Use Ctrl/Cmd+S to save immediately, Ctrl/Cmd+1/2/3 for Source/Split/Preview, Ctr
 
 The dedicated writing-workflow regression runs with `pnpm --filter @homepage/server test:notes-browser` (requires the Playwright Chromium browser installed via `pnpm --filter @homepage/server exec playwright install chromium`).
 
-Library (`/library`) is the single home for saved links. All saved includes everything; Read later shows unarchived links; Summarized shows links with a summary; Archived keeps finished reading out of the queue without deleting it. Search titles, URLs, captured text, summaries and tags, filter by space or tag, sort by date or title, and choose a list or card layout. Filters and layout are preserved in the URL. Existing `/read-later`, `/news`, and `/summaries` links redirect into Library; saved-link APIs and Chrome capture remain compatible.
+Read Later (still available at `/library` for compatibility) is the single home for saved links. All saved includes everything; Inbox shows unarchived links; Summarized shows links with a summary; Archived keeps finished reading out of the queue without deleting it. Compact is the default layout; List and Cards remain available. Each page shows at most 50 articles, with Previous/Next navigation. Filters, sort, layout, and page number are preserved in the URL.
 
-Pages are saved only when you press Save or Save & summarize in the extension (or Library). Summarize is also available on each unsummarized link and in its reading view, alongside space assignment, tags, Assistant, and note/task creation. The extension sends the page URL, title, and up to 20,000 characters of selected or readable text; the capture token can only save pages and cannot read your library. Download the extension from `/settings/capture`, unzip it, and load it unpacked in Chrome.
+The folder/tag sidebar uses existing Spaces as folders, shared with Notes and Assistant, not a separate folder system. Create a folder there, choose a folder and tags when saving, or use Organize on any article to move it and edit tags without changing its summary. Search titles, URLs, captured text, summaries and tags. Existing `/read-later`, `/news`, and `/summaries` links redirect into Read Later; saved-link APIs and Chrome capture remain compatible.
+
+Pages are saved only when you press Save or Save & summarize in the extension (or Read Later). Summarize is also available on each unsummarized link and in its reading view, alongside folder assignment, tags, Assistant, and note/task creation. The extension sends the page URL, title, and up to 20,000 characters of selected or readable text; the capture token can only save pages and cannot read your library. Download the extension from `/settings/capture`, unzip it, and load it unpacked in Chrome.
+
+Agent (`/agent`) opens Board by default. Its tabs use `?view=board|queue|wins|assistant|activity`. The Queue tab lists pending, claimed and completed Hobie tasks and can mark them done, using the existing board/wins synchronization. Legacy `/board`, `/hobie`, `/wins`, `/assistant`, and `/activity` links redirect to their Agent tab; source/space query parameters are retained for Assistant. Existing APIs are unchanged, and personalized Agent sidebar settings take precedence over legacy tab settings.
 
 Questions in the Assistant, a space, or a saved page use the configured LLM and include up to 24,000 characters of source text, titles, URLs, and separators. Only sources included in that context are returned as citations. Each knowledge store allows up to 10 questions per hour.
 

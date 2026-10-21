@@ -32,7 +32,7 @@ async function harness() {
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  return { base, close: async () => { await closeIntegrationServer(server, integration); await rm(dir, { recursive: true, force: true }); } };
+  return { base, integration, close: async () => { await closeIntegrationServer(server, integration); await rm(dir, { recursive: true, force: true }); } };
 }
 
 test("read later: scoped capture token saves pages and nothing else", async () => {
@@ -88,6 +88,60 @@ test("read later: pages, redirects, and extension download", async () => {
     assert.ok(bytes.includes(Buffer.from("manifest.json")));
   } finally {
     await h.close();
+  }
+});
+
+test("Agent: all sections share navigation; legacy context and queue actions are preserved", async () => {
+  const h = await harness();
+  try {
+    for (const view of ["board", "queue", "wins", "assistant", "activity"]) {
+      const response = await fetch(`${h.base}/agent?view=${view}`, { headers: admin });
+      assert.equal(response.status, 200);
+      const html = await response.text();
+      assert.match(html, /href="\/agent" class="on"/);
+      assert.ok(html.includes(`href="/agent?view=${view}" aria-current="page"`));
+      assert.doesNotMatch(html, /href="\/(?:board|wins|assistant|activity)" class="on"/);
+    }
+    for (const [from, target] of [
+      ["/board", "/agent?view=board"], ["/hobie", "/agent?view=queue"],
+      ["/wins", "/agent?view=wins"], ["/activity", "/agent?view=activity"],
+      ["/assistant?source=article", "/agent?source=article&view=assistant"],
+    ]) {
+      const response = await fetch(`${h.base}${from}`, { headers: admin, redirect: "manual" });
+      assert.equal(response.status, 302);
+      assert.equal(response.headers.get("location"), target);
+    }
+    assert.equal((await fetch(`${h.base}/agent?view=invalid`, { headers: admin })).status, 400);
+    const task = await h.integration.hobieQueue.enqueue({ title: "Review article", body: "Do the work", clientId: "test", urgent: false }, 10);
+    const pending = await (await fetch(`${h.base}/api/hobie/queue?status=pending`, { headers: admin })).json();
+    assert.equal(pending.tasks[0].id, task.id);
+    const completed = await fetch(`${h.base}/api/hobie/queue/${task.id}/done`, { method: "POST", headers: admin, body: "{}" });
+    assert.equal(completed.status, 200);
+    assert.equal(h.integration.hobieQueue.list({ status: "done" }).length, 1);
+  } finally {
+    await h.close();
+  }
+});
+
+test("read later: folders and tags persist on capture and organization without losing summaries", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-folder-"));
+  try {
+    const store = await NotesStore.open(dir);
+    const folder = await store.createSpace({ name: "Research" });
+    const captured = await store.captureSource({ url: "https://example.com/folder", excerpt: "Article", spaceId: folder.id, tags: ["#Research", "research", "AI"] });
+    assert.equal(captured.source.spaceId, folder.id);
+    assert.deepEqual(captured.source.tags, ["research", "ai"]);
+    await store.saveSourceSummary(captured.source.id, "Summary", "test", "Article");
+    await store.updateSource(captured.source.id, { tags: ["updated"], spaceId: null });
+    const reopened = await NotesStore.open(dir);
+    const saved = reopened.getSource(captured.source.id)!;
+    assert.equal(saved.summary, "Summary");
+    assert.equal(saved.spaceId, null);
+    assert.deepEqual(saved.tags, ["updated"]);
+    await assert.rejects(store.captureSource({ url: "https://example.com/invalid", spaceId: "missing" }), /space/i);
+    assert.equal(store.listSources().length, 1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });
 

@@ -72,7 +72,7 @@ test("nav: old saved-link destinations collapse into Library without overriding 
     { id: "summaries", label: "Summaries", visible: true, order: 40 },
   ]);
   assert.equal(legacy.filter((tab) => tab.id === "library").length, 1);
-  assert.equal(legacy.find((tab) => tab.id === "library")!.label, "Library");
+  assert.equal(legacy.find((tab) => tab.id === "library")!.label, "Read Later");
   for (const rows of [
     [{ id: "library", label: "My links", visible: false, order: 21 }, { id: "read-later", label: "Read later", visible: true }],
     [{ id: "read-later", label: "Read later", visible: true }, { id: "library", label: "My links", visible: false, order: 21 }],
@@ -82,6 +82,19 @@ test("nav: old saved-link destinations collapse into Library without overriding 
     assert.equal(tab.visible, false);
     assert.equal(tab.order, 21);
   }
+});
+
+test("nav: Agent consolidates agent workflows and retains explicit Agent preferences", () => {
+  const old = ["board", "wins", "assistant", "activity"].map((id, index) => ({ id, label: id, visible: index === 0, order: 50 + index }));
+  const tabs = normalizeSidebarTabs(old);
+  assert.equal(tabs.filter((tab) => tab.id === "agent").length, 1);
+  assert.equal(tabs.find((tab) => tab.id === "agent")!.visible, true);
+  assert.equal(tabs.find((tab) => tab.id === "agent")!.order, 50);
+  assert.ok(!tabs.some((tab) => ["board", "wins", "assistant", "activity"].includes(tab.id)));
+  const explicit = normalizeSidebarTabs([...old, { id: "agent", label: "My agent", visible: false, order: 12 }]);
+  assert.equal(explicit.find((tab) => tab.id === "agent")!.visible, false);
+  assert.equal(explicit.find((tab) => tab.id === "agent")!.label, "My agent");
+  assert.equal(normalizeSidebarTabs([{ id: "library", label: "Library", visible: true }]).find((tab) => tab.id === "library")!.label, "Read Later");
 });
 
 test("settings: view preferences customize page defaults and retain other defaults", () => {

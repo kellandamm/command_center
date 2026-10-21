@@ -50,7 +50,7 @@ function fill(box,rows,empty,href){box.replaceChildren();if(!rows.length){box.ap
 function renderSpace(){
   $("space-detail").hidden=false;document.querySelector(".workspace-head h1").textContent=space.name;
   $("space-guidance").textContent=space.instructions?"Guidance: "+space.instructions:"";
-  $("space-ask").href="/assistant?space="+encodeURIComponent(space.id);$("space-new-note").href="/notes?space="+encodeURIComponent(space.id);
+  $("space-ask").href="/agent?view=assistant&space="+encodeURIComponent(space.id);$("space-new-note").href="/notes?space="+encodeURIComponent(space.id);
   fill($("space-notes"),data.notes.filter(function(n){return n.spaceId===space.id;}),"No notes in this space yet.",function(n){return "/notes?note="+encodeURIComponent(n.id);});
   fill($("space-sources"),data.sources.filter(function(n){return n.spaceId===space.id;}),"No saved pages in this space yet.",function(n){return "/library/"+encodeURIComponent(n.id);});
   fill($("space-refs"),space.references,"Nothing linked yet.",function(r){return r.href;});
