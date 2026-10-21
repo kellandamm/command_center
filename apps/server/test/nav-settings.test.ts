@@ -10,12 +10,12 @@ import { applySettings, DEFAULT_SETTINGS, SettingsStore } from "../src/settings"
 
 test("nav: dashboard and settings tabs always visible", () => {
   const tabs = normalizeSidebarTabs(
-    DEFAULT_SETTINGS.sidebarTabs.map((t) => (t.id === "news" ? { ...t, visible: false } : t)),
+    DEFAULT_SETTINGS.sidebarTabs.map((t) => (t.id === "read-later" ? { ...t, visible: false } : t)),
   );
   const visible = visibleNavTabs(tabs);
   assert.ok(visible.some((t) => t.href === "/"));
   assert.ok(visible.some((t) => t.href === "/settings"));
-  assert.ok(!visible.some((t) => t.href === "/news"));
+  assert.ok(!visible.some((t) => t.href === "/read-later"));
 });
 
 test("settings: legacy feeds field migrates out of persisted settings", async () => {
@@ -66,7 +66,7 @@ test("settings: applySettings validates feed scope and tabs rename", () => {
     sidebarTabs: applySidebarTabsPatch(DEFAULT_SETTINGS.sidebarTabs, [{ id: "news", label: "Reader" }]),
   });
   assert.equal(next.feedScope.mode, "folders");
-  assert.equal(next.sidebarTabs.find((t) => t.id === "news")!.label, "Reader");
+  assert.equal(next.sidebarTabs.find((t) => t.id === "read-later")!.label, "Reader");
 });
 
 test("settings: view preferences customize page defaults and retain other defaults", () => {

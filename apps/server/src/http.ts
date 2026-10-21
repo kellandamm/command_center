@@ -37,10 +37,17 @@ import { handleWinsRoutes } from "./wins/routes";
 import type { WinsRollupService } from "./wins/rollup-service";
 import { boardPage } from "./ui/board-page";
 import { winsPage } from "./ui/wins-page";
-import { notesPage } from "./ui/notes-page";
+import { noteToolsPage, notesPage } from "./ui/notes-page";
+import { sourceDetailPage, sourcesPage } from "./ui/sources-page";
+import { spaceDetailPage, spacesPage } from "./ui/spaces-page";
+import { assistantPage } from "./ui/assistant-page";
+import { capturePage } from "./ui/capture-page";
+import { handleReadLaterRoutes } from "./read-later/routes";
+import { ReadLaterService } from "./read-later/service";
+import { CaptureAccess } from "./read-later/capture-access";
+import { captureExtensionFiles } from "./read-later/extension";
+import { zip } from "./read-later/zip";
 import { dashboardPage, settingsPage } from "./ui/pages";
-import { newsPage } from "./ui/news-page";
-import { summariesPage } from "./ui/summaries-page";
 import { handleArticleActionRoutes } from "./feeds/article-actions-routes";
 import { SummaryService } from "./feeds/summary-service";
 
@@ -132,6 +139,10 @@ export function createApp(app: App): Server {
     wins: app.wins,
   });
 
+  const readLater = new ReadLaterService(app.cfg, app.notes);
+  const captureAccess = new CaptureAccess(app.cfg.dataDir);
+  const extensionZip = zip(captureExtensionFiles);
+
   return createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
@@ -158,6 +169,14 @@ export function createApp(app: App): Server {
         return;
       }
 
+      if (method === "POST" && path === "/api/capture") {
+        const token = bearerToken(req);
+        if (token && (await captureAccess.accepts(token))) {
+          await handleReadLaterRoutes(app.notes, readLater, captureAccess, req, res, path, (r) => readBody(r, 300_000));
+          return;
+        }
+      }
+
       const publishOnly = aiSecurityPublishAuthorized(app.cfg, req, path, method);
       const who = publishOnly ? { ok: true as const, who: "ai-security-publish" } : await app.auth(req, url);
       if (!who.ok) return send(res, who.status, `<h1>${who.status}</h1><p>${who.reason}</p>`);
@@ -176,8 +195,23 @@ export function createApp(app: App): Server {
       if (get && path === "/") return send(res, 200, dashboardPage(nav()), undefined, extra);
       if (get && path === "/ai-security") return send(res, 200, aiSecurityPage(nav()), undefined, extra);
       if (get && path === "/briefing") return send(res, 200, dailyBriefingPage(nav()), undefined, extra);
-      if (get && path === "/news") return send(res, 200, newsPage(nav()), undefined, extra);
-      if (get && path === "/summaries") return send(res, 200, summariesPage(nav()), undefined, extra);
+      if (get && (path === "/news" || path === "/summaries")) {
+        res.writeHead(302, { location: path === "/news" ? "/read-later" : "/library", ...SECURITY, ...extra });
+        res.end();
+        return;
+      }
+      if (get && (path === "/read-later" || path === "/library")) return send(res, 200, sourcesPage(nav(), path === "/library"), undefined, extra);
+      if (get && /^\/(read-later|library)\/[^/]+$/.test(path)) return send(res, 200, sourceDetailPage(nav()), undefined, extra);
+      if (get && path === "/spaces") return send(res, 200, spacesPage(nav()), undefined, extra);
+      if (get && /^\/spaces\/[^/]+$/.test(path)) return send(res, 200, spaceDetailPage(nav()), undefined, extra);
+      if (get && path === "/assistant") return send(res, 200, assistantPage(nav()), undefined, extra);
+      if (get && path === "/settings/capture") return send(res, 200, capturePage(nav()), undefined, extra);
+      if (get && path === "/capture-extension.zip") {
+        return send(res, 200, extensionZip, "application/zip", { ...extra, "content-disposition": 'attachment; filename="command-center-capture.zip"' });
+      }
+      if (get && (path === "/notes/connections" || path === "/notes/transfer")) {
+        return send(res, 200, noteToolsPage(nav(), path === "/notes/connections"), undefined, extra);
+      }
       if (get && path === "/hobie") {
         res.writeHead(302, { location: "/board", ...SECURITY, ...extra });
         res.end();
@@ -217,6 +251,9 @@ export function createApp(app: App): Server {
         return json(res, 200, { settings: next, feedCount: app.feeds.feedCount() });
       }
 
+      if (path.startsWith("/api/capture") || path.startsWith("/api/read-later")) {
+        if (await handleReadLaterRoutes(app.notes, readLater, captureAccess, req, res, path, readBody)) return;
+      }
       if (await handleAiSecurityRoutes(app.aiSecurity, req, res, path, readBody)) return;
       if (await handleDailyBriefingRoutes(app, app.dailyBriefing, req, res, path)) return;
       if (path.startsWith("/api/board") || path.startsWith("/api/wins")) {

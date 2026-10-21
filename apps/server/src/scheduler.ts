@@ -5,7 +5,6 @@ import type { WinsStore } from "./wins/store";
 import type { BriefingService } from "./briefing/service";
 import { llmConfig, type Config } from "./config";
 import { feedIdsInScope } from "./feed-scope";
-import { pollDueFeeds } from "./feeds/poller";
 import type { FeedsStore } from "./feeds/store";
 import type { NewsPrefsStore } from "./feeds/news-prefs";
 import type { SummaryService } from "./feeds/summary-service";
@@ -122,8 +121,6 @@ export class Scheduler {
       const s = this.d.settings.get();
       let state = (await this.d.kv.get<SchedState>(KEY)) ?? {};
 
-      const fetchDue =
-        !state.lastFeedFetchAt || now.getTime() - new Date(state.lastFeedFetchAt).getTime() >= s.fetchIntervalMinutes * 60_000;
       const winsPollDue =
         this.d.wins &&
         (!state.githubWinsPollAt || now.getTime() - new Date(state.githubWinsPollAt).getTime() >= 60 * 60_000);
@@ -137,19 +134,6 @@ export class Scheduler {
           now,
         });
         state = { ...state, githubWinsPollAt: now.toISOString() };
-        await this.d.kv.set(KEY, state);
-      }
-
-      if (fetchDue) {
-        if (this.d.feeds.feedCount() > 0) {
-          const prefs = this.d.newsPrefs.get();
-          const scopeIds = feedIdsInScope(this.d.feeds, s.feedScope);
-          await pollDueFeeds(this.d.feeds, now, undefined, async (ids) => {
-            for (const id of ids) await this.d.summaryService.maybeAutoSummarize(id, prefs, now);
-          }, scopeIds);
-          await this.d.feeds.save();
-        }
-        state = { ...state, lastFeedFetchAt: now.toISOString() };
         await this.d.kv.set(KEY, state);
       }
 

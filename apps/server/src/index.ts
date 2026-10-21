@@ -18,6 +18,7 @@ import { WinsStore } from "./wins/store";
 import { WinsRollupService } from "./wins/rollup-service";
 import { PanelUpdatesStore } from "./stores/panel-updates";
 import { DashboardLayoutStore } from "./dashboard-layout/storage";
+import { migrateSavedArticles } from "./read-later/service";
 import { panels } from "./panels/registry";
 import { FileKV, ensureDirs } from "./store";
 
@@ -38,6 +39,8 @@ async function main() {
   const aiSecurity = await AiSecurityService.open(cfg.dataDir);
   const dailyBriefing = await DailyBriefingService.open(cfg.dataDir, cfg.tz);
   const notes = await NotesStore.open(cfg.dataDir);
+  const migrated = await migrateSavedArticles(feeds, notes);
+  if (migrated) console.log(`Moved ${migrated} saved articles into Read later`);
   const panelUpdates = await PanelUpdatesStore.open(cfg.dataDir);
   const hobieQueue = await HobieQueueStore.open(cfg.dataDir);
   const board = BoardStore.open(cfg.dataDir);

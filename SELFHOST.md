@@ -1,6 +1,6 @@
 # Self-hosting the command center
 
-`apps/server` is a single-container personal dashboard: pluggable panels, RSS/Atom news feeds (fetched on a schedule, stored on disk), and an optional daily AI briefing via any OpenAI-compatible `/chat/completions` endpoint (including [Command Code Provider API](https://api.commandcode.ai/provider/v1)).
+`apps/server` is a single-container personal dashboard: pluggable panels, a Read later inbox with a Chrome capture extension, notes, spaces and a cited assistant, and an optional daily AI briefing via any OpenAI-compatible `/chat/completions` endpoint (including [Command Code Provider API](https://api.commandcode.ai/provider/v1)).
 
 ## Quick start
 
@@ -108,11 +108,12 @@ and accepts JSON either as an array of hits or as `{ results | items | memories 
 ## Data layout (`/data`)
 
 - `settings.json` — feed list, fetch interval, briefing time
-- `rss.sqlite` — RSS feeds, folders, articles, and poll state (WAL mode)
+- `rss.sqlite` — legacy RSS data. Feeds are no longer fetched; starred articles and summaries are copied into Read later at startup and the original data is kept
 - `feeds.json.migrated` — optional legacy cache after one-time migration from older releases
 - `news-prefs.json` — tagged news view: muted topics and focus chips
 - `briefing.json` — latest briefing and short history
 - `state.json` — scheduler timestamps
+- `capture-access.json` — SHA-256 hash of the Chrome capture token (create or revoke it at `/settings/capture`)
 - `knowledge.json` — individual Markdown notes, captured links, tags, and personal spaces
 - `notes.md` — legacy plain-Markdown Notes file; its contents are copied into the knowledge store on first startup and the original file is kept as a backup
 - `panel-updates.json` — **Activity** panel (agent updates via MCP/webhook)
@@ -121,7 +122,9 @@ and accepts JSON either as an array of hits or as `{ results | items | memories 
 
 Back up the volume to keep feeds, read state, briefings, and personal knowledge. The Notes page can export an ordinary Markdown bundle or a complete JSON backup; JSON imports merge records without overwriting existing entries.
 
-Questions in a personal space use the configured LLM and include up to 24,000 characters of source text, titles, URLs, and separators. Only sources included in that context are returned as citations. Each knowledge store allows up to 10 questions per hour.
+Read later pages are saved only when you press Save or Save & summarize in the extension (or the Read later page). The extension sends the page URL, title, and up to 20,000 characters of selected or readable text; the capture token can only save pages and cannot read your library. Download the extension from `/settings/capture`, unzip it, and load it unpacked in Chrome.
+
+Questions in the Assistant, a space, or a saved page use the configured LLM and include up to 24,000 characters of source text, titles, URLs, and separators. Only sources included in that context are returned as citations. Each knowledge store allows up to 10 questions per hour.
 
 ## Security
 

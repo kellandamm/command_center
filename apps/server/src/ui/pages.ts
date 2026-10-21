@@ -12,7 +12,7 @@ export function dashboardPage(nav?: NavLink[]): string {
     <h2>Needs attention</h2>
     <div class="dashboard-metrics">
       <a class="dashboard-metric" href="/board"><span>Hobie board</span><strong id="dashboard-hobie-count">Loading…</strong><span class="dim" id="dashboard-hobie-detail"></span></a>
-      <a class="dashboard-metric" href="/news"><span>Unread news</span><strong id="dashboard-news-count">Loading…</strong><span class="dim">Open News reader</span></a>
+      <a class="dashboard-metric" href="/read-later"><span>Read later</span><strong id="dashboard-news-count">Loading…</strong><span class="dim">Open your inbox</span></a>
     </div>
   </section>
   <section class="card dashboard-overview-card" data-dashboard-card="calendar">
@@ -47,8 +47,8 @@ function loadDashboardHobie(){
   }).catch(function(err){dashboardSetError("dashboard-hobie-count",err)});
 }
 function loadDashboardNews(){
-  return api("/api/feeds").then(function(r){
-    document.getElementById("dashboard-news-count").textContent=String(r.unread||0);
+  return api("/api/read-later").then(function(r){
+    document.getElementById("dashboard-news-count").textContent=String(r.inboxCount||0);
   }).catch(function(err){dashboardSetError("dashboard-news-count",err)});
 }
 function loadDashboardCalendar(){
@@ -85,7 +85,7 @@ window.viewPreferencesReady.then(function(prefs){
     var key=card.dataset.dashboardCard;
     if(key==="attention"&&dashboard.hobie===false&&dashboard.news===false)card.hidden=true;
     else if(key==="attention"&&dashboard.hobie===false)card.querySelector('a[href="/board"]').hidden=true;
-    else if(key==="attention"&&dashboard.news===false)card.querySelector('a[href="/news"]').hidden=true;
+    else if(key==="attention"&&dashboard.news===false)card.querySelector('a[href="/read-later"]').hidden=true;
     else if(key!=="attention"&&dashboard[key]===false)card.hidden=true;
   });
   if(dashboard.hobie!==false)loadDashboardHobie();
@@ -116,7 +116,7 @@ export function settingsPage(nav?: NavLink[]): string {
 <fieldset class="settings-option"><legend>Dashboard cards</legend>
 <label class="row choice-row"><input type="checkbox" data-pref="dashboard.hobie"/> Hobie board</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.news"/> Unread news</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.calendar"/> Next calendar event</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.briefing"/> Daily briefing</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.activity"/> Agent activity</label></fieldset>
 <fieldset class="settings-option"><legend>Daily Briefing sections</legend>
-<label class="row choice-row"><input type="checkbox" data-pref="briefing.news"/> News stories</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.ai"/> AI editor’s note</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.todoist"/> Todoist tasks</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.weather"/> Weather</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.calendar"/> Calendar</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.github"/> GitHub</label></fieldset>
+<label class="row choice-row"><input type="checkbox" data-pref="briefing.news"/> Saved pages</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.ai"/> AI editor’s note</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.todoist"/> Todoist tasks</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.weather"/> Weather</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.calendar"/> Calendar</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.github"/> GitHub</label></fieldset>
 <div class="settings-option"><label for="pref-news-layout">News article layout</label><select id="pref-news-layout" data-pref="news.layout"><option value="dense">Dense list</option><option value="card">Cards</option></select><label class="row choice-row"><input type="checkbox" data-pref="news.unreadOnly"/> Show unread only by default</label></div>
 <div class="settings-option"><label for="pref-hobie-status">Hobie queue filter</label><select id="pref-hobie-status" data-pref="hobie.status"><option value="all">All tasks</option><option value="pending">Pending</option><option value="claimed">Claimed</option><option value="done">Done</option></select></div>
 <div class="settings-option"><label for="pref-calendar-week">Calendar week starts on</label><select id="pref-calendar-week" data-pref="calendar.weekStartsOn"><option value="monday">Monday</option><option value="sunday">Sunday</option></select></div>
@@ -129,14 +129,14 @@ export function settingsPage(nav?: NavLink[]): string {
 </div>
 <div class="card settings-card settings-tab-panel" id="tab-schedule">
 <form id="f-schedule">
-<p class="dim">News for the dashboard, AI briefing, and scheduled fetch comes from the <a href="/news">News reader</a> (OPML import). Choose all feeds or specific folders below.</p>
+<p class="dim">News for the dashboard, AI briefing, and scheduled fetch comes from the <a href="/read-later">Read later</a> (legacy feeds are kept but no longer fetched). Choose all feeds or specific folders below.</p>
 <div class="row" style="gap:16px;margin-top:1rem">
 <div style="flex:1"><label for="fetchInterval">Fetch interval (minutes)</label><input id="fetchInterval" type="number" min="5" max="1440"></div>
 <div style="flex:1"><label for="briefingTime">Daily briefing time</label><input id="briefingTime" placeholder="07:00"></div>
 </div>
 <fieldset style="margin-top:1rem;border:0;padding:0">
 <legend style="font-weight:600;font-size:.875rem">Feed scope</legend>
-<label class="row choice-row" style="margin:.5rem 0"><input type="radio" name="feedScope" value="all" id="scope-all"/> All feeds in News reader</label>
+<label class="row choice-row" style="margin:.5rem 0"><input type="radio" name="feedScope" value="all" id="scope-all"/> All legacy feeds</label>
 <label class="row choice-row" style="margin:.5rem 0"><input type="radio" name="feedScope" value="folders" id="scope-folders"/> Selected folders only</label>
 <div id="scope-folder-list" class="scope-folder-grid dim"></div>
 </fieldset>
@@ -176,7 +176,7 @@ function bindViewPreferences(){
 function renderFolderScope(){
   return api("/api/rss/tree").then(function(r){
     var tree=r.tree;var box=document.getElementById("scope-folder-list");
-    if(!tree||!tree.folders||!tree.folders.length){box.innerHTML="<p>No folders yet — import OPML on News.</p>";return;}
+    if(!tree||!tree.folders||!tree.folders.length){box.innerHTML="<p>No folders yet — legacy feeds only.</p>";return;}
     function walk(nodes,prefix){
       var html="";
       nodes.forEach(function(f){

@@ -215,11 +215,20 @@ export const notesPanel: PanelModule = {
       const llm = llmConfig(ctx.cfg);
       if (!llm) return error(503, "LLM is not configured"), true;
       const body = await readJson(req);
-      if (typeof body.spaceId !== "string" || typeof body.question !== "string" || !body.question.trim()) {
-        throw new ValidationError("spaceId and question are required");
+      if (typeof body.question !== "string" || !body.question.trim()) throw new ValidationError("question is required");
+      if (body.spaceId !== undefined && typeof body.spaceId !== "string") throw new ValidationError("spaceId must be a string");
+      if (body.sourceId !== undefined && typeof body.sourceId !== "string") throw new ValidationError("sourceId must be a string");
+      let context: { space: { instructions: string; references: Array<{ id: string; title: string; href: string; excerpt: string }> }; notes: ReturnType<typeof ctx.notes.listNotes>; sources: ReturnType<typeof ctx.notes.listSources> } | undefined;
+      if (body.sourceId) {
+        const source = ctx.notes.getSource(body.sourceId);
+        if (!source) return error(404, "saved page not found"), true;
+        context = { space: { instructions: "", references: [] }, notes: [], sources: [source] };
+      } else if (body.spaceId) {
+        context = ctx.notes.getSpaceContent(body.spaceId);
+        if (!context) return error(404, "space not found"), true;
+      } else {
+        context = { space: { instructions: "", references: [] }, notes: ctx.notes.listNotes(), sources: ctx.notes.listSources() };
       }
-      const context = ctx.notes.getSpaceContent(body.spaceId);
-      if (!context) return error(404, "space not found"), true;
       const cutoff = Date.now() - 60 * 60 * 1000;
       const questionTimes = knowledgeQuestionTimes.get(ctx.notes) ?? [];
       while (questionTimes.length && questionTimes[0]! < cutoff) questionTimes.shift();

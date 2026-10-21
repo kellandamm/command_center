@@ -2,13 +2,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { aiSecurityPage } from "../src/ui/ai-security-page";
 import { dailyBriefingPage } from "../src/ui/daily-briefing-page";
-import { newsPage } from "../src/ui/news-page";
-import { summariesPage } from "../src/ui/summaries-page";
+import { sourceDetailPage, sourcesPage } from "../src/ui/sources-page";
+import { spaceDetailPage, spacesPage } from "../src/ui/spaces-page";
+import { assistantPage } from "../src/ui/assistant-page";
+import { capturePage } from "../src/ui/capture-page";
 import { activityPage } from "../src/ui/activity-page";
 import { calendarPage } from "../src/ui/calendar-page";
 import { boardPage } from "../src/ui/board-page";
 import { winsPage } from "../src/ui/wins-page";
-import { notesPage } from "../src/ui/notes-page";
+import { noteToolsPage, notesPage } from "../src/ui/notes-page";
 import { dashboardPage, settingsPage } from "../src/ui/pages";
 
 test("ui: dashboard shows concise status summaries with links to full pages", () => {
@@ -18,17 +20,17 @@ test("ui: dashboard shows concise status summaries with links to full pages", ()
   assert.match(html, /class="dashboard-overview"/);
   assert.match(html, /Needs attention/);
   assert.match(html, /Hobie board/);
-  assert.match(html, /Unread news/);
+  assert.match(html, /Read later/);
   assert.match(html, /Next up/);
   assert.match(html, /Today's briefing/);
   assert.match(html, /Recent agent activity/);
   assert.match(html, /id="theme-toggle"/);
   assert.match(html, /href="\/board"/);
-  assert.match(html, /href="\/news"/);
+  assert.match(html, /href="\/read-later"/);
   assert.match(html, /href="\/calendar"/);
   assert.match(html, /href="\/briefing"/);
   assert.match(html, /href="\/activity"/);
-  assert.match(html, /\/api\/feeds/);
+  assert.match(html, /\/api\/read-later/);
   assert.match(html, /\/api\/calendar\?horizonDays=7/);
   assert.match(html, /\/api\/daily-briefing/);
   assert.doesNotMatch(html, /dashboard-grid|dashboard-reset-layout|data-panel-id=/);
@@ -67,25 +69,22 @@ test("ui: daily briefing page has source sections and nav link", () => {
   assert.match(html, /id="db-error"/);
 });
 
-test("ui: news reader has feed tree and article list", () => {
-  const html = newsPage();
-  assert.match(html, /href="\/news" class="on"/);
-  assert.match(html, /id="news-focus-chips"/);
-  assert.match(html, /id="rss-tree"/);
-  assert.match(html, /id="rss-articles"/);
-  assert.match(html, /id="rss-read-pane"/);
-  assert.match(html, /Saved for later/);
-  assert.match(html, /id="rss-read-toggle"/);
-  assert.match(html, /data-article-action="save"/);
-  assert.match(html, /data-article-action="read"/);
-  assert.match(html, /if\(sc==="saved"\)document\.getElementById\("rss-unread-only"\)\.checked=false/);
+test("ui: read later saves only what you choose", () => {
+  const html = sourcesPage();
+  assert.match(html, /href="\/read-later" class="on"/);
+  assert.match(html, /id="capture-form"/);
+  assert.match(html, /Save &amp; summarize/);
+  assert.match(html, /Set up Chrome capture/);
+  assert.doesNotMatch(html, /OPML|feed tree|RSS reader/i);
+  assert.match(sourcesPage(undefined, true), /href="\/library" class="on"/);
+  assert.match(sourceDetailPage(), /id="source-summarize"/);
 });
 
-test("ui: summaries page has search and auto settings", () => {
-  const html = summariesPage();
-  assert.match(html, /href="\/summaries" class="on"/);
-  assert.match(html, /id="sum-list"/);
-  assert.match(html, /id="sum-auto-star"/);
+test("ui: spaces, assistant and capture pages render", () => {
+  assert.match(spacesPage(), /id="space-form"/);
+  assert.match(spaceDetailPage(), /id="space-ask"/);
+  assert.match(assistantPage(), /id="ask-scope"/);
+  assert.match(capturePage(), /\/capture-extension\.zip/);
 });
 
 test("ui: settings page has schedule and tabs sections", () => {
@@ -107,8 +106,8 @@ test("ui: full sidebar pages render", () => {
   assert.match(boardPage(), /href="\/board" class="on"/);
   assert.match(winsPage(), /href="\/wins" class="on"/);
   assert.match(notesPage(), /id="knowledge-note-list"/);
-  assert.match(notesPage(), /Export Markdown/);
-  assert.match(notesPage(), /Note link graph/);
+  assert.match(noteToolsPage(undefined, false), /Export Markdown/);
+  assert.match(noteToolsPage(undefined, true), /Connections/);
   assert.doesNotMatch(notesPage(), /RSS reader|feed subscriptions/i);
   assert.match(calendarPage(), /id="cal-week-grid"/);
   assert.match(activityPage(), /id="activity-full-list"/);
