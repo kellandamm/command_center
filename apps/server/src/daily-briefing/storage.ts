@@ -23,8 +23,11 @@ async function writeAtomic(path: string, data: string): Promise<void> {
 export async function readBriefingFile(path: string): Promise<DailyBriefingRecord | undefined> {
   try {
     const record = JSON.parse(await readFile(path, "utf8")) as DailyBriefingRecord;
-    const { todoist, weather, calendar, github, board } = record.sources;
-    return { day: record.day, generatedAt: record.generatedAt, trigger: record.trigger, sources: { todoist, weather, calendar, github, board } };
+    const { weather, calendar, topics } = record.sources;
+    return {
+      day: record.day, generatedAt: record.generatedAt, trigger: record.trigger,
+      sources: { weather, calendar, topics: topics ?? { status: "not_configured", message: "This edition predates keyword briefings. Add topics in Settings and refresh today's edition." } },
+    };
   } catch (err: unknown) {
     if (err && typeof err === "object" && "code" in err && (err as { code: string }).code === "ENOENT") return undefined;
     throw err;

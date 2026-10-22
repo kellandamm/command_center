@@ -19,7 +19,13 @@ export interface KnowledgeNote {
   legacy?: boolean;
   createdAt: string;
   updatedAt: string;
+  version?: number;
+  pinned?: boolean;
+  archivedAt?: string | null;
 }
+
+export interface NoteRevision extends KnowledgeNote { revisionId: string }
+export class NoteConflictError extends Error {}
 
 export interface KnowledgeSource {
   id: string;
@@ -61,6 +67,7 @@ interface KnowledgeData {
   notes: KnowledgeNote[];
   sources: KnowledgeSource[];
   spaces: KnowledgeSpace[];
+  revisions?: NoteRevision[];
 }
 
 const emptyData = (): KnowledgeData => ({ notes: [], sources: [], spaces: [] });
@@ -76,6 +83,16 @@ function text(value: unknown, field: string, max: number, required = false): str
 function markdownContent(value: unknown): string {
   if (typeof value !== "string") throw new ValidationError("content must be text");
   if (Buffer.byteLength(value, "utf8") > MAX_BYTES) throw new ValidationError(`content exceeds ${MAX_BYTES} bytes`);
+  return value;
+}
+function pinned(value: unknown): boolean {
+  if (value === undefined) return false;
+  if (typeof value !== "boolean") throw new ValidationError("pinned must be boolean");
+  return value;
+}
+function archivedAt(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string" || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString() !== value) throw new ValidationError("archivedAt must be an ISO timestamp or null");
   return value;
 }
 
@@ -120,6 +137,7 @@ export class NotesStore {
       const raw = await readFile(this.knowledgePath, "utf8");
       const parsed = JSON.parse(raw) as Partial<KnowledgeData>;
       this.data = {
+        revisions: Array.isArray(parsed.revisions) ? parsed.revisions : [],
         notes: Array.isArray(parsed.notes) ? parsed.notes : [],
         sources: Array.isArray(parsed.sources) ? parsed.sources : [],
         spaces: Array.isArray(parsed.spaces) ? parsed.spaces.map((space) => ({
@@ -200,6 +218,7 @@ export class NotesStore {
       const now = new Date().toISOString();
       const note = this.data.notes.find((item) => item.legacy === true || (item.title === "Main notes" && item.legacy !== false));
       if (note) {
+        this.recordRevision(note);
         note.content = content;
         note.updatedAt = now;
       } else {
@@ -278,6 +297,7 @@ export class NotesStore {
         };
         this.data.notes.push(note);
       }
+      this.recordRevision(note);
       note.content = note.content ? `${note.content.replace(/\n?$/, "\n")}${addition}\n` : `${addition}\n`;
       note.updatedAt = now;
       if (Buffer.byteLength(note.content, "utf8") > MAX_BYTES) throw new ValidationError(`note exceeds ${MAX_BYTES} bytes`);
@@ -303,7 +323,8 @@ export class NotesStore {
     return this.updateData(() => {
       const now = new Date().toISOString();
       const note: KnowledgeNote = {
-        id: randomUUID(), title, content, tags: tags(input.tags), legacy: false,
+        id: randomUUID(), title, content, tags: tags(input.tags), legacy: false, version: 1,
+        pinned: pinned(input.pinned), archivedAt: archivedAt(input.archivedAt),
         spaceId: this.spaceId(input.spaceId), sourceUrl, createdAt: now, updatedAt: now,
       };
       this.data.notes.push(note);
@@ -315,13 +336,42 @@ export class NotesStore {
     return this.updateData(() => {
       const note = this.data.notes.find((item) => item.id === id);
       if (!note) return undefined;
+      if (input.expectedVersion !== undefined && input.expectedVersion !== (note.version ?? 0)) {
+        throw new NoteConflictError("This note changed elsewhere. Your draft is still here; reload the latest version before merging your changes.");
+      }
+      this.recordRevision(note);
       if (input.title !== undefined) note.title = text(input.title, "title", 240, true);
       if (input.content !== undefined) note.content = markdownContent(input.content);
       if (input.tags !== undefined) note.tags = tags(input.tags);
       if (input.spaceId !== undefined) note.spaceId = this.spaceId(input.spaceId);
       if (input.sourceUrl !== undefined) note.sourceUrl = optionalUrl(input.sourceUrl, "sourceUrl");
+      if (input.pinned !== undefined) note.pinned = pinned(input.pinned);
+      if (input.archivedAt !== undefined) note.archivedAt = archivedAt(input.archivedAt);
       note.updatedAt = new Date().toISOString();
       return note;
+    });
+  }
+
+  private recordRevision(note: KnowledgeNote) {
+    const revisions = this.data.revisions ?? [];
+    revisions.push({ ...structuredClone(note), revisionId: randomUUID() });
+    const other = revisions.filter((revision) => revision.id !== note.id);
+    this.data.revisions = [...other, ...revisions.filter((revision) => revision.id === note.id).slice(-20)];
+    note.version = (note.version ?? 0) + 1;
+  }
+
+  noteHistory(id: string): NoteRevision[] {
+    return structuredClone((this.data.revisions ?? []).filter((revision) => revision.id === id).reverse());
+  }
+
+  async restoreNote(id: string, revisionId: string, expectedVersion: number): Promise<KnowledgeNote | undefined> {
+    const revision = this.noteHistory(id).find((item) => item.revisionId === revisionId);
+    if (!revision) throw new ValidationError("Revision not found");
+    return this.updateNote(id, {
+      title: revision.title, content: revision.content, tags: revision.tags,
+      spaceId: revision.spaceId && this.data.spaces.some((space) => space.id === revision.spaceId) ? revision.spaceId : null,
+      sourceUrl: revision.sourceUrl, expectedVersion,
+      pinned: revision.pinned ?? false, archivedAt: revision.archivedAt ?? null,
     });
   }
 
@@ -330,6 +380,7 @@ export class NotesStore {
       const index = this.data.notes.findIndex((item) => item.id === id);
       if (index < 0) return false;
       this.data.notes.splice(index, 1);
+      this.data.revisions = (this.data.revisions ?? []).filter((revision) => revision.id !== id);
       return true;
     });
   }
@@ -578,6 +629,7 @@ export class NotesStore {
         spacesAdded++;
       }
       const existingNoteIds = new Set(this.data.notes.map((note) => note.id));
+      const addedNoteIds = new Set<string>();
       for (const raw of backup.notes!) {
         if (!raw || typeof raw !== "object") throw new ValidationError("backup contains an invalid note");
         const item = raw as KnowledgeNote;
@@ -596,9 +648,32 @@ export class NotesStore {
           legacy: Boolean(item.legacy),
           createdAt: typeof item.createdAt === "string" ? item.createdAt : now,
           updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : now,
+          version: Number.isInteger(item.version) && item.version! >= 0 ? item.version : 0,
+          pinned: pinned(item.pinned), archivedAt: archivedAt(item.archivedAt),
         });
         existingNoteIds.add(id);
+        addedNoteIds.add(id);
         notesAdded++;
+      }
+      if (backup.revisions !== undefined && !Array.isArray(backup.revisions)) throw new ValidationError("revisions must be a list");
+      for (const item of backup.revisions ?? []) {
+        if (!item || typeof item !== "object") throw new ValidationError("Invalid revision");
+        if (!addedNoteIds.has(item.id)) continue;
+        const revision: NoteRevision = {
+          ...(item.legacy === undefined ? {} : { legacy: Boolean(item.legacy) }),
+          id: item.id, revisionId: text(item.revisionId, "revision id", 300, true),
+          title: text(item.title, "revision title", 240, true), content: markdownContent(item.content),
+          tags: tags(item.tags),
+          spaceId: item.spaceId && this.data.spaces.some((space) => space.id === item.spaceId) ? item.spaceId : null,
+          sourceUrl: optionalUrl(item.sourceUrl, "sourceUrl"),
+          createdAt: text(item.createdAt, "revision createdAt", 100, true),
+          updatedAt: text(item.updatedAt, "revision updatedAt", 100, true),
+          version: Number.isInteger(item.version) && item.version! >= 0 ? item.version : 0,
+          pinned: pinned(item.pinned), archivedAt: archivedAt(item.archivedAt),
+        };
+        const revisions = this.data.revisions ?? [];
+        revisions.push(revision);
+        this.data.revisions = [...revisions.filter((row) => row.id !== item.id), ...revisions.filter((row) => row.id === item.id).slice(-20)];
       }
       const existingSourceIds = new Set(this.data.sources.map((source) => source.id));
       for (const raw of backup.sources!) {

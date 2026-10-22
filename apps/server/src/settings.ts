@@ -5,7 +5,7 @@ import { readJson, writeFileAtomic } from "./store";
 export interface ViewPreferences {
   density: "comfortable" | "compact";
   dashboard: { hobie: boolean; calendar: boolean; briefing: boolean; activity: boolean };
-  briefing: { todoist: boolean; weather: boolean; calendar: boolean; github: boolean };
+  briefing: { weather: boolean; calendar: boolean; topics: boolean };
   hobie: { status: "all" | "pending" | "claimed" | "done" };
   calendar: { weekStartsOn: "monday" | "sunday" };
   activity: { limit: 25 | 50 | 100 | 200 };
@@ -14,6 +14,7 @@ export interface ViewPreferences {
 
 export interface Settings {
   briefingTime: string;
+  briefingTopics: string[];
   sidebarTabs: SidebarTab[];
   viewPreferences: ViewPreferences;
 }
@@ -21,7 +22,7 @@ export interface Settings {
 export const DEFAULT_VIEW_PREFERENCES: ViewPreferences = {
   density: "comfortable",
   dashboard: { hobie: true, calendar: true, briefing: true, activity: true },
-  briefing: { todoist: true, weather: true, calendar: true, github: true },
+  briefing: { weather: true, calendar: true, topics: true },
   hobie: { status: "all" },
   calendar: { weekStartsOn: "monday" },
   activity: { limit: 200 },
@@ -30,6 +31,7 @@ export const DEFAULT_VIEW_PREFERENCES: ViewPreferences = {
 
 export const DEFAULT_SETTINGS: Settings = {
   briefingTime: "06:00",
+  briefingTopics: [],
   sidebarTabs: normalizeSidebarTabs(undefined),
   viewPreferences: structuredClone(DEFAULT_VIEW_PREFERENCES),
 };
@@ -71,10 +73,9 @@ function normalizeViewPreferences(input: unknown, base: ViewPreferences): ViewPr
       activity: booleanSetting(dashboard.activity, base.dashboard.activity, "viewPreferences.dashboard.activity"),
     },
     briefing: {
-      todoist: booleanSetting(briefing.todoist, base.briefing.todoist, "viewPreferences.briefing.todoist"),
       weather: booleanSetting(briefing.weather, base.briefing.weather, "viewPreferences.briefing.weather"),
       calendar: booleanSetting(briefing.calendar, base.briefing.calendar, "viewPreferences.briefing.calendar"),
-      github: booleanSetting(briefing.github, base.briefing.github, "viewPreferences.briefing.github"),
+      topics: booleanSetting(briefing.topics, base.briefing.topics, "viewPreferences.briefing.topics"),
     },
     hobie: {
       status: enumSetting(hobie.status, ["all", "pending", "claimed", "done"], base.hobie.status, "viewPreferences.hobie.status"),
@@ -99,6 +100,21 @@ export function applySettings(base: Settings, input: unknown): Settings {
   if (i.briefingTime !== undefined) {
     if (typeof i.briefingTime !== "string" || !TIME.test(i.briefingTime)) throw new ValidationError("briefingTime must be like 07:00");
     out.briefingTime = i.briefingTime;
+  }
+  if (i.briefingTopics !== undefined) {
+    if (!Array.isArray(i.briefingTopics) || i.briefingTopics.length > 10) {
+      throw new ValidationError("briefingTopics must be an array of up to 10 topics");
+    }
+    const seen = new Set<string>();
+    out.briefingTopics = [];
+    for (const value of i.briefingTopics) {
+      if (typeof value !== "string" || !value.trim() || value.trim().length > 120 || /[\r\n]/.test(value)) {
+        throw new ValidationError("Each briefing topic must be a single line of 1-120 characters");
+      }
+      const topic = value.trim();
+      if (!seen.has(topic.toLowerCase())) out.briefingTopics.push(topic);
+      seen.add(topic.toLowerCase());
+    }
   }
   if (i.sidebarTabs !== undefined) {
     out.sidebarTabs = normalizeSidebarTabs(Array.isArray(i.sidebarTabs) ? i.sidebarTabs : out.sidebarTabs);
@@ -131,8 +147,9 @@ export class SettingsStore {
   }
 
   async update(input: unknown): Promise<Settings> {
-    this.current = applySettings(this.current, input);
-    await writeFileAtomic(this.path, JSON.stringify(this.current, null, 2));
+    const next = applySettings(this.current, input);
+    await writeFileAtomic(this.path, JSON.stringify(next, null, 2));
+    this.current = next;
     return this.current;
   }
 }

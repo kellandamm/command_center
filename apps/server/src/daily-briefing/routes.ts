@@ -24,13 +24,24 @@ export async function handleDailyBriefingRoutes(
   }
 
   if (path === "/api/daily-briefing/refresh" && req.method === "POST") {
-    const rec = await daily.generate({
+    const now = new Date();
+    const day = dayKey(now, app.cfg.tz);
+    void daily.generate({
       cfg: app.cfg,
-      board: app.board,
-      wins: app.wins,
+      topics: app.settings.get().briefingTopics,
+      calendar: app.calendar,
       trigger: "manual",
-    });
-    json(res, 200, { briefing: rec });
+      now,
+    }).catch((err: unknown) => console.error("Manual briefing refresh failed:", err));
+    json(res, 202, { day, status: "generating" });
+    return true;
+  }
+
+  if (path === "/api/daily-briefing/refresh" && req.method === "GET") {
+    const url = new URL(req.url ?? "/", "http://local");
+    const param = url.searchParams.get("day");
+    const day = param && DAY_RE.test(param) ? param : dayKey(new Date(), app.cfg.tz);
+    json(res, 200, { day, ...daily.generationState(day) });
     return true;
   }
 

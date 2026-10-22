@@ -15,7 +15,7 @@ export const dailyBriefingPanel: PanelModule = {
 export function dailyBriefingDashboardScript(): string {
   return `
 function pdbStatus(sources){
-  var keys=["todoist","weather","calendar","github","board"];
+  var keys=["weather","calendar","topics"];
   var ok=0,err=0;
   keys.forEach(function(k){
     var b=sources&&sources[k];
@@ -37,10 +37,9 @@ function renderDailyBriefing(data){
   var b=data.briefing;
   if(meta)meta.textContent=b.day+" · "+pdbStatus(b.sources);
   var parts=[];
-  var todo=b.sources&&b.sources.todoist;
-  if(todo&&todo.status==="ok"&&todo.data){
-    var n=(todo.data.overdue||[]).length+(todo.data.today||[]).length;
-    parts.push("<p><strong>Todoist</strong> — "+n+" tasks due</p>");
+  var topics=b.sources&&b.sources.topics;
+  if(topics&&topics.data){
+    topics.data.items.forEach(function(t){parts.push("<p><strong>"+esc(t.keyword)+"</strong> — "+esc(t.summary||t.message||t.status)+"</p>")});
   }
   body.innerHTML=parts.join("")||'<p class="dim">Briefing snapshot is empty.</p>';
 }

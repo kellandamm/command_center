@@ -9,7 +9,7 @@ async function until(page: Page, selector: string, text: string) {
 }
 
 test("Calendar views navigate real date ranges, filter calendars, and show safe event details", { timeout: 30_000 }, async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL });
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, timezoneId: "Pacific/Kiritimati" });
     await page.clock.install({ time: new Date("2030-06-10T15:00:00Z") });
@@ -27,6 +27,7 @@ test("Calendar views navigate real date ranges, filter calendars, and show safe 
       event("past", "Previous month event", "2030-05-10T14:00:00Z", "2030-05-10T15:00:00Z"),
     ];
     events[4]!.url = "javascript:alert(1)";
+    Object.assign(events[1]!, { readOnly: false, eventId: "native-review", recurrence: "weekly" });
     const requests: Array<{ start: string; end: string }> = [];
     let fail = false, partialFailure = false, configured = true, holdNext = false;
     let release: (() => void) | undefined;
@@ -72,6 +73,8 @@ test("Calendar views navigate real date ranges, filter calendars, and show safe 
     await until(page, "#cal-event-location", "Studio");
     assert.equal(await page.locator("#cal-event-description").innerText(), "Discuss designs\nBring notes");
     assert.equal(await page.getByRole("link", { name: "Open event link" }).getAttribute("rel"), "noopener noreferrer");
+    assert.equal(await page.locator("#cal-event-edit").getAttribute("href"), "/calendar/event?event=native-review");
+    await until(page, "#cal-event-permission", "whole series");
     await page.getByRole("button", { name: "Close", exact: true }).click();
 
     await page.locator("#cal-search").fill("Team check-in");
@@ -88,6 +91,7 @@ test("Calendar views navigate real date ranges, filter calendars, and show safe 
     await until(page, "#cal-event-title", "<img src=x onerror=alert(1)>");
     assert.equal(await page.locator("#cal-event-title img").count(), 0);
     assert.equal(await page.locator("#cal-event-link a").count(), 0);
+    assert.equal(await page.locator("#cal-event-edit").isHidden(), true);
     await page.getByRole("button", { name: "Close", exact: true }).click();
     await page.getByRole("button", { name: "Previous period", exact: true }).click();
     await until(page, "#cal-week-label", "May");

@@ -17,14 +17,18 @@ import { DashboardLayoutStore } from "./dashboard-layout/storage";
 import { migrateSavedArticles } from "./read-later/service";
 import { panels } from "./panels/registry";
 import { FileKV, ensureDirs } from "./store";
+import { ConnectionsStore } from "./connections";
+import { CalendarWorkspace } from "./calendar/workspace";
 
 async function main() {
-  const cfg = loadConfig();
-  assertAuthConfigured(cfg);
+  const deployment = loadConfig();
+  assertAuthConfigured(deployment);
+  await ensureDirs(deployment.dataDir);
+  const connections = await ConnectionsStore.open(deployment);
+  const cfg = connections.config;
   if (cfg.allowInsecureNoAuth && !cfg.cfTeamDomain && !cfg.adminToken && cfg.host !== "127.0.0.1") {
     console.warn("WARNING: ALLOW_INSECURE_NO_AUTH is set and the server is not bound to 127.0.0.1.");
   }
-  await ensureDirs(cfg.dataDir);
   const kv = await FileKV.open(join(cfg.dataDir, "state.json"));
   const settings = new SettingsStore(cfg.dataDir);
   await settings.load();
@@ -36,6 +40,7 @@ async function main() {
   const panelUpdates = await PanelUpdatesStore.open(cfg.dataDir);
   const hobieQueue = await HobieQueueStore.open(cfg.dataDir);
   const board = BoardStore.open(cfg.dataDir);
+  const calendar = await CalendarWorkspace.open(cfg, connections, { notes, board });
   const wins = WinsStore.open(cfg.dataDir);
   wireHobieBoardSync(hobieQueue, board, wins);
   const winsRollup = new WinsRollupService(cfg, wins);
@@ -48,6 +53,7 @@ async function main() {
     dailyBriefing,
     board,
     wins,
+    calendar,
   });
   const server = createApp({
     cfg,
@@ -62,6 +68,8 @@ async function main() {
     wins,
     winsRollup,
     dashboardLayout,
+    connections,
+    calendar,
   });
   server.listen(cfg.port, cfg.host, () => {
     console.log(`command-center ${cfg.version} listening on ${cfg.host}:${cfg.port} (tz ${cfg.tz})`);

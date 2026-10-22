@@ -27,6 +27,7 @@ export const calendarScript = String.raw`
   }
   function color(event){
     var index=snapshot.feeds.findIndex(function(feed){return feed.id===event.calendarId;});
+    if(index>=0&&/^#[a-f0-9]{6}$/i.test(snapshot.feeds[index].color||""))return snapshot.feeds[index].color;
     return "var(--calendar-"+colors[(Math.max(index,0))%colors.length]+")";
   }
   function decorate(element,event){element.style.setProperty("--event-color",color(event));return element;}
@@ -64,6 +65,12 @@ export const calendarScript = String.raw`
     $("cal-event-link").replaceChildren();
     var href=safeUrl(event.url);
     if(href){var link=node("a","","Open event link");link.href=href;link.target="_blank";link.rel="noopener noreferrer";$("cal-event-link").appendChild(link);}
+    if(event.url&&event.url.startsWith("/notes?note=")){var noteLink=node("a","","Open linked note");noteLink.href=event.url;$("cal-event-link").appendChild(noteLink);}
+    var editable=event.readOnly===false&&event.eventId;
+    $("cal-event-edit").hidden=!editable;
+    if(editable)$("cal-event-edit").href="/calendar/event?event="+encodeURIComponent(event.eventId);
+    else $("cal-event-edit").removeAttribute("href");
+    $("cal-event-permission").textContent=editable?(event.recurrence&&event.recurrence!=="none"?"Recurring native event · edits apply to the whole series":"Native event · editable by an owner"):"Subscribed event · read-only";
     $("cal-event-dialog").showModal();
   }
   function eventButton(event,cls,withTime){
@@ -93,7 +100,7 @@ export const calendarScript = String.raw`
     var container=$("cal-sources");container.replaceChildren();
     snapshot.feeds.forEach(function(feed,index){
       var row=node("label","calendar-source"),checkbox=node("input");checkbox.type="checkbox";checkbox.checked=!hidden.has(feed.id);
-      row.style.setProperty("--event-color","var(--calendar-"+colors[index%colors.length]+")");
+      row.style.setProperty("--event-color",/^#[a-f0-9]{6}$/i.test(feed.color||"")?feed.color:"var(--calendar-"+colors[index%colors.length]+")");
       checkbox.onchange=function(){if(this.checked)hidden.delete(feed.id);else hidden.add(feed.id);render();};
       row.appendChild(checkbox);row.appendChild(node("span","calendar-dot"));row.appendChild(node("span","",feed.name||"Calendar "+(index+1)));
       if(!feed.ok){var error=node("span","bad","Unavailable");error.title=feed.error||"Feed could not be loaded";row.appendChild(error);}
@@ -191,7 +198,7 @@ export const calendarScript = String.raw`
       snapshot=data;loaded=true;
       if(data.timezone&&data.timezone!==zone){zone=data.timezone;selected=today();miniMonth=selected.slice(0,7)+"-01";return load();}
       var bad=data.feeds.filter(function(feed){return !feed.ok;});
-      $("calendar-status-full").textContent=!data.configured?"No calendars connected. Configure ICS_URLS or ICS_LOCAL_FILES on the server.":bad.length===data.feeds.length&&bad.length?"Calendars unavailable. Check feed settings and refresh.":(bad.length?bad.length+" calendar(s) unavailable · showing available events":"Calendars up to date")+(data.truncated?" · Results limited to 2,000 events; switch to a shorter view.":"");
+      $("calendar-status-full").textContent=!data.configured?"No calendars connected. Open Settings > Calendars to add one.":bad.length===data.feeds.length&&bad.length?"Calendars unavailable. Check feed settings and refresh.":(bad.length?bad.length+" calendar(s) unavailable · showing available events":"Calendars up to date")+(data.truncated?" · Results limited to 2,000 events; switch to a shorter view.":"");
       $("calendar-status-full").className=bad.length?"bad":"dim";
       render(true);
     }).catch(function(error){

@@ -103,7 +103,7 @@ test("github wins poll without token does not throw", async () => {
   }
 });
 
-test("daily briefing board sections on seeded DB", async () => {
+test("daily briefing excludes Agent board sections even when board data exists", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-db-brief-"));
   const board = BoardStore.open(dir);
   const wins = WinsStore.open(dir);
@@ -120,15 +120,12 @@ test("daily briefing board sections on seeded DB", async () => {
 
     const rec = await daily.generate({
       cfg,
-      board,
-      wins,
       trigger: "manual",
       now: new Date("2026-10-15T12:00:00.000Z"),
+      fetchFn: async () => Response.json({ current: { temperature_2m: 20 } }),
     });
-    assert.equal(rec.sources.board.status, "ok");
-    assert.ok(rec.sources.board.data!.blocked.some((c) => c.id === blocked.id));
-    assert.ok(rec.sources.board.data!.moved.length >= 1);
-    assert.ok(rec.sources.board.data!.wins.some((w) => w.title === "Yesterday win"));
+    assert.equal("board" in rec.sources, false);
+    assert.deepEqual(Object.keys(rec.sources).sort(), ["calendar", "topics", "weather"]);
   } finally {
     board.close();
     wins.close();

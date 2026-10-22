@@ -2,8 +2,9 @@ import type { IncomingMessage } from "node:http";
 import { timingSafeEqual, createHash } from "node:crypto";
 import type { Config } from "./config";
 import { accessJwtFromRequest, createCfAccessRemoteJwtVerifier } from "./cf-access";
+import type { JWTPayload } from "jose";
 
-export type AuthResult = { ok: true; who: string; setCookie?: string } | { ok: false; status: 401 | 403; reason: string };
+export type AuthResult = { ok: true; who: string; owner?: boolean; setCookie?: string } | { ok: false; status: 401 | 403; reason: string };
 
 const sha = (s: string) => createHash("sha256").update(s).digest();
 export const tokenEquals = (a: string, b: string) => timingSafeEqual(sha(a), sha(b));
@@ -22,17 +23,8 @@ export function bearerToken(req: IncomingMessage): string | undefined {
   return req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
 }
 
-export function makeAuthenticator(cfg: Config, verifyJwt?: (token: string) => Promise<string>): Authenticator {
-  let verify = verifyJwt;
-  if (!verify) {
-    const remote = createCfAccessRemoteJwtVerifier(cfg);
-    if (remote) {
-      verify = async (token) => {
-        const payload = await remote(token);
-        return String(payload.email ?? payload.sub ?? "access-user");
-      };
-    }
-  }
+export function makeAuthenticator(cfg: Config, verifyJwt?: (token: string) => Promise<string | JWTPayload>): Authenticator {
+  const verify = verifyJwt ?? createCfAccessRemoteJwtVerifier(cfg);
 
   return async (req, url) => {
     if (cfg.allowInsecureNoAuth && !verify && !cfg.adminToken) return { ok: true, who: "anonymous" };
@@ -41,7 +33,13 @@ export function makeAuthenticator(cfg: Config, verifyJwt?: (token: string) => Pr
       const token = accessJwtFromRequest(req.headers) ?? cookie(req, "CF_Authorization");
       if (token) {
         try {
-          return { ok: true, who: await verify(token) };
+          const payload = await verify(token);
+          if (typeof payload === "string") return { ok: true, who: payload };
+          const email = typeof payload.email === "string" ? payload.email.toLowerCase() : "";
+          return {
+            ok: true, who: String(payload.email ?? payload.sub ?? "access-user"),
+            owner: !payload.common_name && !!email && cfg.ownerEmails.includes(email),
+          };
         } catch {
           // fall through: a bad Access token may still be accompanied by a valid admin token
         }

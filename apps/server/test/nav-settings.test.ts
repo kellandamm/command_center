@@ -46,7 +46,8 @@ test("settings: retired integration settings are ignored while personal preferen
     assert.equal("feedScope" in store.get(), false);
     assert.equal(store.get().briefingTime, "08:30");
     assert.equal(store.get().viewPreferences.dashboard.calendar, false);
-    assert.equal(store.get().viewPreferences.briefing.github, false);
+    assert.equal(store.get().viewPreferences.briefing.topics, true);
+    assert.equal("github" in store.get().viewPreferences.briefing, false);
     const json = JSON.stringify(store.get());
     assert.doesNotMatch(json, /news|aiSecurity|ai-security|summaries|"ai"/);
     await store.update({ briefingTime: "09:00" });

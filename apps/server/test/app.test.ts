@@ -13,6 +13,7 @@ import { SettingsStore } from "../src/settings";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 import { createTestCfAccessJwt, TEST_CF_AUD, TEST_CF_TEAM } from "./cf-access-jwt";
 import { setIntegrationCfAccessVerifier } from "../src/mcp/auth";
+import { ConnectionsStore } from "../src/connections";
 
 const TOKEN = "t".repeat(32);
 const MCP_TOKEN = "m".repeat(32);
@@ -33,9 +34,9 @@ async function accessJwtHeaders(commonName = CF_SERVICE_CLIENT_ID) {
   return { "cf-access-jwt-assertion": jwt };
 }
 
-async function harness(env: Record<string, string> = {}) {
+async function harness(env: Record<string, string> = {}, owner = false) {
   const dir = await mkdtemp(join(tmpdir(), "cc-"));
-  const cfg = loadConfig({
+  const deployment = loadConfig({
     DATA_DIR: dir,
     ADMIN_TOKEN: TOKEN,
     TZ: "UTC",
@@ -44,6 +45,8 @@ async function harness(env: Record<string, string> = {}) {
     LLM_MODEL: "test-model",
     ...env,
   });
+  const connections = await ConnectionsStore.open(deployment);
+  const cfg = connections.config;
   const settings = new SettingsStore(dir);
   await settings.load();
   const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
@@ -51,11 +54,12 @@ async function harness(env: Record<string, string> = {}) {
   const integration = await openIntegrationStores(dir, cfg);
   const server = createApp({
     cfg,
-    auth: makeAuthenticator(cfg),
+    auth: owner ? async () => ({ ok: true, who: "test-owner@example.com", owner: true }) : makeAuthenticator(cfg),
     settings,
     dailyBriefing,
     notes,
     ...integration,
+    connections,
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -63,9 +67,59 @@ async function harness(env: Record<string, string> = {}) {
     await closeIntegrationServer(server, integration);
     await rm(dir, { recursive: true, force: true });
   };
-  return { base, settings, close, cfg };
+  return { base, settings, close, cfg, dailyBriefing };
 }
 const authz = { authorization: `Bearer ${TOKEN}` };
+
+test("connections API denies admin tokens, validates CSRF, and returns metadata only to owners", async () => {
+  const nonOwner = await harness({ CONNECTIONS_MASTER_KEY: "a".repeat(64) });
+  try {
+    for (const method of ["GET", "PUT", "DELETE"]) {
+      const response = await fetch(`${nonOwner.base}/api/connections${method === "GET" ? "" : "/brave"}`, {
+        method, headers: { ...authz, "x-ah": "1" },
+      });
+
+      assert.equal(response.status, 403);
+    }
+  } finally { await nonOwner.close(); }
+  const owner = await harness({ CONNECTIONS_MASTER_KEY: "a".repeat(64) }, true);
+  try {
+    const url = `${owner.base}/api/connections/brave`;
+    assert.equal((await fetch(url, { method: "PUT", body: "{}" })).status, 403);
+    const response = await fetch(url, {
+      method: "PUT", headers: { "x-ah": "1" },
+      body: JSON.stringify({ values: { braveSearchApiKey: "owner-private-credential" } }),
+    });
+    assert.equal(response.status, 200);
+    assert.ok(!(await response.text()).includes("owner-private-credential"));
+    assert.equal(owner.cfg.braveSearchApiKey, "owner-private-credential");
+    const status = await fetch(`${owner.base}/api/connections`);
+    assert.equal(status.headers.get("cache-control"), "no-store");
+    assert.equal((await fetch(url, { method: "DELETE", headers: { "x-ah": "1" } })).status, 200);
+    assert.equal(owner.cfg.braveSearchApiKey, null);
+  } finally { await owner.close(); }
+});
+
+test("Notes API returns conflicts and restores only the selected saved revision", async () => {
+  const h = await harness();
+  const headers = { ...authz, "x-ah": "1", "content-type": "application/json" };
+  try {
+    const created = await fetch(`${h.base}/api/knowledge/notes`, {
+      method: "POST", headers, body: JSON.stringify({ title: "Versioned", content: "Before" }),
+    });
+    const { note } = await created.json();
+    const url = `${h.base}/api/knowledge/notes/${note.id}`;
+    assert.equal((await fetch(url, { method: "PUT", headers, body: JSON.stringify({ expectedVersion: note.version, content: "After" }) })).status, 200);
+    assert.equal((await fetch(url, { method: "PUT", headers, body: JSON.stringify({ expectedVersion: note.version, content: "Stale" }) })).status, 409);
+    const history = await (await fetch(`${url}/history`, { headers: authz })).json();
+    assert.equal(history.revisions[0].content, "Before");
+    const restored = await fetch(`${url}/restore`, {
+      method: "POST", headers, body: JSON.stringify({ revisionId: history.revisions[0].revisionId, expectedVersion: note.version + 1 }),
+    });
+    assert.equal(restored.status, 200);
+    assert.equal((await restored.json()).note.content, "Before");
+  } finally { await h.close(); }
+});
 
 test("config: invalid MCP_CF_CLIENT_MAP JSON refuses startup", () => {
   assert.throws(() => loadConfig({ ADMIN_TOKEN: TOKEN, MCP_CF_CLIENT_MAP: "not-json" }), /Invalid JSON/);
@@ -162,6 +216,41 @@ test("http: full pages render with sidebar nav", async () => {
       const html = await r.text();
       assert.match(html, /sidebar-nav/);
     }
+  } finally {
+    await h.close();
+  }
+});
+
+test("settings: topic API persists validated topics and reports provider readiness without secrets", async (t) => {
+  const h = await harness({ BRAVE_SEARCH_API_KEY: "private-search-key" });
+  try {
+    const headers = { ...authz, "x-ah": "1", "content-type": "application/json" };
+    const put = (briefingTopics: unknown) => fetch(`${h.base}/api/settings`, {
+      method: "PUT", headers, body: JSON.stringify({ briefingTopics }),
+    });
+    const saved = await put([" Microsoft Fabric ", "microsoft fabric", "AI security"]);
+    assert.equal(saved.status, 200);
+    assert.deepEqual((await saved.json()).settings.briefingTopics, ["Microsoft Fabric", "AI security"]);
+    assert.equal((await put(["x".repeat(121)])).status, 400);
+    const settings = await fetch(`${h.base}/api/settings`, { headers });
+    const body = await settings.text();
+    assert.doesNotMatch(body, /private-search-key|sk-test/);
+    assert.deepEqual(JSON.parse(body).briefingProviders, { search: true, summarizer: true });
+    assert.deepEqual(JSON.parse(body).settings.briefingTopics, ["Microsoft Fabric", "AI security"]);
+    let generated = false;
+    t.mock.method(h.dailyBriefing, "generate", async (options: Parameters<DailyBriefingService["generate"]>[0]) => {
+      generated = true;
+      assert.deepEqual(options.topics, ["Microsoft Fabric", "AI security"]);
+      assert.equal(options.trigger, "manual");
+      return { day: "2026-10-21", generatedAt: "2026-10-21T12:00:00Z", trigger: "manual", sources: {
+        topics: { status: "empty" }, weather: { status: "empty" }, calendar: { status: "empty" },
+      } };
+    });
+    const refreshed = await fetch(`${h.base}/api/daily-briefing/refresh`, { method: "POST", headers, body: "{}" });
+    assert.equal(refreshed.status, 202);
+    assert.equal(generated, true);
+    const progress = await fetch(`${h.base}/api/daily-briefing/refresh`, { headers });
+    assert.equal((await progress.json()).status, "idle");
   } finally {
     await h.close();
   }
