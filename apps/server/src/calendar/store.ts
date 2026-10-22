@@ -52,6 +52,9 @@ function localInstant(day: string, time: string, timezone: string): Date | undef
     });
   return candidates.sort((a, b) => a.getTime() - b.getTime())[0];
 }
+export function calendarLocalInstant(day: string, time: string, timezone: string): Date | undefined {
+  return localInstant(day, time, timezone);
+}
 function versionCheck(expected: unknown, actual: number) {
   if (expected !== actual) throw new CalendarConflictError("This calendar item changed elsewhere. Refresh before editing; your changes have not been applied.");
 }

@@ -17,6 +17,7 @@ export function calendarEventPage(nav?: NavLink[]) {
 <p class="dim">Times use this timezone, not your browser's zone. During a repeated fall-back hour, the earlier occurrence is selected.</p>
 <label for="event-repeat">Repeat</label><select id="event-repeat"><option value="none">Does not repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly (same day of month)</option></select>
 <div id="event-repeat-end" hidden><label for="event-until">Repeat through</label><input id="event-until" type="date"><p class="dim">Within one year of the first event. Monthly events skip months without that date. Editing applies to the whole series.</p></div>
+<p id="event-provider-note" class="dim" hidden>Google Calendar events do not support local note links or recurrence in this editor. Changes are saved directly to Google and are rejected if the event changed elsewhere.</p>
 <label for="event-location">Location</label><input id="event-location" maxlength="2000">
 <label for="event-description">Description</label><textarea id="event-description" rows="6" maxlength="20000"></textarea>
 <label for="event-space">Space (optional)</label><select id="event-space"><option value="">No space</option></select>
@@ -30,12 +31,21 @@ function eventDay(value,timezone){var parts=Object.fromEntries(new Intl.DateTime
 function eventAllDay(){var all=$("event-all-day").checked;["event-start","event-end"].forEach(function(id){var input=$(id),value=input.value;input.type=all?"date":"datetime-local";input.value=all?value.slice(0,10):value.length===10?value+"T09:00":value;});}
 $("event-all-day").onchange=eventAllDay;
 $("event-repeat").onchange=function(){$("event-repeat-end").hidden=this.value==="none";$("event-until").required=this.value!=="none";};
-Promise.all([api("/api/calendars"),api("/api/knowledge"),eventId?api("/api/calendar-events/"+encodeURIComponent(eventId)):Promise.resolve({event:null})]).then(function(results){
-  var data=results[0],knowledge=results[1];savedEvent=results[2].event;
+function calendarProviderChanged(){
+  var remote=$("event-calendar").value.indexOf("google-")===0;
+  $("event-repeat").disabled=remote;$("event-space").disabled=remote;$("event-note").disabled=remote;
+  $("event-provider-note").hidden=!remote;
+  if(remote){$("event-repeat").value="none";$("event-repeat").onchange();$("event-space").value="";$("event-note").value="";}
+}
+Promise.all([api("/api/calendars"),api("/api/google-calendar/calendars"),api("/api/knowledge"),eventId?api("/api/calendar-events/"+encodeURIComponent(eventId)):Promise.resolve({event:null})]).then(function(results){
+  var data=results[0],google=results[1],knowledge=results[2];savedEvent=results[3].event;
   var native=data.calendars.filter(function(calendar){return calendar.kind==="native";});
+  var writableGoogle=google.calendars.filter(function(calendar){return calendar.selected&&calendar.writable;});
   if(!data.canManage){$("event-load-status").textContent="Sign in through Cloudflare Access as a configured owner to edit calendars.";return;}
-  if(!native.length){$("event-load-status").textContent="Create a Command Center calendar in Calendar settings before adding events.";return;}
+  if(!native.length&&!writableGoogle.length){$("event-load-status").textContent="Create a Command Center calendar or select a writable Google calendar in Calendar settings before adding events.";return;}
   native.forEach(function(calendar){$("event-calendar").add(new Option(calendar.name+(calendar.enabled?"":" (paused)"),calendar.id));});
+  writableGoogle.forEach(function(calendar){$("event-calendar").add(new Option(calendar.name+" · Google Calendar",calendar.id));});
+  $("event-calendar").onchange=calendarProviderChanged;
   (knowledge.spaces||[]).forEach(function(space){$("event-space").add(new Option(space.name,space.id));});
   (knowledge.notes||[]).forEach(function(note){$("event-note").add(new Option(note.title,note.id));});
   $("event-timezone").value=savedEvent?savedEvent.timezone:data.timezone;
@@ -47,22 +57,24 @@ Promise.all([api("/api/calendars"),api("/api/knowledge"),eventId?api("/api/calen
     $("event-repeat").value=savedEvent.recurrence;$("event-repeat").onchange();$("event-until").value=savedEvent.repeatUntil||"";
     $("event-location").value=savedEvent.location;$("event-description").value=savedEvent.description;
     $("event-space").value=savedEvent.spaceId||"";$("event-note").value=savedEvent.noteId||"";$("event-delete").hidden=false;
+    if(savedEvent.syncVersion)$("event-calendar").value=savedEvent.calendarId;
   }else{
     var start=new Date(),end=new Date(start.getTime()+3600000);
     $("event-start").value=eventDay(start,data.timezone);$("event-end").value=eventDay(end,data.timezone);
   }
+  calendarProviderChanged();
   $("event-load-status").textContent=savedEvent&&savedEvent.recurrence!=="none"?"Editing the entire recurring series.":"";
   $("event-form").hidden=false;
 }).catch(function(error){$("event-load-status").textContent=error.message||"Could not load event. Reload to retry.";});
 $("event-form").onsubmit=function(event){
   event.preventDefault();var all=$("event-all-day").checked,body={
     summary:$("event-title").value,calendarId:$("event-calendar").value,allDay:all,timezone:$("event-timezone").value,
-    recurrence:$("event-repeat").value,repeatUntil:$("event-until").value||null,
-    description:$("event-description").value,location:$("event-location").value,
-    spaceId:$("event-space").value||null,noteId:$("event-note").value||null,taskId:savedEvent?savedEvent.taskId:null
+    recurrence:$("event-repeat").disabled?"none":$("event-repeat").value,repeatUntil:$("event-until").value||null,
+    description:$("event-description").value,location:$("event-location").value
   };
+  if(!$("event-space").disabled){body.spaceId=$("event-space").value||null;body.noteId=$("event-note").value||null;body.taskId=savedEvent?savedEvent.taskId:null;}
   if(all){body.start=$("event-start").value;body.end=$("event-end").value;}else{body.localStart=$("event-start").value;body.localEnd=$("event-end").value;}
-  if(savedEvent)body.expectedVersion=savedEvent.version;
+  if(savedEvent){body.expectedVersion=savedEvent.version;if(savedEvent.syncVersion)body.expectedSyncVersion=savedEvent.syncVersion;}
   $("event-fields").disabled=true;$("event-save-status").textContent="Saving...";
   api("/api/calendar-events"+(eventId?"/"+encodeURIComponent(eventId):""),eventId?"PUT":"POST",body).then(function(result){
     savedEvent=result.event;eventId=savedEvent.id;history.replaceState(null,"","/calendar/event?event="+encodeURIComponent(eventId));
@@ -71,7 +83,7 @@ $("event-form").onsubmit=function(event){
 };
 $("event-delete").onclick=function(){
   if(!savedEvent||!confirm("Delete this event"+(savedEvent.recurrence!=="none"?" and every occurrence in its series":"")+"?"))return;
-  $("event-fields").disabled=true;api("/api/calendar-events/"+encodeURIComponent(savedEvent.id),"DELETE",{expectedVersion:savedEvent.version}).then(function(){location.href="/calendar";}).catch(function(error){$("event-save-status").textContent=error.message;$("event-fields").disabled=false;});
+  $("event-fields").disabled=true;api("/api/calendar-events/"+encodeURIComponent(savedEvent.id),"DELETE",{expectedVersion:savedEvent.version,expectedSyncVersion:savedEvent.syncVersion}).then(function(){location.href="/calendar";}).catch(function(error){$("event-save-status").textContent=error.message;$("event-fields").disabled=false;});
 };
 `,
   });

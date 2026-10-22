@@ -14,6 +14,7 @@ export interface CalendarEvent {
   readOnly?: boolean;
   version?: number;
   recurrence?: string;
+  syncVersion?: string;
 }
 
 function unfoldIcs(text: string): string[] {

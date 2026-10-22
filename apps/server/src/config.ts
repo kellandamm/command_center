@@ -47,6 +47,9 @@ export interface Config {
   mcpMaxHobiePending: number;
   connectionsMasterKey: string | null;
   ownerEmails: string[];
+  googleClientId: string | null;
+  googleClientSecret: string | null;
+  googleRedirectUri: string | null;
 }
 
 export interface LlmConfig {
@@ -120,6 +123,25 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (connectionsMasterKey && !/^[a-f0-9]{64}$/i.test(connectionsMasterKey)) {
     throw new Error("CONNECTIONS_MASTER_KEY must be 32 random bytes encoded as 64 hexadecimal characters.");
   }
+  const googleClientId = blank(env.GOOGLE_CLIENT_ID);
+  const googleClientSecret = blank(env.GOOGLE_CLIENT_SECRET);
+  const googleRedirectUri = blank(env.GOOGLE_REDIRECT_URI);
+  if ([googleClientId, googleClientSecret, googleRedirectUri].some(Boolean)
+    && ![googleClientId, googleClientSecret, googleRedirectUri].every(Boolean)) {
+    throw new Error("Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI together.");
+  }
+  if (googleRedirectUri) {
+    let redirect: URL;
+    try { redirect = new URL(googleRedirectUri); }
+    catch { throw new Error("GOOGLE_REDIRECT_URI must be a valid HTTPS URL (HTTP is allowed only for localhost)."); }
+    const localHttp = redirect.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(redirect.hostname);
+    if ((redirect.protocol !== "https:" && !localHttp) || redirect.username || redirect.password || redirect.hash || redirect.search) {
+      throw new Error("GOOGLE_REDIRECT_URI must be HTTPS without credentials, query, or fragment (HTTP is allowed only for localhost).");
+    }
+    if (redirect.pathname !== "/api/google-calendar/callback") {
+      throw new Error("GOOGLE_REDIRECT_URI must end with /api/google-calendar/callback.");
+    }
+  }
   return {
     port,
     host: blank(env.HOST) ?? "0.0.0.0",
@@ -152,6 +174,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     mcpMaxHobiePending: Math.min(50, Math.max(1, Number(env.MCP_MAX_HOBIE_PENDING ?? 20) || 20)),
     connectionsMasterKey,
     ownerEmails: (env.OWNER_EMAILS ?? "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean),
+    googleClientId,
+    googleClientSecret,
+    googleRedirectUri,
   };
 }
 

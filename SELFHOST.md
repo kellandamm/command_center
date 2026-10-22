@@ -18,6 +18,8 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 | `BRAVE_SEARCH_API_KEY` | Optional. Enables fresh keyword lookups for Daily Briefing through Brave Search. Topic summaries also require the LLM settings above. Set an environment default or an encrypted override in Settings. |
 | `OWNER_EMAILS` | Comma-separated owner email allowlist, matched against verified human Cloudflare Access JWTs. Required for service connection management; ordinary users, machine identities, and admin-token logins cannot manage keys. |
 | `CONNECTIONS_MASTER_KEY` | Optional until saving connections. Exactly 64 hexadecimal characters (32 random bytes). Encrypts provider overrides at rest; keep a separate secure backup. Existing encrypted data prevents startup if the key is missing/wrong. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional Google OAuth web-client credentials. The client secret is deployment-managed and never shown in Settings. |
+| `GOOGLE_REDIRECT_URI` | Exact HTTPS OAuth callback registered in Google Cloud Console, e.g. `https://your-domain.example/api/google-calendar/callback` (HTTP localhost is allowed for development). |
 | `TODOIST_API_TOKEN` | Optional. [Todoist REST API](https://developer.todoist.com/rest/v2/) token for the **Todoist** panel (today/overdue tasks, quick-add, complete). Without it the panel shows a clear disabled message. |
 | `GITHUB_TOKEN` | Optional. Personal access token (classic or fine-grained) for the **GitHub** panel. Public data works without it; the panel degrades gracefully on rate limits. |
 | `GITHUB_USERNAME` | GitHub login for open issues/PRs and public events. Default `kellandamm`. |
@@ -42,7 +44,9 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 
 ### Managing service credentials in Settings
 
-Set `OWNER_EMAILS` and `CONNECTIONS_MASTER_KEY` in the deployment, restart, and sign in through Cloudflare Access with an allowed email. Open **Settings > Manage service connections and keys**. The first adapters support AI summaries, Brave Search, GitHub, Todoist, and Recallio (including its optional outbound Access pair). Calendar OAuth and other connectors are separate features, not enabled by storing these keys.
+Set `OWNER_EMAILS` and `CONNECTIONS_MASTER_KEY` in the deployment, restart, and sign in through Cloudflare Access with an allowed email. Open **Settings > Manage service connections and keys**. Adapters support AI summaries, Brave Search, GitHub, Todoist, and Recallio (including its optional outbound Access pair).
+
+To connect Google Calendar, configure `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and the exact callback URI `GOOGLE_REDIRECT_URI` in Google Cloud Console and the deployment. The app requests calendar-list read access and event read/write access; each selected calendar is synced into the shared Calendar view. Google tokens and selected calendar IDs are stored in the encrypted connection vault, not in `calendars.json`. The calendar editor allows event edits only when Google reports writer/owner access. Updates and deletes send the Google ETag as an `If-Match` precondition; a concurrent edit returns a conflict and is not overwritten. Recurring series and local note/Space/task links are not editable through the Google event form yet. Disconnect revokes the Google refresh token before removing the encrypted connection.
 
 Inputs are write-only: blank preserves the current value. Responses show configured/source metadata, not secret values or existing URLs. Saved fields override their environment defaults; **Remove saved settings** deletes the override and restores defaults. **Disconnect** disables that provider even if environment keys exist. Reconnect retains stored fields. Tests make a bounded request to the selected provider and can consume quota; an access check does not guarantee every operation or model is available.
 
@@ -208,7 +212,7 @@ Dates and times use the server's `TZ` (shown above the calendar), including each
 
 The page requests the displayed date range, including past dates, rather than the dashboard's default 12 upcoming events. `/api/calendar?start=YYYY-MM-DD&end=YYYY-MM-DD` accepts an exclusive end date, at most 62 days, and returns at most 2,000 events with an explicit truncation warning. The dashboard's existing horizon-based API remains compatible. Failed feeds and refresh failures are shown explicitly.
 
-Google OAuth/two-way synchronization, task time-blocking, agent schedules, and natural-language entry are not implemented yet. ICS subscriptions remain read-only; the lightweight parser reads explicit VEVENT occurrences and does not expand external RRULE series. Use feeds with individual occurrences when recurring instances are needed. Native recurrence is handled by the managed calendar store. Run `pnpm --filter @homepage/server test:calendar-browser` for the calendar-view and native-editing browser regressions (set `BROWSER_CHANNEL=msedge` when using installed Edge).
+Google Calendar OAuth and conflict-aware event editing are available when configured above. Task time-blocking, agent schedules, and natural-language entry are not implemented yet. ICS subscriptions remain read-only; the lightweight parser reads explicit VEVENT occurrences and does not expand external RRULE series. Use feeds with individual occurrences when recurring instances are needed. Native recurrence is handled by the managed calendar store. Run `pnpm --filter @homepage/server test:calendar-browser` for the calendar-view and native-editing browser regressions (set `BROWSER_CHANNEL=msedge` when using installed Edge).
 
 ### Bookmarks launchpad
 
