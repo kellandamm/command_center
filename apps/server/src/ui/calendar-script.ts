@@ -67,10 +67,11 @@ export const calendarScript = String.raw`
     if(href){var link=node("a","","Open event link");link.href=href;link.target="_blank";link.rel="noopener noreferrer";$("cal-event-link").appendChild(link);}
     if(event.url&&event.url.startsWith("/notes?note=")){var noteLink=node("a","","Open linked note");noteLink.href=event.url;$("cal-event-link").appendChild(noteLink);}
     var editable=event.readOnly===false&&event.eventId;
+    var google=String(event.calendarId||"").indexOf("google-")===0;
     $("cal-event-edit").hidden=!editable;
     if(editable)$("cal-event-edit").href="/calendar/event?event="+encodeURIComponent(event.eventId);
     else $("cal-event-edit").removeAttribute("href");
-    $("cal-event-permission").textContent=editable?(event.recurrence&&event.recurrence!=="none"?"Recurring native event · edits apply to the whole series":"Native event · editable by an owner"):"Subscribed event · read-only";
+    $("cal-event-permission").textContent=editable?(google?"Google Calendar event · edits are rejected if it changed elsewhere":event.recurrence&&event.recurrence!=="none"?"Recurring native event · edits apply to the whole series":"Native event · editable by an owner"):google?"Google Calendar event · read-only":"Subscribed event · read-only";
     $("cal-event-dialog").showModal();
   }
   function eventButton(event,cls,withTime){

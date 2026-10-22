@@ -7,6 +7,12 @@ export function calendarSettingsPage(nav?: NavLink[]) {
     description: "Bring your calendars together. Keep subscriptions read-only or create a calendar you can edit here.",
     body: `<p><a href="/settings">Back to Settings</a> &middot; <a href="/calendar">Open Calendar</a></p>
 <p id="calendar-settings-status" role="status">Loading calendar settings...</p>
+<section id="google-calendar-settings" class="workspace-details">
+<h2>Google Calendar</h2>
+<p id="google-calendar-status" role="status">Checking Google Calendar connection...</p>
+<div id="google-calendar-actions" class="row"></div>
+<div id="google-calendar-list"></div>
+</section>
 <form id="calendar-add" class="workspace-form" hidden>
 <h2>Add a calendar</h2>
 <label for="calendar-kind">Type</label><select id="calendar-kind"><option value="native">Command Center calendar</option><option value="ics">Existing calendar (ICS subscription)</option></select>
@@ -22,12 +28,17 @@ export function calendarSettingsPage(nav?: NavLink[]) {
 <p id="calendar-feed-link" role="status" style="overflow-wrap:anywhere"></p>`,
     script: `
 var calendarsState=null;
+var googleResult=new URLSearchParams(location.search).get("google");
 function loadCalendarSettings(){
   return api("/api/calendars").then(function(data){
     calendarsState=data;
+    if(googleResult==="connected")message("Google Calendar connected. Select the calendars to show.");
+    else if(googleResult==="failed")message("Google sign-in did not complete. Check the OAuth client and redirect URI, then try again.",true);
+    googleResult=null;
     $("calendar-settings-status").textContent=(data.canManage?"Manage calendars below.":"Sign in through Cloudflare Access as a configured owner to change calendars.")+" Timezone: "+data.timezone+(data.environmentFeeds?" · "+data.environmentFeeds+" deployment-managed feed(s).":"");
     $("calendar-add").hidden=!data.canManage;
     $("calendar-kind").options[1].disabled=!data.credentialsWritable;
+    loadGoogleCalendarSettings(data);
     var box=$("calendar-settings-list");box.replaceChildren();
     if(!data.calendars.length)box.append(element("p","No managed calendars yet. Create one above or connect an existing subscription.","dim"));
     data.calendars.forEach(function(calendar){
@@ -72,6 +83,37 @@ function loadCalendarSettings(){
       section.appendChild(actions);box.appendChild(section);
     });
   });
+}
+function loadGoogleCalendarSettings(data){
+  var google=data.google||{},status=$("google-calendar-status"),actions=$("google-calendar-actions"),list=$("google-calendar-list");
+  actions.replaceChildren();list.replaceChildren();
+  if(!data.canManage){status.textContent="Sign in as a configured owner to connect or select Google calendars.";return;}
+  if(!google.configured){status.textContent="Configure GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI in deployment settings to enable Google Calendar.";return;}
+  if(!google.credentialsWritable){status.textContent="Set CONNECTIONS_MASTER_KEY before saving Google authorization tokens.";return;}
+  if(!google.connected){
+    status.textContent="Not connected. Sign in with Google to choose calendars.";
+    var connect=appLink("Connect Google Calendar","/api/google-calendar/connect","btn");actions.appendChild(connect);return;
+  }
+  status.textContent="Connected. Selected calendars are synchronized when the calendar is opened or refreshed.";
+  var disconnect=element("button","Disconnect Google Calendar","ghost");disconnect.type="button";
+  disconnect.onclick=function(){if(!confirm("Disconnect Google Calendar and remove its saved authorization from this server?"))return;
+    busy(disconnect,async function(){await api("/api/google-calendar","DELETE",{});await loadCalendarSettings();message("Google Calendar disconnected.");});};
+  actions.appendChild(disconnect);
+  api("/api/google-calendar/calendars").then(function(result){
+    var form=element("form"),title=element("h3","Choose calendars");
+    form.appendChild(title);
+    if(!result.calendars.length)form.appendChild(element("p","No Google calendars are available to this account.","dim"));
+    result.calendars.forEach(function(calendar){
+      var label=element("label",undefined,"row"),checkbox=element("input");checkbox.type="checkbox";checkbox.value=calendar.id;checkbox.checked=calendar.selected;
+      label.append(checkbox,document.createTextNode(calendar.name+(calendar.writable?"":" · read only")));form.appendChild(label);
+    });
+    var save=element("button","Save calendar selection");save.type="submit";form.appendChild(save);
+    form.onsubmit=function(event){event.preventDefault();busy(save,async function(){
+      var ids=Array.from(form.querySelectorAll('input[type="checkbox"]:checked')).map(function(input){return input.value;});
+      await api("/api/google-calendar/calendars","POST",{calendarIds:ids});await loadCalendarSettings();message("Google Calendar selection saved.");
+    });};
+    list.appendChild(form);
+  }).catch(function(error){status.textContent="Connected, but calendar list could not load: "+(error.message||"refresh to retry.");});
 }
 $("calendar-kind").onchange=function(){$("calendar-url-field").hidden=this.value!=="ics";$("calendar-url").required=this.value==="ics";};
 $("calendar-add").onsubmit=function(event){event.preventDefault();var button=this.querySelector("button");

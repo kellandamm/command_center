@@ -5,16 +5,46 @@ import { CalendarStore, calendarText, object, type CalendarRange } from "./store
 import { parseIcsEvents, type CalendarEvent } from "./parse-ics";
 import { ValidationError } from "../settings";
 import { assertPublicUrl } from "../ssrf";
+import { GoogleCalendarConnector } from "./google";
 import type { NotesStore } from "../notes/store";
 import type { BoardStore } from "../board/store";
 
 export class CalendarWorkspace {
-  private constructor(readonly store: CalendarStore, private cfg: Config, private vault?: ConnectionsStore, private references?: { notes: NotesStore; board: BoardStore }) {}
+  readonly google: GoogleCalendarConnector;
+  private constructor(readonly store: CalendarStore, private cfg: Config, private vault?: ConnectionsStore, private references?: { notes: NotesStore; board: BoardStore }) {
+    this.google = new GoogleCalendarConnector(cfg, vault);
+  }
   static async open(cfg: Config, vault?: ConnectionsStore, references?: { notes: NotesStore; board: BoardStore }) {
     return new CalendarWorkspace(await CalendarStore.open(cfg.dataDir), cfg, vault, references);
   }
-  saveEvent(input: unknown, id?: string) {
+  status() {
+    return {
+      timezone: this.cfg.tz, credentialsWritable: this.vault?.status().writable ?? false,
+      google: this.google.status(),
+      calendars: this.store.list().map((calendar) => ({
+        ...calendar, sharing: this.store.sharing(calendar.id),
+        credentialConfigured: calendar.kind === "ics" ? !!this.vault?.secret(`calendar/${calendar.id}`) : undefined,
+      })),
+      environmentFeeds: this.cfg.icsUrls.length + this.cfg.icsLocalFiles.length,
+    };
+  }
+  async googleCalendars() {
+    if (!this.google.status().connected) return { calendars: [], selected: [] };
+    const calendars = await this.google.listCalendars();
+    const selectedIds = new Set(this.google.status().selectedCalendars.map((calendar) => calendar.id));
+    return {
+      calendars: calendars.map(({ googleId: _googleId, ...calendar }) => ({ ...calendar, selected: selectedIds.has(calendar.id) })),
+      selected: this.google.status().selectedCalendars,
+    };
+  }
+  async snapshotGoogle(options: CalendarRange) { return this.google.snapshot(options); }
+  async saveEvent(input: unknown, id?: string) {
     const body = object(input);
+    if (id?.startsWith("google-") || (typeof body.calendarId === "string" && body.calendarId.startsWith("google-"))) {
+      if (body.recurrence && body.recurrence !== "none") throw new ValidationError("Google Calendar recurring events are not supported by this editor yet.");
+      if (body.noteId || body.spaceId || body.taskId) throw new ValidationError("Google Calendar events cannot be linked to local notes, Spaces, or tasks.");
+      return (await this.google.saveEvent(body, id)).event;
+    }
     for (const key of ["noteId", "spaceId", "taskId"] as const) {
       if (body[key] == null || body[key] === "") continue;
       const value = calendarText(body[key], key, 100, true);
@@ -24,15 +54,12 @@ export class CalendarWorkspace {
     }
     return this.store.saveEvent(body, id);
   }
-  status() {
-    return {
-      timezone: this.cfg.tz, credentialsWritable: this.vault?.status().writable ?? false,
-      calendars: this.store.list().map((calendar) => ({
-        ...calendar, sharing: this.store.sharing(calendar.id),
-        credentialConfigured: calendar.kind === "ics" ? !!this.vault?.secret(`calendar/${calendar.id}`) : undefined,
-      })),
-      environmentFeeds: this.cfg.icsUrls.length + this.cfg.icsLocalFiles.length,
-    };
+  async event(id: string) {
+    return id.startsWith("google-") ? (await this.google.event(id)).event : this.store.event(id);
+  }
+  async deleteEvent(id: string, expectedVersion: unknown) {
+    if (id.startsWith("google-")) return this.google.deleteEvent(id, expectedVersion);
+    return this.store.deleteEvent(id, expectedVersion);
   }
   async create(input: unknown) {
     const body = object(input);
@@ -75,6 +102,7 @@ export class CalendarWorkspace {
       ...feed, url: "", error: feed.ok ? undefined : "Calendar subscription could not be loaded.",
     }));
     const events: CalendarEvent[] = legacy.events.map((event) => ({ ...event, readOnly: true }));
+    let googleTruncated = false;
     const nativeEvents = this.store.occurrences(rangeStart, rangeEnd);
     for (const calendar of this.store.list()) {
       if (!calendar.enabled) continue;
@@ -96,16 +124,34 @@ export class CalendarWorkspace {
         eventCount: snapshot.events.length, error: snapshot.feeds[0]?.ok ? undefined : "Feed could not be loaded. Check its URL and access in Settings.",
       });
     }
+    if (this.google.status().connected && this.google.status().selectedCalendars.length) {
+      try {
+        const snapshot = await this.snapshotGoogle({ rangeStart, rangeEnd, limit: 10_000 });
+        events.push(...snapshot.events);
+        googleTruncated = snapshot.truncated;
+        feeds.push(...snapshot.calendars.map((calendar) => ({
+          url: "", id: calendar.id, name: calendar.name, ok: true,
+          eventCount: snapshot.events.filter((event) => event.calendarId === calendar.id).length,
+          error: undefined, readOnly: !calendar.writable,
+        })));
+      } catch {
+        feeds.push(...this.google.status().selectedCalendars.map((calendar) => ({
+          url: "", id: calendar.id, name: calendar.name, ok: false, eventCount: 0,
+          error: "Google Calendar could not be synchronized. Reconnect the account or check access in Settings.",
+          readOnly: !calendar.writable,
+        })));
+      }
+    }
     const ordered = events.sort((a, b) => a.start.getTime() - b.start.getTime());
     return {
-      configured: this.store.list().some((calendar) => calendar.enabled) || legacy.configured,
+      configured: this.store.list().some((calendar) => calendar.enabled) || legacy.configured || this.google.status().selectedCalendars.length > 0,
       timezone: this.cfg.tz,
       feeds: feeds.map((feed) => ({
         ...feed,
         color: this.store.get(feed.id ?? "")?.color,
-        readOnly: this.store.get(feed.id ?? "")?.kind !== "native",
+        readOnly: feed.readOnly ?? this.store.get(feed.id ?? "")?.kind !== "native",
       })),
-      events: ordered.slice(0, limit), truncated: legacy.truncated || ordered.length > limit,
+      events: ordered.slice(0, limit), truncated: legacy.truncated || googleTruncated || ordered.length > limit,
     };
   }
   async importIcs(calendarId: string, text: string) {

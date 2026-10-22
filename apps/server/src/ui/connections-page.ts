@@ -10,7 +10,7 @@ export function connectionsPage(nav?: NavLink[]) {
 <p class="dim">Saved values override deployment defaults. Remove saved settings to restore those defaults; disconnect to disable a provider even when environment credentials exist. Connection tests send a small request to the provider and may consume quota.</p>
 <p id="connection-loading" role="status">Loading connections...</p>
 <div id="connections-list"></div>
-<p class="dim">Google Calendar, Fabric, Fastio, and agent connections will appear as their adapters become available. Authentication, owner identities, and the encryption master key remain deployment-managed.</p>
+<p class="dim">Google Calendar is managed separately in Calendar settings. Fabric, Fastio, and agent connections will appear as their adapters become available. Authentication, owner identities, and the encryption master key remain deployment-managed.</p>
 <style>
 .connection-section{padding:1.5rem 0;border-bottom:1px solid var(--border)}
 .connection-section:first-child{padding-top:.5rem}.connection-section h2{margin:0 0 .5rem}

@@ -8,7 +8,7 @@ export async function handleCalendarRoutes(
   calendar: CalendarWorkspace, req: IncomingMessage, res: ServerResponse, path: string,
   owner: boolean, readBody: (req: IncomingMessage, limit?: number) => Promise<unknown>,
 ): Promise<boolean> {
-  if (!path.startsWith("/api/calendars") && !path.startsWith("/api/calendar-events")) return false;
+  if (!path.startsWith("/api/calendars") && !path.startsWith("/api/calendar-events") && !path.startsWith("/api/google-calendar")) return false;
   const json = (status: number, data: unknown) => {
     res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
     res.end(JSON.stringify(data));
@@ -16,9 +16,73 @@ export async function handleCalendarRoutes(
   };
   const method = req.method ?? "GET";
   if (method === "GET" && path === "/api/calendars") return json(200, { ...calendar.status(), canManage: owner });
-  const eventMatch = path.match(/^\/api\/calendar-events\/([a-zA-Z0-9-]+)$/);
+  if (method === "GET" && path === "/api/google-calendar/calendars") {
+    return json(200, await calendar.googleCalendars());
+  }
+  if (method === "GET" && path === "/api/google-calendar/connect") {
+    if (!owner) return json(403, { error: "Only a verified owner can connect Google Calendar." });
+    const authorization = calendar.google.beginAuthorization();
+    const secure = req.headers["x-forwarded-proto"] === "https" || (req.socket as { encrypted?: boolean }).encrypted;
+    res.writeHead(302, {
+      location: authorization.url, "cache-control": "no-store",
+      "referrer-policy": "no-referrer", "x-content-type-options": "nosniff", "x-frame-options": "DENY",
+      "set-cookie": `cc_google_oauth_state=${encodeURIComponent(authorization.state)}; Path=/api/google-calendar/callback; HttpOnly; SameSite=Lax; Max-Age=600${secure ? "; Secure" : ""}`,
+    });
+    res.end();
+    return true;
+  }
+  if (method === "GET" && path === "/api/google-calendar/callback") {
+    if (!owner) return json(403, { error: "Only a verified owner can finish Google Calendar sign-in." });
+    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    const state = url.searchParams.get("state") ?? "";
+    const code = url.searchParams.get("code") ?? "";
+    const cookie = (req.headers.cookie ?? "").split(";").map((part) => part.trim()).find((part) => part.startsWith("cc_google_oauth_state="))?.slice("cc_google_oauth_state=".length);
+    let cookieState = "";
+    try { cookieState = decodeURIComponent(cookie ?? ""); } catch { /* invalid cookie is rejected below */ }
+    const secure = req.headers["x-forwarded-proto"] === "https" || (req.socket as { encrypted?: boolean }).encrypted;
+    const clearCookie = `cc_google_oauth_state=; Path=/api/google-calendar/callback; HttpOnly; SameSite=Lax; Max-Age=0${secure ? "; Secure" : ""}`;
+    if (url.searchParams.has("error") || !/^[A-Za-z0-9_-]{43}$/.test(state) || !code || code.length > 4096 || state !== cookieState) {
+      res.writeHead(302, {
+        location: "/settings/calendars?google=failed", "cache-control": "no-store",
+        "referrer-policy": "no-referrer", "x-content-type-options": "nosniff", "x-frame-options": "DENY",
+        "set-cookie": clearCookie,
+      });
+      res.end();
+      return true;
+    }
+    try {
+      await calendar.google.finishAuthorization(state, code);
+    } catch (error) {
+      console.error("Google OAuth callback failed:", error instanceof Error ? error.message : "unknown error");
+      res.writeHead(302, {
+        location: "/settings/calendars?google=failed", "cache-control": "no-store",
+        "referrer-policy": "no-referrer", "x-content-type-options": "nosniff", "x-frame-options": "DENY",
+        "set-cookie": clearCookie,
+      });
+      res.end();
+      return true;
+    }
+    res.writeHead(302, {
+      location: "/settings/calendars?google=connected", "cache-control": "no-store",
+      "referrer-policy": "no-referrer", "x-content-type-options": "nosniff", "x-frame-options": "DENY",
+      "set-cookie": clearCookie,
+    });
+    res.end();
+    return true;
+  }
+  if (method === "POST" && path === "/api/google-calendar/calendars") {
+    if (!owner) return json(403, { error: "Only a verified owner can select Google calendars." });
+    const body = object(await readBody(req));
+    return json(200, { selected: await calendar.google.selectCalendars(body.calendarIds) });
+  }
+  if (method === "DELETE" && path === "/api/google-calendar") {
+    if (!owner) return json(403, { error: "Only a verified owner can disconnect Google Calendar." });
+    await calendar.google.disconnect();
+    return json(200, { ok: true });
+  }
+  const eventMatch = path.match(/^\/api\/calendar-events\/([a-zA-Z0-9_-]+)$/);
   if (eventMatch && method === "GET") {
-    const event = calendar.store.event(eventMatch[1]!);
+    const event = await calendar.event(eventMatch[1]!);
     return json(event ? 200 : 404, event ? { event } : { error: "Event not found" });
   }
   const match = path.match(/^\/api\/calendars\/([a-zA-Z0-9-]+)(?:\/(export\.ics|import|sharing))?$/);
@@ -47,7 +111,7 @@ export async function handleCalendarRoutes(
   }
   if (eventMatch && method === "DELETE") {
     const body = object(await readBody(req));
-    await calendar.store.deleteEvent(eventMatch[1]!, body.expectedVersion);
+    await calendar.deleteEvent(eventMatch[1]!, body.expectedSyncVersion ?? body.expectedVersion);
     return json(200, { ok: true });
   }
   if (match) {
