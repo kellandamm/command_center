@@ -1,6 +1,6 @@
 import type { NavLink } from "./layout";
 import { page } from "./layout";
-import { workspacePage, workspaceTabs } from "./workspace";
+import { workspacePage, workspaceTabs, workspaceTabsCss } from "./workspace";
 
 const tabs = (active: string) => workspaceTabs([
   ["/notes", "My notes"], ["/notes/connections", "Connections"], ["/notes/transfer", "Import & export"],
@@ -33,11 +33,13 @@ $("transfer-import").onclick=function(){busy(this,async function(){
 export function notesPage(nav?: NavLink[]): string {
   return page({
     title: "Notes — Command center",
+    extraCss: workspaceTabsCss,
     active: "/notes",
     nav,
     body: `<header class="page-header notes-header"><div><h1>Notes</h1><p class="dim">A quiet place to think, write, and connect ideas.</p></div>
 <div class="row">
   <button id="knowledge-new-note" type="button" disabled>New note</button>
+  <button id="knowledge-switch" class="ghost" type="button" disabled title="Switch note (Ctrl/Cmd + K)">Switch note</button>
   <button id="knowledge-focus" class="ghost" type="button" aria-pressed="false" title="Focus mode (Ctrl/Cmd + Shift + F)">Focus mode</button>
 </div>
 </header>${tabs("/notes")}
@@ -45,6 +47,9 @@ export function notesPage(nav?: NavLink[]): string {
   <aside class="notes-library" aria-label="Note library">
     <label for="knowledge-search">Search notes &amp; links</label>
     <input id="knowledge-search" type="search" placeholder="Find an idea…">
+    <label for="knowledge-library-view">Show</label>
+    <select id="knowledge-library-view"><option value="active">Active notes</option><option value="pinned">Pinned</option><option value="recent">Recently opened</option><option value="archived">Archived</option></select>
+    <label for="knowledge-tag-filter">Tag</label><select id="knowledge-tag-filter"><option value="">All tags</option></select>
     <div class="notes-library-heading"><h2>Library</h2><span id="knowledge-note-count" class="dim"></span></div>
     <button id="knowledge-all-notes" class="ghost notes-all" type="button">All notes</button>
     <div id="knowledge-note-list" aria-label="Notes"></div>
@@ -84,16 +89,43 @@ export function notesPage(nav?: NavLink[]): string {
     </details>
   </aside>
   <div class="notes-main">
+    <div id="knowledge-tabs" class="notes-document-tabs" role="group" aria-label="Open notes"></div>
+    <details class="notes-recovery">
+      <summary>Draft recovery <span id="knowledge-draft-count"></span></summary>
+      <label><input id="knowledge-drafts-enabled" type="checkbox"> Keep recovery drafts on this browser for 7 days</label>
+      <p class="dim">Off by default. Drafts contain private note text, are not encrypted in browser storage, and are visible to anyone using this browser profile. Up to 20 drafts (2 MB total). Disabling removes this site's recovery drafts.</p>
+      <p id="knowledge-draft-status" role="status"></p>
+      <div id="knowledge-drafts"></div>
+    </details>
+    <div id="knowledge-retry-load" hidden><button type="button">Retry loading notes</button></div>
     <section id="knowledge-editor" class="notes-editor" aria-label="Note editor">
       <div class="notes-editor-bar">
         <h2 id="knowledge-editor-heading">Start with an idea</h2>
         <div class="notes-modes" role="group" aria-label="Editor view">
+          <button class="ghost" type="button" data-note-mode="write" aria-pressed="true">Write</button>
           <button class="ghost" type="button" data-note-mode="source" aria-pressed="false" title="Source (Ctrl/Cmd + 1)">Source</button>
-          <button class="ghost" type="button" data-note-mode="split" aria-pressed="true" title="Split (Ctrl/Cmd + 2)">Split</button>
+          <button class="ghost" type="button" data-note-mode="split" aria-pressed="false" title="Split (Ctrl/Cmd + 2)">Split</button>
           <button class="ghost" type="button" data-note-mode="preview" aria-pressed="false" title="Preview (Ctrl/Cmd + 3)">Preview</button>
         </div>
       </div>
       <fieldset id="knowledge-fields" class="notes-document" disabled>
+      <details class="notes-tools"><summary>Document tools</summary>
+      <div class="row"><button id="knowledge-pin" class="ghost" type="button" disabled>Pin note</button><button id="knowledge-archive" class="ghost" type="button" disabled>Archive note</button><button id="knowledge-duplicate" class="ghost" type="button" disabled>Duplicate note</button><button id="knowledge-review" class="ghost" type="button" disabled>Review latest saved version</button></div>
+      <label for="knowledge-template">Start from a template</label><select id="knowledge-template"><option value="">Choose a template</option><option value="meeting">Meeting notes</option><option value="daily">Daily plan</option><option value="research">Research brief</option></select>
+      <button id="knowledge-template-use" class="ghost" type="button">Insert template</button>
+      <p class="dim">Templates insert at the end of your note. Rename with the title field; move with Note properties.</p>
+      </details>
+      <details id="knowledge-find-panel" class="notes-tools"><summary>Find &amp; replace</summary>
+      <p class="dim">Literal, case-sensitive matches in Markdown source, including formatting and links. Find switches to Source and selects the next match. Replacements use normal autosave and version history.</p>
+      <label for="knowledge-find">Find text</label><input id="knowledge-find" maxlength="200000">
+      <label for="knowledge-replace">Replace with</label><input id="knowledge-replace" maxlength="200000">
+      <div class="row"><button id="knowledge-find-next" type="button" class="ghost">Find next</button><button id="knowledge-replace-one" type="button" class="ghost">Replace selected match</button><button id="knowledge-replace-all" type="button" class="ghost">Replace all</button></div>
+      <p id="knowledge-find-status" role="status"></p></details>
+      <section id="knowledge-conflict" class="notes-tools" hidden aria-label="Review saved version">
+      <h2>Review saved version</h2><p class="dim">Your draft remains in the editor. Compare it with the saved content below, then edit your draft to merge changes. Saving the reviewed draft replaces this exact saved version, including its title and properties; another concurrent edit will still be refused.</p>
+      <p id="knowledge-latest-properties"></p><label for="knowledge-latest-content">Latest saved Markdown (read-only)</label><textarea id="knowledge-latest-content" readonly rows="8"></textarea>
+      <div class="row"><button id="knowledge-merge-save" type="button">Save reviewed draft</button><button id="knowledge-use-latest" type="button" class="ghost">Discard draft and use latest</button><button id="knowledge-review-close" type="button" class="ghost">Close comparison</button></div>
+      </section>
       <label class="notes-sr-only" for="knowledge-title">Title</label><input id="knowledge-title" class="notes-title" maxlength="240" placeholder="Untitled note">
       <details class="notes-properties">
       <summary>Note properties <span class="dim">Tags, space, source</span></summary>
@@ -112,8 +144,14 @@ export function notesPage(nav?: NavLink[]): string {
         <button class="ghost" type="button" data-note-format="quote">Quote</button>
         <button class="ghost" type="button" data-note-format="link">Link</button>
         <button class="ghost" type="button" data-note-format="code">Code</button>
+        <button class="ghost" type="button" data-note-format="table">Table</button>
+        <button class="ghost" type="button" data-note-format="undo">Undo</button>
+        <button class="ghost" type="button" data-note-format="redo">Redo</button>
       </div>
-      <div id="knowledge-writing" class="notes-writing" data-mode="split">
+      <div id="knowledge-insert-menu" class="notes-insert-menu" role="group" aria-label="Insert block" hidden></div>
+      <p id="knowledge-editor-warning" class="dim" role="status"></p>
+      <div id="knowledge-writing" class="notes-writing" data-mode="write">
+        <div id="knowledge-rich" class="notes-preview notes-rich"></div>
         <div class="notes-source"><label class="notes-sr-only" for="knowledge-body">Markdown</label><textarea id="knowledge-body" spellcheck="true" placeholder="Write something worth keeping…&#10;&#10;Markdown supported. Select text to format it."></textarea></div>
         <div class="notes-preview-pane"><div class="notes-pane-label dim">Live preview</div><div id="knowledge-preview" class="notes-preview" role="region" aria-label="Markdown preview"></div><p id="knowledge-preview-status" class="dim" role="status"></p></div>
       </div>
@@ -124,6 +162,10 @@ export function notesPage(nav?: NavLink[]): string {
         <button id="knowledge-delete-note" class="ghost" type="button" disabled>Delete note</button>
       </div>
       <div id="knowledge-backlinks" class="dim" style="margin-top:1rem"></div>
+      <details class="notes-history"><summary>Version history</summary>
+      <p class="dim">The last 20 saved versions are kept per note. Restoring creates a new version.</p>
+      <button id="knowledge-history-load" type="button" class="ghost">Load versions</button>
+      <div id="knowledge-history" aria-live="polite"></div></details>
       </fieldset>
     </section>
     <details class="card notes-secondary" style="margin-top:1rem">
@@ -143,7 +185,19 @@ export function notesPage(nav?: NavLink[]): string {
     <div id="knowledge-status" class="dim" aria-live="polite" style="margin-top:.75rem"></div>
   </div>
 </div>
+<dialog id="knowledge-switcher" aria-labelledby="knowledge-switch-title"><h2 id="knowledge-switch-title">Switch note</h2>
+<label for="knowledge-switch-query">Find by title</label><input id="knowledge-switch-query" type="search" autocomplete="off"><div id="knowledge-switch-results"></div><button id="knowledge-switch-close" type="button" class="ghost">Close</button></dialog>
 <style>
+.notes-workspace [hidden]{display:none!important}
+.notes-document-tabs{display:flex;gap:.35rem;overflow:auto;padding:.5rem 0;border-bottom:1px solid var(--border)}
+.notes-document-tab{display:flex;flex-shrink:0;align-items:center;max-width:18rem}.notes-document-tab button{font-size:.8rem;min-height:2rem}
+.notes-document-tab button:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:14rem}.notes-document-tab [aria-pressed=true]{background:var(--accent)}
+.notes-recovery{padding:.75rem 0;border-bottom:1px solid var(--border);font-size:.8rem}.notes-recovery summary{cursor:pointer}
+.notes-recovery pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:16rem;overflow:auto}
+#knowledge-switcher{width:min(34rem,calc(100vw - 2rem));max-height:80vh}#knowledge-switch-results{max-height:50vh;overflow:auto}
+#knowledge-conflict textarea{width:100%;resize:vertical}#knowledge-latest-properties{white-space:pre-wrap;overflow-wrap:anywhere}
+.notes-tools{padding:.65rem 0;font-size:.8rem}.notes-tools summary{cursor:pointer}.notes-tools .row{margin:.75rem 0}
+.notes-insert-menu{display:flex;flex-wrap:wrap;gap:.35rem;padding:.75rem 0;border-bottom:1px solid var(--border)}
 .notes-header{display:flex;justify-content:space-between;gap:1rem;align-items:center}
 .notes-workspace{display:grid;grid-template-columns:16rem minmax(0,1fr);min-height:70vh;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);overflow:hidden}
 .notes-library{padding:1rem;background:var(--sidebar);border-right:1px solid var(--border);min-width:0}
@@ -171,9 +225,15 @@ input.notes-title{font-size:1.9rem;letter-spacing:-.035em;font-weight:600;border
 .notes-pane-label{font-size:.65rem;text-transform:uppercase;letter-spacing:.12em;margin-bottom:1.25rem}
 .notes-preview{font-size:.95rem;line-height:1.8}.notes-preview>:first-child{margin-top:0}.notes-preview h1{font-size:1.8rem}.notes-preview h2{font-size:1.4rem;line-height:1.35;margin:1.5rem 0 .75rem}.notes-preview h3{font-size:1.1rem}
 .notes-preview a{color:var(--foreground);text-decoration:underline}.notes-preview pre{padding:1rem;background:var(--muted);border-radius:var(--radius);overflow:auto}.notes-preview pre code{padding:0}
-.notes-preview blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:3px solid var(--border);color:var(--dim)}
+.notes-preview blockquote{margin:1rem 0;padding:.1rem 1rem;border-left:1px solid var(--border);color:var(--dim)}
 .notes-preview table{border-collapse:collapse;display:block;overflow:auto}.notes-preview th,.notes-preview td{padding:.4rem .7rem;border:1px solid var(--border)}
 .notes-preview input{margin-right:.4rem}.notes-preview hr{border:0;border-top:1px solid var(--border);margin:1.5rem 0}
+.notes-rich{display:none;min-height:27rem;padding:1rem 0;max-width:72ch;width:100%;margin:0 auto}
+.notes-rich .tiptap{outline:none;min-height:25rem;overflow-wrap:anywhere}
+.notes-rich .tiptap:focus-visible{outline:2px solid var(--ring);outline-offset:6px}
+.notes-rich ul[data-type=taskList]{list-style:none;padding-left:0}.notes-rich li[data-type=taskItem]{display:flex;gap:.5rem}.notes-rich li[data-type=taskItem]>div{flex:1;min-width:0}.notes-rich li[data-type=taskItem] p{margin:.25rem 0}
+.notes-writing[data-mode=write]{grid-template-columns:minmax(0,1fr)}.notes-writing[data-mode=write] .notes-rich{display:block}
+.notes-writing[data-mode=write] .notes-source,.notes-writing[data-mode=write] .notes-preview-pane{display:none}
 .notes-writing[data-mode=source],.notes-writing[data-mode=preview]{grid-template-columns:minmax(0,1fr)}
 .notes-writing[data-mode=source] .notes-preview-pane,.notes-writing[data-mode=preview] .notes-source{display:none}
 .notes-writing[data-mode=preview] .notes-preview-pane{border:0;padding-left:0}
@@ -184,11 +244,12 @@ body.notes-focus .sidebar,body.notes-focus .notes-library,body.notes-focus .note
 body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes-focus .page-content{max-width:76rem}
 @media(max-width:1100px){.notes-workspace{grid-template-columns:13rem minmax(0,1fr)}.notes-writing[data-mode=split]{grid-template-columns:minmax(0,1fr)}.notes-writing[data-mode=split] .notes-preview-pane{border-left:0;border-top:1px solid var(--border);padding-left:0}}
 @media(max-width:700px){.notes-header{align-items:flex-start;flex-direction:column}.notes-workspace{grid-template-columns:minmax(0,1fr)}.notes-library{border-right:0;border-bottom:1px solid var(--border)}#knowledge-note-list{max-height:12rem}.notes-main{padding:0 1rem 1rem}.notes-source textarea{min-height:20rem}input.notes-title{font-size:1.6rem}}
-</style>`,
+</style><script src="/assets/notes-editor.js"></script>`,
     script: `
 (function(){
-  var state={notes:[],sources:[],spaces:[],current:null,spaceFilter:null,query:"",recordOptions:null,dirty:false,revision:0};
+  var state={notes:[],sources:[],spaces:[],current:null,spaceFilter:null,query:"",recordOptions:null,dirty:false,revision:0,tabs:[],recent:[],latest:null};
   var saveTimer,previewTimer,savePromise=null,previewRevision=0,loading=true,transitioning=false;
+  var draftPrefix="cc.notes.draft.",draftSetting="cc.notes.recovery",activeDraftKey=null,draftsEnabled=false,recoveryPaused=false,findEnd=0;
   var $=function(id){return document.getElementById(id);};
   var status=$("knowledge-status");
   function apiCall(path,method,body){
@@ -204,6 +265,101 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     try{var u=new URL(raw);return u.protocol==="http:"||u.protocol==="https:"?u.href:null;}catch(_){return null;}
   }
   function tagsFrom(input){return input.split(",").map(function(t){return t.trim().replace(/^#/,"").toLowerCase();}).filter(Boolean);}
+  function formBody(){
+    return {title:$("knowledge-title").value.trim()||"Untitled",content:$("knowledge-body").value,tags:tagsFrom($("knowledge-tags").value),spaceId:$("knowledge-space-select").value||null,sourceUrl:$("knowledge-note-url").value||null,pinned:$("knowledge-pin").dataset.value==="true",archivedAt:$("knowledge-archive").dataset.value||null};
+  }
+  function readDrafts(){
+    var drafts=[];
+    for(var i=localStorage.length-1;i>=0;i--){
+      var key=localStorage.key(i);if(!key||!key.startsWith(draftPrefix))continue;
+      var draft;
+      try{draft=JSON.parse(localStorage.getItem(key));}catch(_){throw new Error("A recovery draft is damaged. Clear this site's recovery storage to remove it.");}
+      if(!draft||typeof draft.savedAt!=="number"||!draft.body||typeof draft.body.content!=="string"||typeof draft.body.title!=="string")throw new Error("A recovery draft has an invalid format. Clear this site's recovery storage to remove it.");
+      if(Date.now()-draft.savedAt>7*86400000){localStorage.removeItem(key);continue;}
+      drafts.push({key:key,data:draft});
+    }
+    return drafts.sort(function(a,b){return b.data.savedAt-a.data.savedAt;});
+  }
+  function draftError(error){$("knowledge-draft-status").textContent="Browser recovery unavailable: "+(error.message||"storage denied")+". Your editor text is unchanged; save to the server or copy it before leaving.";}
+  function persistDraft(){
+    if(!draftsEnabled||!state.dirty)return;
+    try{
+      var key=activeDraftKey||draftPrefix+Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(byte){return byte.toString(16).padStart(2,"0");}).join("");
+      var record={noteId:state.current?state.current.id:null,version:state.current?state.current.version||0:0,savedAt:Date.now(),body:formBody()};
+      var value=JSON.stringify(record),others=readDrafts().filter(function(row){return row.key!==key;});
+      if(others.length>=20||new Blob([value,...others.map(function(row){return JSON.stringify(row.data);})]).size>2000000)throw new Error("Recovery limit reached. Save or discard older drafts first");
+      localStorage.setItem(key,value);activeDraftKey=key;
+      $("knowledge-draft-status").textContent="Recovery draft kept on this browser.";
+      renderDrafts();
+    }catch(error){draftError(error);}
+  }
+  function removeActiveDraft(){
+    if(!activeDraftKey)return;
+    try{localStorage.removeItem(activeDraftKey);activeDraftKey=null;renderDrafts();}catch(error){draftError(error);}
+  }
+  function renderDrafts(){
+    try{
+      var drafts=readDrafts(),box=$("knowledge-drafts");box.replaceChildren();
+      $("knowledge-draft-count").textContent=drafts.length?"("+drafts.length+")":"";
+      drafts.forEach(function(row){
+        var details=node("details",""),summary=node("summary","",row.data.body.title+" - "+new Date(row.data.savedAt).toLocaleString());
+        var preview=node("pre","",row.data.body.content),restore=node("button","ghost","Recover draft"),discard=node("button","ghost","Discard recovery draft");
+        restore.type=discard.type="button";
+        restore.disabled=!draftsEnabled||row.key===activeDraftKey;
+        restore.onclick=function(){
+          transition(function(){return saveNote().then(function(){
+            var note=state.notes.find(function(item){return item.id===row.data.noteId;});
+            openNote(note||null);activeDraftKey=row.key;recoveryPaused=true;
+            if(note)state.current=Object.assign({},note,{version:row.data.version});
+            applyBody(row.data.body);state.dirty=true;state.revision++;
+            $("knowledge-save-status").textContent="Recovered draft - review, then Save note. Nothing has been sent to the server.";
+            $("knowledge-draft-status").textContent=note&&(note.version||0)!==row.data.version?"The server version changed since this draft. Use Review latest saved version before merging.":"Draft recovered. Automatic saving resumes after you explicitly save it.";
+            render();renderDrafts();
+          });}).catch(showError);
+        };
+        discard.onclick=function(){
+          if(!confirm("Remove this recovery copy from this browser? Any text currently in the editor will stay there."))return;
+          try{localStorage.removeItem(row.key);if(activeDraftKey===row.key)activeDraftKey=null;renderDrafts();}catch(error){draftError(error);}
+        };
+        details.append(summary,preview,restore,discard);box.append(details);
+      });
+    }catch(error){draftError(error);}
+  }
+  function applyBody(body){
+    $("knowledge-title").value=body.title;$("knowledge-body").value=body.content;$("knowledge-tags").value=(body.tags||[]).join(", ");
+    $("knowledge-space-select").value=body.spaceId||"";$("knowledge-note-url").value=body.sourceUrl||"";
+    setFlags(body);updateWriting();setMode($("knowledge-writing").dataset.mode);
+  }
+  function setFlags(note){
+    $("knowledge-pin").dataset.value=String(!!note.pinned);$("knowledge-pin").textContent=note.pinned?"Unpin note":"Pin note";
+    $("knowledge-archive").dataset.value=note.archivedAt||"";$("knowledge-archive").textContent=note.archivedAt?"Restore from archive":"Archive note";
+  }
+  function renderTabs(){
+    var box=$("knowledge-tabs");box.replaceChildren();
+    state.tabs=state.tabs.filter(function(id){return state.notes.some(function(note){return note.id===id;});});
+    state.tabs.forEach(function(id){
+      var note=state.notes.find(function(item){return item.id===id;}),row=node("div","notes-document-tab"),pick=node("button","ghost",note.title),close=node("button","ghost","×");
+      pick.type=close.type="button";pick.setAttribute("aria-pressed",String(!!state.current&&state.current.id===id));pick.title=note.title;
+      close.setAttribute("aria-label","Close tab "+note.title);
+      pick.onclick=function(){selectNote(id).catch(showError);};
+      close.onclick=function(){
+        if(state.current&&state.current.id===id){
+          transition(function(){return saveNote().then(function(){state.tabs=state.tabs.filter(function(tab){return tab!==id;});var next=state.tabs[state.tabs.length-1];openNote(state.notes.find(function(item){return item.id===next;})||null);render();});}).catch(showError);
+        }else{state.tabs=state.tabs.filter(function(tab){return tab!==id;});renderTabs();}
+      };
+      row.append(pick,close);box.append(row);
+    });
+  }
+  function renderSwitcher(){
+    var q=$("knowledge-switch-query").value.trim().toLowerCase(),box=$("knowledge-switch-results");box.replaceChildren();
+    var notes=state.notes.filter(function(note){return note.title.toLowerCase().includes(q);}).slice(0,50);
+    notes.forEach(function(note){
+      var button=node("button","notes-note",note.title+(note.archivedAt?" (archived)":""));button.type="button";
+      button.onclick=function(){selectNote(note.id).then(function(){$("knowledge-switcher").close();}).catch(showError);};box.append(button);
+    });
+    if(!notes.length)box.append(node("p","dim","No matching titles."));
+  }
+  function switcher(){if(loading||transitioning)return;$("knowledge-switch-query").value="";renderSwitcher();$("knowledge-switcher").showModal();$("knowledge-switch-query").focus();}
   function addRow(container,title,detail,onClick,action){
     var row=node("div","feed-item");
     var button=node("button","ghost",title);button.type="button";button.style.width="100%";button.style.justifyContent="flex-start";button.onclick=onClick;
@@ -241,14 +397,17 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
   function render(){
     var noteList=$("knowledge-note-list"),sourceList=$("knowledge-source-list");
     noteList.replaceChildren();sourceList.replaceChildren();
-    var visibleNotes=state.notes.filter(function(note){return (!state.spaceFilter||note.spaceId===state.spaceFilter)&&matchesQuery(note.title+"\\n"+note.content+"\\n"+(note.tags||[]).join(" "));}).sort(function(a,b){return b.updatedAt.localeCompare(a.updatedAt);});
+    var view=$("knowledge-library-view").value,tag=$("knowledge-tag-filter").value;
+    var tagSelect=$("knowledge-tag-filter");tagSelect.replaceChildren(new Option("All tags",""));
+    Array.from(new Set(state.notes.flatMap(function(note){return note.tags||[];}))).sort().forEach(function(value){tagSelect.add(new Option("#"+value,value));});tagSelect.value=tag;tag=tagSelect.value;
+    var visibleNotes=state.notes.filter(function(note){return (view==="archived"?!!note.archivedAt:!note.archivedAt)&&(view!=="pinned"||note.pinned)&&(view!=="recent"||state.recent.includes(note.id))&&(!tag||(note.tags||[]).includes(tag))&&(!state.spaceFilter||note.spaceId===state.spaceFilter)&&matchesQuery(note.title+"\\n"+note.content+"\\n"+(note.tags||[]).join(" "));}).sort(function(a,b){return view==="recent"?state.recent.indexOf(a.id)-state.recent.indexOf(b.id):Number(!!b.pinned)-Number(!!a.pinned)||b.updatedAt.localeCompare(a.updatedAt);});
     $("knowledge-note-count").textContent=visibleNotes.length;
     $("knowledge-all-notes").setAttribute("aria-pressed",String(!state.spaceFilter));
     visibleNotes.forEach(function(note){
       var button=node("button","notes-note");button.type="button";button.setAttribute("aria-current",String(!!state.current&&state.current.id===note.id));
       button.appendChild(node("strong","",note.title));
       button.appendChild(node("span","",note.content.replace(/[#*_\\x60>]/g,"").trim().slice(0,90)||"Empty note"));
-      button.appendChild(node("span","",new Date(note.updatedAt).toLocaleDateString(undefined,{month:"short",day:"numeric"})+((note.tags||[]).length?" · "+note.tags.map(function(t){return "#"+t;}).join(" "):"")));
+      button.appendChild(node("span","",(note.pinned?"Pinned · ":"")+new Date(note.updatedAt).toLocaleDateString(undefined,{month:"short",day:"numeric"})+((note.tags||[]).length?" · "+note.tags.map(function(t){return "#"+t;}).join(" "):"")));
       button.onclick=function(){selectNote(note.id).catch(showError);};noteList.appendChild(button);
     });
     if(!visibleNotes.length)noteList.appendChild(node("p","dim",state.query||state.spaceFilter?"No matching notes.":"No notes yet. Create your first note."));
@@ -263,6 +422,7 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     });
     renderSpaces();
     renderSpaceReferences();
+    renderTabs();
   }
   function selectedSpaceId(){return state.spaceFilter||(state.current&&$("knowledge-space-select").value)||"";}
   function renderSpaceReferences(){
@@ -282,7 +442,13 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     return apiCall("/api/knowledge").then(function(data){
       state.notes=data.notes||[];state.sources=data.sources||[];state.spaces=data.spaces||[];
       render();
-      if(loading){loading=false;openNote(state.notes[0]||null);render();$("knowledge-fields").disabled=false;$("knowledge-new-note").disabled=false;}
+      if(loading){
+        loading=false;
+        var requested=new URLSearchParams(location.search).get("note"),selected=requested?state.notes.find(function(note){return note.id===requested;}):state.notes.find(function(note){return !note.archivedAt;});
+        openNote(selected||null);
+        if(requested&&!selected)status.textContent="The requested note was not found. Select a note from the library.";
+        render();$("knowledge-fields").disabled=false;$("knowledge-new-note").disabled=false;$("knowledge-switch").disabled=false;$("knowledge-retry-load").hidden=true;
+      }
     });
   }
   function transition(action){
@@ -297,7 +463,11 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     });});
   }
   function openNote(note){
-    clearTimeout(saveTimer);state.current=note;state.dirty=false;state.revision++;
+    clearTimeout(saveTimer);state.current=note;state.dirty=false;state.revision++;activeDraftKey=null;recoveryPaused=false;
+    state.latest=null;$("knowledge-conflict").hidden=true;findEnd=0;
+    setFlags(note||{});
+    ["knowledge-pin","knowledge-archive","knowledge-duplicate","knowledge-review"].forEach(function(id){$(id).disabled=!note;});
+    if(note){if(!state.tabs.includes(note.id))state.tabs.push(note.id);if(state.tabs.length>10)state.tabs.shift();state.recent=[note.id].concat(state.recent.filter(function(id){return id!==note.id;})).slice(0,50);}
     $("knowledge-title").value=state.current?state.current.title:"";
     $("knowledge-body").value=state.current?state.current.content:"";
     $("knowledge-tags").value=state.current?(state.current.tags||[]).join(", "):"";
@@ -305,10 +475,14 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     $("knowledge-note-url").value=state.current?(state.current.sourceUrl||""):"";
     $("knowledge-editor-heading").textContent=state.current?state.current.title:"Start with an idea";
     $("knowledge-delete-note").disabled=!state.current;
+    $("knowledge-history").replaceChildren();
     $("knowledge-save-status").textContent=state.current?"Saved to your library":"Changes save automatically";
     renderBacklinks();
     renderSpaceReferences();
     updateWriting();
+    if($("knowledge-writing").dataset.mode==="write")setMode("write");
+    if(note){var url=new URL(location.href);url.searchParams.set("note",note.id);history.replaceState(null,"",url);}
+    else{var url=new URL(location.href);url.searchParams.delete("note");history.replaceState(null,"",url);}
   }
   function renderBacklinks(){
     var el=$("knowledge-backlinks");el.replaceChildren();
@@ -361,24 +535,38 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     $("knowledge-save-status").textContent="Unsaved changes";
     $("knowledge-editor-heading").textContent=$("knowledge-title").value.trim()||"Untitled note";
     updateWriting();
-    saveTimer=setTimeout(function(){saveNote().catch(showError);},900);
+    persistDraft();
+    if(!recoveryPaused)saveTimer=setTimeout(function(){saveNote().catch(showError);},900);
   }
-  function saveNote(){
+  function saveNote(reviewedVersion,explicit){
     clearTimeout(saveTimer);
-    if(savePromise)return savePromise.then(function(){return saveNote();});
-    if(!state.dirty)return Promise.resolve();
+    if(savePromise)return savePromise.then(function(){return saveNote(reviewedVersion,explicit);});
+    if(!state.dirty){
+      if(explicit){recoveryPaused=false;state.latest=null;$("knowledge-conflict").hidden=true;$("knowledge-save-status").textContent=state.current?"Saved to your library":"Changes save automatically";}
+      return Promise.resolve();
+    }
+    if(recoveryPaused&&!explicit)return Promise.reject(new Error("Review your recovered or compared draft and use Save note before leaving this document."));
     if(!$("knowledge-note-url").checkValidity()){
       $("knowledge-save-status").textContent="Not saved: enter a valid source URL.";
       return Promise.reject(new Error("Enter a valid source URL in Note properties before saving."));
     }
     var revision=state.revision;
-    var body={title:$("knowledge-title").value.trim()||"Untitled",content:$("knowledge-body").value,tags:tagsFrom($("knowledge-tags").value),spaceId:$("knowledge-space-select").value||null,sourceUrl:$("knowledge-note-url").value||null};
+    var body=formBody();
+    if(state.current)body.expectedVersion=reviewedVersion===undefined?state.current.version||0:reviewedVersion;
     $("knowledge-save-status").textContent="Saving…";
     savePromise=(state.current?apiCall("/api/knowledge/notes/"+encodeURIComponent(state.current.id),"PUT",body):apiCall("/api/knowledge/notes","POST",body)).then(function(data){
       state.current=data.note;
+      var url=new URL(location.href);url.searchParams.set("note",data.note.id);history.replaceState(null,"",url);
       var index=state.notes.findIndex(function(note){return note.id===data.note.id;});
       if(index<0)state.notes.unshift(data.note);else state.notes[index]=data.note;
       state.dirty=revision!==state.revision;
+      recoveryPaused=false;
+      if(state.dirty)persistDraft();else removeActiveDraft();
+      if(!state.tabs.includes(data.note.id))state.tabs.push(data.note.id);
+      if(state.tabs.length>10)state.tabs.shift();
+      state.recent=[data.note.id].concat(state.recent.filter(function(id){return id!==data.note.id;})).slice(0,50);
+      ["knowledge-pin","knowledge-archive","knowledge-duplicate","knowledge-review"].forEach(function(id){$(id).disabled=false;});
+      state.latest=null;$("knowledge-conflict").hidden=true;
       $("knowledge-save-status").textContent=state.dirty?"Unsaved changes":"Saved to your library";
       $("knowledge-delete-note").disabled=false;status.textContent="";
       render();renderBacklinks();
@@ -389,9 +577,15 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     return savePromise.then(function(){if(state.dirty)return saveNote();});
   }
   function setMode(mode){
+    $("knowledge-insert-menu").hidden=true;
+    if(mode==="write"&&(!window.notesEditor||!window.notesEditor.load($("knowledge-body").value))){
+      mode="source";
+      if(!window.notesEditor)$("knowledge-editor-warning").textContent="Formatted editor could not load. Source editing is available; reload to retry.";
+    }
     $("knowledge-writing").dataset.mode=mode;
     document.querySelectorAll("[data-note-mode]").forEach(function(button){button.setAttribute("aria-pressed",String(button.dataset.noteMode===mode));});
     $("knowledge-formatting").hidden=mode==="preview";
+    ["table","undo","redo"].forEach(function(kind){document.querySelector('[data-note-format="'+kind+'"]').disabled=mode!=="write";});
   }
   function toggleFocus(){
     var focused=document.body.classList.toggle("notes-focus");
@@ -399,6 +593,7 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     $("knowledge-focus").textContent=focused?"Exit focus":"Focus mode";
   }
   function format(kind){
+    if($("knowledge-writing").dataset.mode==="write"&&window.notesEditor){window.notesEditor.format(kind);return;}
     if($("knowledge-writing").dataset.mode==="preview")setMode("source");
     var editor=$("knowledge-body"),start=editor.selectionStart,end=editor.selectionEnd,selected=editor.value.slice(start,end);
     var formats={heading:["## ","","Heading"],bold:["**","**","bold text"],italic:["_","_","italic text"],bullet:["- ","","List item"],task:["- [ ] ","","Task"],quote:["> ","","Quote"],link:["[","](https://example.com)","link text"],code:["\\x60\\x60\\x60\\n","\\n\\x60\\x60\\x60","code"]};
@@ -419,13 +614,94 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     if(!event.metaKey&&!event.ctrlKey)return;
     if(loading||transitioning)return;
     var key=event.key.toLowerCase();
-    if(key==="s"){event.preventDefault();saveNote().catch(showError);}
+    if(key==="s"){event.preventDefault();saveNote(undefined,true).catch(showError);}
+    else if(key==="k"){event.preventDefault();switcher();}
+    else if(key==="f"&&!event.shiftKey){event.preventDefault();$("knowledge-find-panel").open=true;$("knowledge-find").focus();}
     else if(["1","2","3"].indexOf(key)>=0){event.preventDefault();setMode({1:"source",2:"split",3:"preview"}[key]);}
     else if(key==="f"&&event.shiftKey){event.preventDefault();toggleFocus();}
     else if(event.target===$("knowledge-body")&&(key==="b"||key==="i")){event.preventDefault();format(key==="b"?"bold":"italic");}
   });
   $("knowledge-search").oninput=function(){state.query=this.value.trim().toLowerCase();render();};
-  $("knowledge-all-notes").onclick=function(){state.spaceFilter=null;state.query="";$("knowledge-search").value="";render();};
+  $("knowledge-library-view").onchange=render;$("knowledge-tag-filter").onchange=render;
+  $("knowledge-all-notes").onclick=function(){state.spaceFilter=null;state.query="";$("knowledge-search").value="";$("knowledge-tag-filter").value="";$("knowledge-library-view").value="active";render();};
+  $("knowledge-switch").onclick=switcher;$("knowledge-switch-query").oninput=renderSwitcher;$("knowledge-switch-close").onclick=function(){$("knowledge-switcher").close();};
+  $("knowledge-switch-query").onkeydown=function(event){if(event.key==="ArrowDown"){event.preventDefault();var button=$("knowledge-switch-results").querySelector("button");if(button)button.focus();}};
+  $("knowledge-switch-results").onkeydown=function(event){
+    var buttons=Array.from(this.querySelectorAll("button")),index=buttons.indexOf(document.activeElement);
+    if(event.key==="ArrowDown"||event.key==="ArrowUp"){event.preventDefault();var next=buttons[index+(event.key==="ArrowDown"?1:-1)];if(next)next.focus();else $("knowledge-switch-query").focus();}
+  };
+  $("knowledge-pin").onclick=function(){this.dataset.value=String(this.dataset.value!=="true");this.textContent=this.dataset.value==="true"?"Unpin note":"Pin note";changed();};
+  $("knowledge-archive").onclick=function(){
+    this.dataset.value=this.dataset.value?"":new Date().toISOString();this.textContent=this.dataset.value?"Restore from archive":"Archive note";changed();
+  };
+  $("knowledge-duplicate").onclick=function(){
+    transition(function(){return saveNote().then(function(){
+      var body=formBody();body.title=(body.title.slice(0,230)+" (copy)");body.pinned=false;body.archivedAt=null;
+      return apiCall("/api/knowledge/notes","POST",body);
+    }).then(function(data){state.notes.unshift(data.note);openNote(data.note);render();status.textContent="Independent copy created.";});}).catch(showError);
+  };
+  $("knowledge-template-use").onclick=function(){
+    var kind=$("knowledge-template").value,templates={meeting:"## Meeting\\n\\nDate: "+new Date().toLocaleDateString()+"\\nEvent link: \\nParticipants: \\n\\n### Agenda\\n\\n- \\n\\n### Decisions\\n\\n- \\n\\n### Action items\\n\\n- [ ] Owner — action — due date\\n",daily:"## Daily plan\\n\\n### Priorities\\n\\n- [ ] \\n\\n### Time blocks\\n\\n- \\n\\n### Reflection\\n\\n",research:"## Research question\\n\\n\\n### Sources\\n\\n- [Source title](https://example.com)\\n\\n### Findings\\n\\n\\n### Open questions\\n\\n"};
+    if(!templates[kind]){status.textContent="Choose a template first.";return;}
+    var body=$("knowledge-body");body.value+=(body.value?"\\n\\n":"")+templates[kind];setMode($("knowledge-writing").dataset.mode);changed();
+  };
+  function findNext(){
+    var query=$("knowledge-find").value,body=$("knowledge-body");if(!query){$("knowledge-find-status").textContent="Enter text to find.";return false;}
+    setMode("source");var index=body.value.indexOf(query,findEnd);if(index<0)index=body.value.indexOf(query);
+    if(index<0){$("knowledge-find-status").textContent="No matches.";findEnd=0;return false;}
+    body.focus();body.setSelectionRange(index,index+query.length);findEnd=index+query.length;
+    $("knowledge-find-status").textContent=(body.value.split(query).length-1)+" match(es); selected at character "+(index+1)+".";return true;
+  }
+  $("knowledge-find").oninput=function(){findEnd=0;};$("knowledge-find-next").onclick=findNext;
+  $("knowledge-replace-one").onclick=function(){
+    var body=$("knowledge-body"),query=$("knowledge-find").value;if(!query)return findNext();
+    if(body.value.slice(body.selectionStart,body.selectionEnd)!==query){findNext();return;}
+    var start=body.selectionStart,end=body.selectionEnd,replacement=$("knowledge-replace").value;
+    if(new Blob([body.value.slice(0,start)+replacement+body.value.slice(end)]).size>200000){$("knowledge-find-status").textContent="Replacement exceeds the 200 KB note limit. Nothing changed.";return;}
+    setMode("source");body.setRangeText(replacement,start,end,"end");findEnd=body.selectionEnd;changed();findNext();
+  };
+  $("knowledge-replace-all").onclick=function(){
+    var query=$("knowledge-find").value,body=$("knowledge-body");if(!query)return findNext();
+    var count=body.value.split(query).length-1;if(!count)return findNext();
+    if(!confirm("Replace all "+count+" literal matches in this note's Markdown source, including any links or formatting?"))return;
+    var replacement=body.value.split(query).join($("knowledge-replace").value);
+    if(new Blob([replacement]).size>200000){$("knowledge-find-status").textContent="Replacement exceeds the 200 KB note limit. Nothing changed.";return;}
+    setMode("source");body.value=replacement;findEnd=0;changed();$("knowledge-find-status").textContent="Replaced "+count+" matches.";
+  };
+  $("knowledge-review").onclick=function(){
+    if(!state.current)return;var id=state.current.id;clearTimeout(saveTimer);recoveryPaused=true;
+    var pending=savePromise?savePromise.catch(function(){}):Promise.resolve();
+    pending.then(function(){return apiCall("/api/knowledge/notes/"+encodeURIComponent(id));}).then(function(data){
+      if(!state.current||state.current.id!==id)return;
+      clearTimeout(saveTimer);recoveryPaused=true;state.latest=data.note;
+      $("knowledge-latest-content").value=data.note.content;
+      $("knowledge-latest-properties").textContent="Title: "+data.note.title+"\\nTags: "+(data.note.tags||[]).join(", ")+"\\nSpace: "+(data.note.spaceId||"None")+"\\nSource: "+(data.note.sourceUrl||"None")+"\\nPinned: "+!!data.note.pinned+" · Archived: "+!!data.note.archivedAt+" · Version: "+(data.note.version||0);
+      $("knowledge-conflict").hidden=false;
+      $("knowledge-save-status").textContent="Reviewing latest - automatic saving paused.";
+    }).catch(function(error){showError(error);$("knowledge-save-status").textContent="Comparison unavailable; automatic saving paused. Retry Review latest or use Save note.";});
+  };
+  $("knowledge-review-close").onclick=function(){$("knowledge-conflict").hidden=true;state.latest=null;$("knowledge-save-status").textContent="Automatic saving paused - use Save note when ready.";};
+  $("knowledge-merge-save").onclick=function(){
+    if(!state.latest)return;
+    if(!confirm("Replace the reviewed saved version with your current draft, including title and properties?"))return;
+    state.dirty=true;saveNote(state.latest.version||0,true).catch(showError);
+  };
+  $("knowledge-use-latest").onclick=function(){
+    if(!state.latest||!confirm("Discard your current draft and load the reviewed saved version?"))return;
+    removeActiveDraft();var latest=state.latest,index=state.notes.findIndex(function(note){return note.id===latest.id;});if(index>=0)state.notes[index]=latest;openNote(latest);render();
+  };
+  try{draftsEnabled=localStorage.getItem(draftSetting)==="enabled";$("knowledge-drafts-enabled").checked=draftsEnabled;if(draftsEnabled)renderDrafts();}catch(error){draftError(error);}
+  $("knowledge-drafts-enabled").onchange=function(){
+    if(!this.checked&&!confirm("Disable recovery and remove all recovery drafts for this site from this browser?")){this.checked=true;return;}
+    try{
+      if(this.checked){localStorage.setItem(draftSetting,"enabled");draftsEnabled=true;persistDraft();renderDrafts();}
+      else{
+        for(var i=localStorage.length-1;i>=0;i--){var key=localStorage.key(i);if(key&&key.startsWith(draftPrefix))localStorage.removeItem(key);}
+        localStorage.removeItem(draftSetting);draftsEnabled=false;activeDraftKey=null;renderDrafts();$("knowledge-draft-status").textContent="Recovery disabled; browser recovery copies removed.";
+      }
+    }catch(error){this.checked=draftsEnabled;draftError(error);}
+  };
+  window.addEventListener("storage",function(event){if(event.key===draftSetting){draftsEnabled=event.newValue==="enabled";$("knowledge-drafts-enabled").checked=draftsEnabled;}if(event.key&&event.key.startsWith(draftPrefix))renderDrafts();});
   $("knowledge-new-note").onclick=function(){
     transition(function(){return saveNote().then(function(){
       openNote(null);$("knowledge-space-select").value=state.spaceFilter||"";
@@ -458,7 +734,27 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
       .then(function(){status.textContent="Item linked to the space.";return load();}).catch(showError);
   };
   $("knowledge-save-note").onclick=function(){
-    saveNote().catch(showError);
+    saveNote(undefined,true).catch(showError);
+  };
+  $("knowledge-history-load").onclick=function(){
+    if(!state.current){status.textContent="Save this note before opening its history.";return;}
+    var id=state.current.id;
+    apiCall("/api/knowledge/notes/"+encodeURIComponent(id)+"/history").then(function(data){
+      if(!state.current||state.current.id!==id)return;
+      var box=$("knowledge-history");box.replaceChildren();
+      if(!data.revisions.length){box.textContent="No previous versions yet.";return;}
+      data.revisions.forEach(function(revision){
+        var details=node("details",""),summary=node("summary","",new Date(revision.updatedAt).toLocaleString()+" - "+revision.title);
+        var preview=node("pre","",revision.content),restore=node("button","ghost","Restore this version");
+        restore.type="button";restore.onclick=function(){
+          if(!state.current||state.current.id!==id||!confirm("Restore this version? Your current version will remain in history."))return;
+          transition(function(){return saveNote().then(function(){
+            return apiCall("/api/knowledge/notes/"+encodeURIComponent(id)+"/restore","POST",{revisionId:revision.revisionId,expectedVersion:state.current.version||0});
+          }).then(function(data){var index=state.notes.findIndex(function(note){return note.id===id;});state.notes[index]=data.note;openNote(data.note);render();status.textContent="Version restored.";});}).catch(showError);
+        };
+        preview.style.whiteSpace="pre-wrap";preview.style.overflowWrap="anywhere";details.append(summary,preview,restore);box.appendChild(details);
+      });
+    }).catch(showError);
   };
   $("knowledge-delete-note").onclick=function(){
     if(transitioning||!state.current||!confirm("Delete this note?"))return;
@@ -467,7 +763,7 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     var id=state.current.id;
     transition(function(){return saveNote().then(function(){return apiCall("/api/knowledge/notes/"+encodeURIComponent(id),"DELETE");}).then(function(){
       state.notes=state.notes.filter(function(note){return note.id!==id;});
-      openNote(state.notes[0]||null);render();renderGraph();status.textContent="Note deleted.";
+      removeActiveDraft();openNote(state.notes.find(function(note){return !note.archivedAt;})||null);render();renderGraph();status.textContent="Note deleted.";
     });}).catch(showError).finally(function(){button.disabled=!state.current;});
   };
   $("knowledge-source-form").onsubmit=function(event){
@@ -500,7 +796,9 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
       });
     }).catch(function(e){$("knowledge-answer").textContent=e.message||"Could not answer";});
   };
-  load().then(renderGraph).catch(showError);
+  function initialLoad(){return load().then(renderGraph).catch(function(error){showError(error);status.appendChild(document.createTextNode(" Retry loading your notes. Your saved content has not been changed."));$("knowledge-retry-load").hidden=false;});}
+  $("knowledge-retry-load").querySelector("button").onclick=initialLoad;
+  initialLoad();
 })();`,
   });
 }

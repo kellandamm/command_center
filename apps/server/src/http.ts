@@ -6,6 +6,7 @@ import { recallioConfigured } from "./recallio/client";
 import type { Authenticator } from "./auth";
 import { bearerToken, csrfOk } from "./auth";
 import type { NotesStore } from "./notes/store";
+import { NoteConflictError } from "./notes/store";
 import type { BookmarksStore } from "./bookmarks/store";
 import { bookmarksPage } from "./ui/bookmarks-page";
 import { handlePowerAutomateWebhook } from "./integrations/power-automate";
@@ -43,6 +44,15 @@ import { CaptureAccess } from "./read-later/capture-access";
 import { captureExtensionFiles } from "./read-later/extension";
 import { zip } from "./read-later/zip";
 import { dashboardPage, settingsPage } from "./ui/pages";
+import { connectionProvider, type ConnectionsStore } from "./connections";
+import { connectionsPage } from "./ui/connections-page";
+import { notesEditorScript } from "./ui/notes-editor-asset";
+import type { CalendarWorkspace } from "./calendar/workspace";
+import { CalendarConflictError } from "./calendar/store";
+import { handleCalendarRoutes } from "./calendar/routes";
+import { exportCalendar } from "./calendar/export";
+import { calendarSettingsPage } from "./ui/calendar-settings-page";
+import { calendarEventPage } from "./ui/calendar-event-page";
 
 export interface App {
   cfg: Config;
@@ -57,6 +67,8 @@ export interface App {
   wins: WinsStore;
   winsRollup: WinsRollupService;
   dashboardLayout: DashboardLayoutStore;
+  connections?: ConnectionsStore;
+  calendar?: CalendarWorkspace;
 }
 
 const SECURITY: Record<string, string> = {
@@ -104,6 +116,7 @@ export function createApp(app: App): Server {
   const ctx = (): PanelContext => ({
     cfg: app.cfg,
     settings: app.settings,
+    calendar: app.calendar,
     notes: app.notes,
     panelUpdates: app.panelUpdates,
     hobieQueue: app.hobieQueue,
@@ -122,6 +135,12 @@ export function createApp(app: App): Server {
       const method = req.method ?? "GET";
 
       if (path === "/healthz") return json(res, 200, { ok: true, version: app.cfg.version });
+      const feed = path.match(/^\/feeds\/calendars\/([a-zA-Z0-9-]+)\.ics$/);
+      if (feed) {
+        const key = url.searchParams.get("key") ?? "";
+        if (!["GET", "HEAD"].includes(method) || !app.calendar || key.length !== 64 || !app.calendar.store.published(feed[1]!, key)) return json(res, 404, { error: "Feed not found or access revoked" });
+        return send(res, 200, method === "HEAD" ? "" : exportCalendar(app.calendar.store, feed[1]!), "text/calendar; charset=utf-8");
+      }
 
       if (path === "/mcp") {
         const body = req.method === "POST" ? await readBody(req, 1_000_000) : undefined;
@@ -155,6 +174,26 @@ export function createApp(app: App): Server {
       if (!csrfOk(req)) return json(res, 403, { error: "cross-site request refused" });
       const get = method === "GET" || method === "HEAD";
 
+      if (get && path === "/assets/notes-editor.js") return send(res, 200, await notesEditorScript(), "text/javascript", extra);
+      if (app.calendar && await handleCalendarRoutes(app.calendar, req, res, path, who.owner === true, readBody)) return;
+      if (path === "/api/connections" || path.startsWith("/api/connections/")) {
+        if (!who.owner) return json(res, 403, { error: "Connection management requires a verified owner login. Set OWNER_EMAILS and sign in through Cloudflare Access; machine/admin tokens cannot manage keys." });
+        if (!app.connections) return json(res, 503, { error: "Connection storage is unavailable" });
+        if (path === "/api/connections" && get) return json(res, 200, app.connections.status());
+        const match = path.match(/^\/api\/connections\/([^/]+)(\/test)?$/);
+        if (!match) return json(res, 404, { error: "Connection route not found" });
+        const provider = connectionProvider(match[1]!);
+        if (match[2] && method === "POST") return json(res, 200, await app.connections.test(provider));
+        if (!match[2] && method === "PUT") {
+          await app.connections.update(provider, await readBody(req, 30_000));
+          return json(res, 200, app.connections.status());
+        }
+        if (!match[2] && method === "DELETE") {
+          await app.connections.remove(provider);
+          return json(res, 200, app.connections.status());
+        }
+        return json(res, 405, { error: "Method not allowed" });
+      }
       if (get && path === "/manifest.webmanifest") return send(res, 200, MANIFEST, "application/manifest+json", extra);
       if (get && path === "/sw.js") return send(res, 200, SERVICE_WORKER, "text/javascript", { ...extra, "service-worker-allowed": "/" });
       if (get && path === "/icon-192.png") return send(res, 200, icon("192", 192), "image/png", extra);
@@ -196,6 +235,8 @@ export function createApp(app: App): Server {
         return;
       }
       if (get && path === "/settings/capture") return send(res, 200, capturePage(nav()), undefined, extra);
+      if (get && path === "/settings/connections") return send(res, 200, connectionsPage(nav()), undefined, extra);
+      if (get && path === "/settings/calendars") return send(res, 200, calendarSettingsPage(nav()), undefined, extra);
       if (get && path === "/capture-extension.zip") {
         return send(res, 200, extensionZip, "application/zip", { ...extra, "content-disposition": 'attachment; filename="command-center-capture.zip"' });
       }
@@ -205,6 +246,7 @@ export function createApp(app: App): Server {
       if (get && path === "/notes") return send(res, 200, notesPage(nav()), undefined, extra);
       if (get && path === "/bookmarks") return send(res, 200, bookmarksPage(nav()), undefined, extra);
       if (get && path === "/calendar") return send(res, 200, calendarPage(nav()), undefined, extra);
+      if (get && path === "/calendar/event") return send(res, 200, calendarEventPage(nav()), undefined, extra);
       if (get && path === "/settings") return send(res, 200, settingsPage(nav()), undefined, extra);
 
       if (get && path === "/api/bookmarks") return json(res, 200, app.bookmarks.list());
@@ -252,7 +294,10 @@ export function createApp(app: App): Server {
         return json(res, 200, { layout });
       }
 
-      if (get && path === "/api/settings") return json(res, 200, { settings: app.settings.get() });
+      if (get && path === "/api/settings") return json(res, 200, {
+        settings: app.settings.get(),
+        briefingProviders: { search: Boolean(app.cfg.braveSearchApiKey), summarizer: llmConfigured(app.cfg) },
+      });
       if (req.method === "PUT" && path === "/api/settings") {
         const next = await app.settings.update(await readBody(req));
         return json(res, 200, { settings: next });
@@ -274,6 +319,8 @@ export function createApp(app: App): Server {
 
       return json(res, 404, { error: "not found" });
     } catch (err) {
+      if (err instanceof CalendarConflictError) return json(res, 409, { error: err.message });
+      if (err instanceof NoteConflictError) return json(res, 409, { error: err.message });
       if (err instanceof ValidationError) return json(res, 400, { error: err.message });
       console.error("request failed:", err);
       return json(res, 500, { error: "internal error" });

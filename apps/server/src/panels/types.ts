@@ -6,6 +6,7 @@ import type { HobieQueueStore } from "../stores/hobie-queue";
 import type { WinsStore } from "../wins/store";
 import type { PanelUpdatesStore } from "../stores/panel-updates";
 import type { SettingsStore } from "../settings";
+import type { CalendarWorkspace } from "../calendar/workspace";
 
 export interface PanelContext {
   cfg: Config;
@@ -15,6 +16,7 @@ export interface PanelContext {
   hobieQueue: HobieQueueStore;
   board: BoardStore;
   wins: WinsStore;
+  calendar?: CalendarWorkspace;
 }
 
 export type PanelHandler = (ctx: PanelContext, req: IncomingMessage, res: ServerResponse, path: string) => Promise<boolean>;

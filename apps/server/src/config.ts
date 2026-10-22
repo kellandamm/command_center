@@ -1,8 +1,8 @@
 import { tokenEquals } from "./auth";
 
 /**
- * Environment configuration. Secrets (LLM key, admin token) are only read here —
- * never written to disk, returned by the API, or shown in the UI.
+ * Deployment defaults. Provider overrides are encrypted by ConnectionsStore.
+ * Authentication/bootstrap secrets remain deployment-only.
  */
 export interface Config {
   port: number;
@@ -13,6 +13,7 @@ export interface Config {
   llmBaseUrl: string | null;
   llmApiKey: string | null;
   llmModel: string | null;
+  braveSearchApiKey: string | null;
   githubToken: string | null;
   /** GitHub login for the activity panel (open issues/PRs and public events). */
   githubUsername: string;
@@ -44,6 +45,8 @@ export interface Config {
   webhookSecret: string | null;
   hobiePollToken: string | null;
   mcpMaxHobiePending: number;
+  connectionsMasterKey: string | null;
+  ownerEmails: string[];
 }
 
 export interface LlmConfig {
@@ -113,6 +116,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (webhookSecret && webhookSecret.length < 24) throw new Error("WEBHOOK_SECRET must be at least 24 characters.");
   const hobiePollToken = blank(env.HOBIE_POLL_TOKEN);
   if (hobiePollToken && hobiePollToken.length < 24) throw new Error("HOBIE_POLL_TOKEN must be at least 24 characters.");
+  const connectionsMasterKey = blank(env.CONNECTIONS_MASTER_KEY);
+  if (connectionsMasterKey && !/^[a-f0-9]{64}$/i.test(connectionsMasterKey)) {
+    throw new Error("CONNECTIONS_MASTER_KEY must be 32 random bytes encoded as 64 hexadecimal characters.");
+  }
   return {
     port,
     host: blank(env.HOST) ?? "0.0.0.0",
@@ -121,6 +128,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     llmBaseUrl: blank(env.LLM_BASE_URL),
     llmApiKey: blank(env.LLM_API_KEY),
     llmModel: blank(env.LLM_MODEL),
+    braveSearchApiKey: blank(env.BRAVE_SEARCH_API_KEY),
     githubToken: blank(env.GITHUB_TOKEN),
     githubUsername: blank(env.GITHUB_USERNAME) ?? "kellandamm",
     todoistApiToken: blank(env.TODOIST_API_TOKEN),
@@ -142,6 +150,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     webhookSecret,
     hobiePollToken,
     mcpMaxHobiePending: Math.min(50, Math.max(1, Number(env.MCP_MAX_HOBIE_PENDING ?? 20) || 20)),
+    connectionsMasterKey,
+    ownerEmails: (env.OWNER_EMAILS ?? "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean),
   };
 }
 

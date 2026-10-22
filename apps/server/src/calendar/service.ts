@@ -10,6 +10,8 @@ export interface CalendarFeedResult {
   eventCount: number;
   id?: string;
   name?: string;
+  color?: string;
+  readOnly?: boolean;
 }
 
 export interface CalendarSnapshot {

@@ -50,10 +50,9 @@ test("ui: daily briefing page has source sections and nav link", () => {
   assert.match(html, /The almanac/);
   assert.match(html, /id="db-calendar"/);
   assert.match(html, /id="db-weather"/);
-  assert.match(html, /id="db-todoist"/);
-  assert.match(html, /id="db-github"/);
-  assert.match(html, /Blocked on me/);
-  assert.match(html, /Yesterday's wins/);
+  assert.match(html, /id="db-topics"/);
+  assert.match(html, /Manage topics/);
+  assert.doesNotMatch(html, /db-todoist|db-github|db-board|Blocked on me|Yesterday's wins/);
   assert.match(html, /id="db-refresh"/);
   assert.match(html, /class="briefing-grid"/);
   assert.match(html, /id="db-error"/);
@@ -95,7 +94,7 @@ test("ui: settings page has schedule and tabs sections", () => {
   assert.match(html, /id="tab-tabs"/);
   assert.doesNotMatch(html, /scope-all|fetchInterval|data-pref="(?:news|summaries|aiSecurity|briefing\.news|briefing\.ai)/);
   assert.match(html, /data-pref="dashboard.hobie"/);
-  assert.match(html, /data-pref="briefing.github"/);
+  assert.match(html, /data-pref="briefing.topics"/);
   assert.match(html, /data-pref="calendar.weekStartsOn"/);
   assert.match(html, /data-pref="activity.limit"/);
   assert.match(html, /id="views-save"/);
@@ -151,13 +150,16 @@ test("ui: Bookmarks is a separate grouped launchpad with search, import and layo
   }
 });
 
-test("ui: Calendar has mini-month, agenda, read-only details, and day/week/month views", () => {
+test("ui: Calendar has mini-month, agenda, native editing, read-only subscriptions, and day/week/month views", () => {
   const html = calendarPage();
   for (const id of ["cal-mini", "cal-agenda", "cal-search", "cal-sources", "cal-event-dialog", "cal-today", "cal-refresh"]) {
     assert.ok(html.includes(`id="${id}"`));
   }
   for (const mode of ["day", "week", "month"]) assert.ok(html.includes(`data-cal-view="${mode}"`));
-  assert.match(html, /Read-only ICS subscriptions/);
+  assert.match(html, /Subscribed event · read-only/);
+  assert.match(html, /href="\/calendar\/event">New event/);
+  assert.match(html, /href="\/settings\/calendars">Calendar settings/);
+  assert.match(html, /id="cal-event-edit"/);
   for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
     assert.doesNotThrow(() => new Script(match[1]!));
   }

@@ -33,13 +33,19 @@ export const calendarPanel: PanelModule = {
         const days = (rangeEnd.getTime() - rangeStart.getTime()) / 86_400_000;
         if (days <= 0 || days > 62) throw new ValidationError("Calendar range must be between 1 and 62 days");
       }
-      const snap = await fetchCalendarEvents(ctx.cfg.icsUrls, ctx.cfg.tz, {
+      const options = {
         horizonDays,
         rangeStart,
         rangeEnd,
         limit: rangeStart ? 2_000 : undefined,
         localFiles: ctx.cfg.icsLocalFiles,
-      });
+      };
+      const snap = ctx.calendar
+        ? await ctx.calendar.snapshot(options)
+        : await fetchCalendarEvents(ctx.cfg.icsUrls, ctx.cfg.tz, options);
+      snap.feeds = snap.feeds.map(({ url: _url, ...feed }) => ({
+        ...feed, url: "", error: feed.ok ? undefined : "Calendar feed could not be loaded. Check Calendar settings.",
+      }));
       json(200, snap);
       return true;
     }
@@ -58,7 +64,7 @@ function renderCalendar(r){
   var st=document.getElementById("calendar-status");
   var list=document.getElementById("calendar-list");
   if(!r.configured){
-    st.textContent="Calendar disabled — set ICS_URLS on the server (comma-separated iCal URLs).";
+    st.textContent="No calendars connected. Open Settings > Calendars to add one.";
     list.innerHTML="";
     return;
   }

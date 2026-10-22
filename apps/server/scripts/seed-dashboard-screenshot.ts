@@ -63,22 +63,6 @@ async function main() {
     generatedAt: now.toISOString(),
     trigger: "manual",
     sources: {
-      todoist: {
-        status: "ok",
-        data: {
-          overdue: [],
-          today: [
-            {
-              id: "1",
-              content: "Dashboard screenshot pass",
-              description: "",
-              priority: 3,
-              due: { date: "2026-10-14", datetime: null, string: "today" },
-              url: "https://todoist.com",
-            },
-          ],
-        },
-      },
       weather: {
         status: "ok",
         data: {
@@ -95,16 +79,14 @@ async function main() {
         },
       },
       calendar: { status: "empty", message: "No events" },
-      github: { status: "not_configured" },
-      board: {
+      topics: {
         status: "ok",
         data: {
-          blocked: board.blockedOnMe(),
-          moved: board.movesSince(new Date(now.getTime() - 24 * 60 * 60_000).toISOString()),
-          wins: wins.between(
-            new Date(now.getTime() - 48 * 60 * 60_000).toISOString(),
-            new Date(now.getTime() - 12 * 60 * 60_000).toISOString(),
-          ),
+          items: [{
+            keyword: "AI agent security", status: "ok",
+            summary: "Example digest based on recent search excerpts [1].",
+            articles: [{ title: "Example source", url: "https://example.com/agent-security", excerpt: "Illustrative search excerpt for screenshots." }],
+          }],
         },
       },
     },

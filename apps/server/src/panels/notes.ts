@@ -101,7 +101,9 @@ export const notesPanel: PanelModule = {
       const board = type === "calendar" ? [] : ctx.board.list().map(({ id, title, column, notes }) => ({ id, title, detail: `${column}${notes ? ` · ${notes}` : ""}` }));
       const calendar = type === "board"
         ? null
-        : await fetchCalendarEvents(ctx.cfg.icsUrls, ctx.cfg.tz, { horizonDays: 60, limit: 100, localFiles: ctx.cfg.icsLocalFiles });
+        : ctx.calendar
+          ? await ctx.calendar.snapshot({ horizonDays: 60, limit: 100 })
+          : await fetchCalendarEvents(ctx.cfg.icsUrls, ctx.cfg.tz, { horizonDays: 60, limit: 100, localFiles: ctx.cfg.icsLocalFiles });
       json(200, {
         board,
         calendar: (calendar?.events ?? []).map((event) => ({
@@ -117,6 +119,25 @@ export const notesPanel: PanelModule = {
       const note = await ctx.notes.createNote(await readJson(req));
       json(201, { note });
       return true;
+    }
+    const historyMatch = path.match(/^\/api\/knowledge\/notes\/([^/]+)\/(history|restore)$/);
+    if (historyMatch) {
+      let id: string;
+      try { id = decodeURIComponent(historyMatch[1]!); }
+      catch { throw new ValidationError("Invalid note identifier"); }
+      if (!ctx.notes.getNote(id)) return error(404, "note not found"), true;
+      if (historyMatch[2] === "history" && req.method === "GET") {
+        json(200, { revisions: ctx.notes.noteHistory(id) });
+        return true;
+      }
+      if (historyMatch[2] === "restore" && req.method === "POST") {
+        const body = await readJson(req);
+        if (typeof body.revisionId !== "string" || typeof body.expectedVersion !== "number" || !Number.isInteger(body.expectedVersion)) throw new ValidationError("revisionId and expectedVersion are required");
+        const note = await ctx.notes.restoreNote(id, body.revisionId, body.expectedVersion);
+        json(200, { note });
+        return true;
+      }
+      return error(405, "method not allowed"), true;
     }
     const noteId = routeId(path, "notes");
     if (noteId && req.method === "GET") {

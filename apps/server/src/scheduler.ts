@@ -5,6 +5,7 @@ import type { WinsStore } from "./wins/store";
 import type { Config } from "./config";
 import type { SettingsStore } from "./settings";
 import { dayKey } from "./store";
+import type { CalendarWorkspace } from "./calendar/workspace";
 
 export interface KVLike {
   get<T>(key: string): Promise<T | undefined>;
@@ -73,6 +74,7 @@ export class Scheduler {
       dailyBriefing: DailyBriefingService;
       board?: BoardStore;
       wins?: WinsStore;
+      calendar?: CalendarWorkspace;
       now?: () => Date;
     },
   ) {}
@@ -100,23 +102,27 @@ export class Scheduler {
         (!state.githubWinsPollAt || now.getTime() - new Date(state.githubWinsPollAt).getTime() >= 60 * 60_000);
       if (winsPollDue && this.d.wins) {
         const since = state.githubWinsPollAt ?? new Date(now.getTime() - 7 * 24 * 60 * 60_000).toISOString();
-        await pollMergedPullRequestWins({
-          username: this.d.cfg.githubUsername,
-          token: this.d.cfg.githubToken,
-          wins: this.d.wins,
-          sinceIso: since,
-          now,
-        });
-        state = { ...state, githubWinsPollAt: now.toISOString() };
-        await this.d.kv.set(KEY, state);
+        try {
+          await pollMergedPullRequestWins({
+            username: this.d.cfg.githubUsername,
+            token: this.d.cfg.githubToken,
+            wins: this.d.wins,
+            sinceIso: since,
+            now,
+          });
+          state = { ...state, githubWinsPollAt: now.toISOString() };
+          await this.d.kv.set(KEY, state);
+        } catch (err) {
+          console.error("GitHub wins poll failed:", err);
+        }
       }
 
       const slot = dueBriefingSlot(state, s.briefingTime, now, this.d.cfg.tz);
       if (slot) {
         const rec = await this.d.dailyBriefing.generate({
           cfg: this.d.cfg,
-          board: this.d.board,
-          wins: this.d.wins,
+          topics: s.briefingTopics,
+          calendar: this.d.calendar,
           trigger: "schedule",
           now,
         });

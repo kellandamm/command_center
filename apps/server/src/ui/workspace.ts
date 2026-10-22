@@ -1,6 +1,13 @@
 import { esc, page, type NavLink } from "./layout";
 
+export const workspaceTabsCss = `
+.workspace-tabs{display:flex;flex-wrap:wrap;gap:1.25rem;border-bottom:1px solid var(--border);margin-bottom:1.5rem}
+.workspace-tabs a{padding:.75rem 0;color:var(--muted-foreground)}
+.workspace-tabs a[aria-current=page]{color:var(--primary);border-bottom:2px solid var(--primary);font-weight:600}
+`;
+
 export const workspaceCss = `
+${workspaceTabsCss}
 .page-content{--cp-text-muted:var(--muted-foreground);--cp-border:var(--border);--cp-accent:var(--primary);--cp-danger:var(--destructive);--cp-surface-soft:var(--muted);--cp-accent-soft:var(--accent);--cp-link:var(--foreground);--cp-success:var(--ok)}
 .workspace-details.library-capture{margin:0 0 1.5rem;padding:0;border:0}
 .library-capture summary{color:var(--muted-foreground);font-weight:400}
@@ -71,9 +78,6 @@ export const workspaceCss = `
 @media(max-width:500px){.library-controls{grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}.library-search,.library-controls>div:last-child{grid-column:1/-1}.library-item-actions{margin-left:0;width:100%}.library-domain-mark{display:none}.library-results{flex-wrap:wrap}.library-cards .library-item-content{flex-basis:100%}}
 .workspace-head{display:flex;justify-content:space-between;align-items:start;gap:1rem;margin-bottom:1.5rem}
 .workspace-head p{margin:.5rem 0 0;color:var(--cp-text-muted);max-width:65ch}
-.workspace-tabs{display:flex;flex-wrap:wrap;gap:1.25rem;border-bottom:1px solid var(--cp-border);margin-bottom:1.5rem}
-.workspace-tabs a{padding:.75rem 0;color:var(--cp-text-muted)}
-.workspace-tabs a[aria-current=page]{color:var(--cp-accent);border-bottom:2px solid var(--cp-accent);font-weight:600}
 .workspace-toolbar{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;margin-bottom:1.25rem}
 .workspace-toolbar input{max-width:30rem}
 .workspace-status{min-height:1.5rem;margin:.75rem 0;color:var(--cp-text-muted)}

@@ -9,8 +9,8 @@ export function calendarPage(nav?: NavLink[]): string {
     nav,
     body: `<div class="calendar-app">
 <header class="calendar-header">
-  <div><p class="calendar-eyebrow dim">MAKE ROOM FOR YOUR DAY</p><h1>Calendar</h1><p class="dim">Your calendars, a clearer view. Read-only ICS subscriptions.</p></div>
-  <button type="button" class="ghost" id="cal-refresh">Refresh calendars</button>
+  <div><h1>Calendar</h1><p class="dim">Your calendars, events, and time to focus.</p></div>
+  <div class="row"><a class="btn" href="/calendar/event">New event</a><a class="btn ghost" href="/settings/calendars">Calendar settings</a><button type="button" class="ghost" id="cal-refresh">Refresh calendars</button></div>
 </header>
 <div class="calendar-workspace">
   <aside class="calendar-rail" aria-label="Calendar navigation">
@@ -19,7 +19,7 @@ export function calendarPage(nav?: NavLink[]): string {
     <label for="cal-search">Search events</label><input id="cal-search" type="search" placeholder="Title, place, or details">
     <h2 class="calendar-rail-heading">Calendars</h2>
     <div id="cal-sources"></div>
-    <p class="dim calendar-hint">Feed subscriptions are configured on the server. Colors identify each calendar.</p>
+    <p class="dim calendar-hint">Add calendars and subscriptions in Settings. Colors identify each calendar.</p>
     <div class="calendar-agenda-head"><h2 id="cal-agenda-title">Agenda</h2><span id="cal-agenda-count" class="dim"></span></div>
     <div id="cal-agenda" class="calendar-agenda"></div>
   </aside>
@@ -37,11 +37,13 @@ export function calendarPage(nav?: NavLink[]): string {
   <h2 id="cal-event-title"></h2>
   <p id="cal-event-time"></p><p id="cal-event-location" class="dim"></p>
   <p id="cal-event-description"></p><div id="cal-event-link"></div>
-  <p class="dim calendar-hint">Subscribed event · read-only</p>
+  <p id="cal-event-permission" class="dim calendar-hint">Subscribed event · read-only</p>
+  <a id="cal-event-edit" class="btn ghost" hidden>Edit event</a>
 </dialog>
 </div>
 <style>
 .calendar-app{--calendar-red:#c93d48;--calendar-blue:#2767ad;--calendar-green:#29805c;--calendar-purple:#8150b0;--calendar-orange:#a66217;--calendar-teal:#237b88}
+.calendar-app [hidden]{display:none!important}
 html.dark .calendar-app{--calendar-red:#f3838b;--calendar-blue:#82b5f0;--calendar-green:#7dcc9e;--calendar-purple:#bd9beb;--calendar-orange:#eab576;--calendar-teal:#7ec7d0}
 .calendar-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin:0 0 1.5rem}
 .calendar-header p{font-size:.8rem;margin:.4rem 0 0}.calendar-header .calendar-eyebrow{font-size:.65rem;letter-spacing:.15em;margin:0 0 .5rem}

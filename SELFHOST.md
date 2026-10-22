@@ -14,7 +14,10 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 
 | Variable | Notes |
 |---|---|
-| `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | Optional. Enable **Notes space questions** and **weekly Wins summaries**. Example base URL: `https://api.commandcode.ai/provider/v1`. Daily Briefing does not require an LLM. |
+| `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | Optional. Enable Notes space questions, saved-article summaries, weekly Wins summaries, and keyword briefing digests. Example base URL: `https://api.commandcode.ai/provider/v1`. Weather and calendar do not require an LLM. |
+| `BRAVE_SEARCH_API_KEY` | Optional. Enables fresh keyword lookups for Daily Briefing through Brave Search. Topic summaries also require the LLM settings above. Set an environment default or an encrypted override in Settings. |
+| `OWNER_EMAILS` | Comma-separated owner email allowlist, matched against verified human Cloudflare Access JWTs. Required for service connection management; ordinary users, machine identities, and admin-token logins cannot manage keys. |
+| `CONNECTIONS_MASTER_KEY` | Optional until saving connections. Exactly 64 hexadecimal characters (32 random bytes). Encrypts provider overrides at rest; keep a separate secure backup. Existing encrypted data prevents startup if the key is missing/wrong. |
 | `TODOIST_API_TOKEN` | Optional. [Todoist REST API](https://developer.todoist.com/rest/v2/) token for the **Todoist** panel (today/overdue tasks, quick-add, complete). Without it the panel shows a clear disabled message. |
 | `GITHUB_TOKEN` | Optional. Personal access token (classic or fine-grained) for the **GitHub** panel. Public data works without it; the panel degrades gracefully on rate limits. |
 | `GITHUB_USERNAME` | GitHub login for open issues/PRs and public events. Default `kellandamm`. |
@@ -36,6 +39,40 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 | `MCP_MAX_HOBIE_PENDING` | Max pending Hobie tasks (default 20). |
 
 `/healthz` is unauthenticated and returns `{ ok, version }` only.
+
+### Managing service credentials in Settings
+
+Set `OWNER_EMAILS` and `CONNECTIONS_MASTER_KEY` in the deployment, restart, and sign in through Cloudflare Access with an allowed email. Open **Settings > Manage service connections and keys**. The first adapters support AI summaries, Brave Search, GitHub, Todoist, and Recallio (including its optional outbound Access pair). Calendar OAuth and other connectors are separate features, not enabled by storing these keys.
+
+Inputs are write-only: blank preserves the current value. Responses show configured/source metadata, not secret values or existing URLs. Saved fields override their environment defaults; **Remove saved settings** deletes the override and restores defaults. **Disconnect** disables that provider even if environment keys exist. Reconnect retains stored fields. Tests make a bounded request to the selected provider and can consume quota; an access check does not guarantee every operation or model is available.
+
+Credentials are stored separately in `connections.enc.json` using AES-256-GCM with a random nonce and authenticated format version. Ordinary Settings and knowledge exports do not include them. Runtime consumers use the effective configuration without restarting; already-started remote requests cannot be recalled when credentials are disconnected.
+
+Provider URLs entered in Settings must be public HTTPS endpoints without embedded credentials, query strings or fragments. Existing deployment-managed private/local model configurations are not changed, but cannot be introduced through this UI. Outbound network isolation is still recommended because DNS may change between address validation and connection.
+
+**Backup and recovery:** back up the encrypted vault with the data volume and keep the matching master key separately in a secret manager. Restoring the data requires that exact key; there is no recovery backdoor and startup will not silently replace an unreadable vault. Do not publish the key or vault in issues or ordinary workspace exports.
+
+**Rotation:** no online master-key rotation UI is provided yet. To rotate, securely record/retrieve the provider credentials and private subscription URLs from their issuers, stop the application, retain the old encrypted vault and key together as a protected backup, remove only `connections.enc.json`, set a newly generated master key, restart, and re-enter the provider credentials. Remove/reconnect managed ICS subscriptions to restore their private URLs; native calendars/events remain intact. Removing the vault restores environment defaults, so check those before restarting. Revoke provider keys at the issuer if compromised; removing a stored override alone does not revoke its remote credential.
+
+Owner identities, the encryption master key, inbound machine credentials, and authentication/bootstrap settings stay deployment-managed. Do not give agents the owner session or access to the data volume/master key.
+
+### Writing and restoring Notes
+
+Notes now opens in **Write**, a directly editable formatted document. Source, Split, and read-only Preview remain available. Formatting includes headings, emphasis, lists/checklists, quotes, links, code, tables, and undo/redo. Existing wiki links remain connected across formatted edits. Unsupported content such as raw HTML, images, frontmatter or footnotes opens in Source instead of silently losing markup. Markdown remains the stored/exported format; formatted editing may normalize whitespace and Markdown delimiters.
+
+Saved note links use `?note=<id>` and reopen that note. A missing note displays an explicit not-found message rather than selecting an unrelated document. **Version history > Load versions** shows the previous 20 saves per note with text previews and conditional restore. Restoring creates a new save; deleting a note also removes its history. Histories count toward the existing 20 MB knowledge-store limit and are included in JSON backups (Markdown export includes current text only).
+
+**Finding and organizing notes:** the library switches between active, pinned, recently opened (this page session), and archived notes, with tag and Space filters. Open documents appear in up to ten tabs; **Switch note** (`Ctrl/Cmd + K`) searches titles, including archived notes, with arrow-key navigation. Rename directly in the title; move with Note properties. **Document tools** contains pin/archive/restore, duplicate, and meeting/daily-plan/research templates. Templates append to the current note and do not overwrite existing text; the meeting template includes an event-link field. Duplicates are independent, unpinned active notes. Pin/archive changes are versioned and included in JSON backups/history. Archive is an organization filter, not an access-control or AI-retrieval exclusion.
+
+**Editing tools:** type `/` in an empty formatted paragraph to choose a heading, list, checklist, quote, code block, or table. Arrow Down enters the command list; Escape dismisses it without removing the literal slash. **Find & replace** (`Ctrl/Cmd + F`) performs literal, case-sensitive searches in Markdown source and switches to Source to show the selected match. Replacements can affect link URLs and formatting; Replace all asks for confirmation, uses literal replacement text (not regex substitution), and refuses oversized results. Changes use normal autosave/history.
+
+**Recovery and conflicting edits:** browser recovery is off by default. Enable it under **Draft recovery** only on a trusted browser profile: copies are not encrypted and contain private note text. It retains up to 20 drafts/2 MB total for seven days, pruned on the next recovery access. Failed/quota-denied storage is reported explicitly; do not assume a recovery copy exists when a warning is shown. Successfully saved copies are removed, and disabling recovery removes this site's recovery drafts from that profile. Browser drafts are not server backups and do not sync across devices.
+
+Recovering a browser draft never automatically sends it to the server; review and explicitly Save note. Its original base version is retained, so recovery cannot silently overwrite a newer server edit. **Review latest saved version** pauses autosave, displays the server's current Markdown and properties alongside the still-editable draft, and offers **Save reviewed draft** for a manual merge or **Discard draft and use latest**. Both replacement/discard actions require confirmation. Saving checks the exact reviewed version again; a further concurrent edit still returns a conflict. Close comparison keeps autosave paused until an explicit save. Initial load failures expose a retry action instead of leaving disabled controls without recovery.
+
+The editor sends a version with each update; a conflicting save returns HTTP 409 without replacing the draft. Copy your draft before reloading and merge it with the latest version. Legacy clients that omit the version retain their existing behavior, but their writes advance versions so the editor detects them. Autosave still requires server connectivity; this is not a full offline editor.
+
+Build before running the Notes browser checks or starting development with formatted editing: `pnpm --filter @homepage/server build`. The production server embeds the browser editor bundle, so no CDN or additional runtime files are needed.
 
 ### MCP and webhooks
 
@@ -106,11 +143,13 @@ The search accepts JSON either as an array of hits or as `{ results | items | me
 
 - `settings.json` — daily briefing time, sidebar tabs, and view preferences
 - `rss.sqlite` — Board cards/events and Wins, including weekly summaries (WAL mode); legacy starred articles and summaries are copied into Read later at startup without modifying the original tables
-- `daily-briefings/` — per-day calendar, weather, tasks, GitHub, Board activity, and Wins snapshots
+- `daily-briefings/` — per-day calendar, weather, and keyword digest snapshots (older files are preserved)
 - `state.json` — scheduler timestamps
 - `capture-access.json` — SHA-256 hash of the Chrome capture token (create or revoke it at `/settings/capture`)
 - `knowledge.json` — individual Markdown notes, captured links, tags, and personal spaces
 - `bookmarks.json` — separate bookmark groups, ordered links, and launchpad layout preferences
+- `calendars.json` — managed calendar metadata, native events/recurrence, versions, and hashes of opt-in sharing keys (not private feed URLs)
+- `connections.enc.json` — encrypted service overrides and private subscription URLs; restore together with the separately backed-up `CONNECTIONS_MASTER_KEY`
 - `notes.md` — legacy plain-Markdown Notes file; its contents are copied into the knowledge store on first startup and the original file is kept as a backup
 - `panel-updates.json` — **Activity** panel (agent updates via MCP/webhook)
 - `hobie-queue.json` — **Hobie queue** (tasks for the owner assistant)
@@ -119,7 +158,13 @@ Back up the volume to keep Board, Wins, briefings, and personal knowledge. The N
 
 ### Daily Briefing and removed integrations
 
-Settings controls the daily briefing time (default `06:00`, using `TZ`). The briefing retains calendar, weather, Todoist tasks, GitHub activity, Board blockers/moves, and yesterday's wins. It does not fetch news or request AI news summaries.
+Settings controls the daily briefing time (default `06:00`, using `TZ`). Daily Briefing contains weather, calendar, and a keyword digest. Todoist, GitHub activity, and Agent board/wins sections are no longer generated or displayed in briefings; the separate Agent workflows remain unchanged.
+
+In **Settings → Briefing topics**, enter one keyword or phrase per line (up to 10, each 120 characters). Topics are shared server settings, saved in `settings.json`. Clear the field to disable keyword lookups. Set `BRAVE_SEARCH_API_KEY` and the three `LLM_*` variables in the deployment environment, then recreate the container (for Compose, `docker compose up -d`). Settings reports whether those providers are configured without exposing keys.
+
+Each scheduled edition searches Brave's web index for results from the past 24 hours and summarizes up to three distinct sources per topic using their search excerpts, not full articles. Digests include numbered source links. Keywords go to Brave; keywords and returned excerpts go to your configured LLM provider. Provider quotas, charges, and occasional incomplete indexing apply. No RSS subscriptions are created, and results are not automatically added to Read Later.
+
+Saved topics apply to the next daily run. **Refresh edition** starts a background lookup and replaces today's snapshot; the page checks progress without keeping a long HTTP request open. Concurrent refreshes share one generation. Empty searches and per-topic errors are displayed explicitly, with source links retained if summarization fails. Scheduled source errors retry once after 30 minutes. Old archive files are not rewritten, and removed sections are omitted when they are read. The page opens today's date in the configured timezone, even if no edition exists yet, rather than silently opening an old edition.
 
 RSS/OPML import and polling, article actions, legacy Summaries APIs, and AI Security publishing/archive APIs have been removed, including their scheduled jobs and publish-only credentials. News and Summaries page URLs redirect to filtered views in Read Later. Remove obsolete `AI_SECURITY_TOKEN` values from deployment secrets and stop any external jobs posting roundups; those API endpoints now return 404 for authenticated requests.
 
@@ -149,13 +194,21 @@ Questions in the Assistant, a space, or a saved page use the configured LLM and 
 
 ### Calendar workspace
 
-The read-only `/calendar` workspace is inspired by Fantastical's information layout: mini-month navigation, a period agenda, Day/Week/Month views, a Today shortcut, event search, and color-coded calendar filters. Choose an event to read its dates, location, description, and optional HTTP/HTTPS event link. Existing `ICS_URLS` and `ICS_LOCAL_FILES` subscriptions remain the data source; configure calendars on the server rather than inside the page. Calendar names use `X-WR-CALNAME` when supplied, with generic names as fallback.
+The `/calendar` workspace has mini-month navigation, a period agenda, Day/Week/Month views, a Today shortcut, event search, and color-coded calendar filters. **Settings > Calendars** adds named/color-coded Command Center calendars or existing HTTPS ICS subscriptions. Deployment-managed `ICS_URLS` and `ICS_LOCAL_FILES` continue to work. Private subscription URLs require the encrypted connection vault and are never returned in metadata, errors, or ordinary exports.
+
+**New event** creates a native event; select a native event and choose **Edit event** to change or delete it. These mutations require a verified owner login, not an admin/machine token. Events support explicit IANA timezones, all-day exclusive end dates, location/description, and optional Note/Space links. Daily, weekly, and monthly repeats require an end date within 366 days. Edits/deletions affect the whole series; monthly overflow dates and nonexistent spring-forward times are skipped, while repeated fall-back times use the earlier occurrence. Timed recurrence preserves the start wall time and elapsed duration. Concurrent edits return a conflict without overwriting the form's draft. Notes links and the shared Calendar/Dashboard/Briefing service use the same native records.
+
+Native calendars can import up to 100 explicit non-recurring events per `.ics` file (1 MB), with duplicate title/start pairs skipped. Imports reject invalid dates, cancelled events, unsupported recurrence/duration-only events, and missing timed end dates without partial writes. Export downloads all native events, including paused calendars; bounded recurrence is exported as explicit occurrences so external clients do not shift local start times across DST.
+
+Read-only sharing is **off by default**. Enabling sharing returns a bearer-capability URL once; anyone holding it can read every event's title, location, and description in that native calendar. Only its SHA-256 hash is stored. Replace or revoke the link in Settings; pausing a calendar suspends the feed until re-enabled. External applications may cache already-downloaded events and refresh slowly. Provider calendars are never republished automatically.
+
+Behind Cloudflare Access, configure an edge exception **only** for `/feeds/calendars/*.ics` if external clients must subscribe. The app independently validates the calendar/token and returns 404 for absent or revoked capabilities. Never bypass authentication for the whole app. Redact query strings in reverse-proxy/edge logs, protect copied subscription links like credentials, and remember that downloaded exports may contain private event text. Ordinary Notes backups do not include calendars or encrypted connection data; back up the data volume and master key separately.
 
 Dates and times use the server's `TZ` (shown above the calendar), including each event's `TZID` when supplied. All-day and overnight events span their occupied dates; all-day `DTEND` is exclusive. Week starts follow Settings' existing Monday/Sunday preference. Week/day timelines display overlapping events side by side; small screens scroll the timeline horizontally and keep an agenda above it. Calendar filters and the selected view are temporary page state.
 
 The page requests the displayed date range, including past dates, rather than the dashboard's default 12 upcoming events. `/api/calendar?start=YYYY-MM-DD&end=YYYY-MM-DD` accepts an exclusive end date, at most 62 days, and returns at most 2,000 events with an explicit truncation warning. The dashboard's existing horizon-based API remains compatible. Failed feeds and refresh failures are shown explicitly.
 
-This is not a Fantastical service integration: event creation/editing, account synchronization, scheduling, and natural-language entry are not included. The existing lightweight ICS parser reads explicit VEVENT occurrences; it does not expand RRULE recurrence rules. Use feeds that include individual occurrences when recurring instances are needed. Run `pnpm --filter @homepage/server test:calendar-browser` for the dedicated browser regression.
+Google OAuth/two-way synchronization, task time-blocking, agent schedules, and natural-language entry are not implemented yet. ICS subscriptions remain read-only; the lightweight parser reads explicit VEVENT occurrences and does not expand external RRULE series. Use feeds with individual occurrences when recurring instances are needed. Native recurrence is handled by the managed calendar store. Run `pnpm --filter @homepage/server test:calendar-browser` for the calendar-view and native-editing browser regressions (set `BROWSER_CHANNEL=msedge` when using installed Edge).
 
 ### Bookmarks launchpad
 
