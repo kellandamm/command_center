@@ -16,6 +16,7 @@ export async function handleCalendarRoutes(
   };
   const method = req.method ?? "GET";
   if (method === "GET" && path === "/api/calendars") return json(200, { ...calendar.status(), canManage: owner });
+  if (method === "GET" && path === "/api/calendars/planning") return json(200, { ...calendar.planning(), canManage: owner });
   if (method === "GET" && path === "/api/google-calendar/calendars") {
     return json(200, await calendar.googleCalendars());
   }
@@ -97,6 +98,11 @@ export async function handleCalendarRoutes(
     return true;
   }
   if (!owner) return json(403, { error: "Calendar changes require a verified owner login through Cloudflare Access. Machine/admin tokens cannot modify calendars." });
+  if (method === "POST" && path === "/api/calendar-events/preview") {
+    const body = object(await readBody(req, 30_000));
+    if (body.id !== undefined && (typeof body.id !== "string" || !/^[a-zA-Z0-9-]+$/.test(body.id))) throw new ValidationError("Invalid native event ID");
+    return json(200, await calendar.preview(body, body.id as string | undefined));
+  }
   if (method === "POST" && path === "/api/calendars") {
     const entry = await calendar.create(await readBody(req, 10_000));
     return json(201, { calendar: entry });

@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { DATABASE_FILE, initSchema } from "../database";
 import type { HobieQueueStore, HobieTask } from "../stores/hobie-queue";
 import type { WinsStore } from "../wins/store";
+import { validDay } from "../calendar/store";
 import {
   BOARD_COLUMNS,
   type BoardCard,
@@ -13,6 +14,22 @@ import {
   WAITING,
   type CardMoveEvent,
 } from "./types";
+
+export class BoardConflictError extends Error {}
+export interface CardPlanningInput {
+  estimatedMinutes?: unknown;
+  dueDate?: unknown;
+  priority?: unknown;
+}
+function cardPlanning(input: CardPlanningInput, card?: BoardCard) {
+  const estimatedMinutes = input.estimatedMinutes === undefined ? card?.estimatedMinutes ?? null : input.estimatedMinutes;
+  const dueDate = input.dueDate === undefined ? card?.dueDate ?? null : input.dueDate;
+  const priority = input.priority === undefined ? card?.priority ?? "normal" : input.priority;
+  if (estimatedMinutes !== null && (typeof estimatedMinutes !== "number" || !Number.isInteger(estimatedMinutes) || estimatedMinutes < 1 || estimatedMinutes > 1440)) throw new Error("Estimate must be a whole number of minutes from 1 to 1440, or null");
+  if (dueDate !== null && !validDay(dueDate)) throw new Error("Due date must be a real YYYY-MM-DD date, or null");
+  if (priority !== "low" && priority !== "normal" && priority !== "high") throw new Error("Priority must be low, normal, or high");
+  return { estimatedMinutes, dueDate, priority };
+}
 
 const MAX_TITLE = 200;
 const MAX_NOTES = 8_000;
@@ -31,6 +48,10 @@ function rowToCard(r: Record<string, unknown>): BoardCard {
     hobieTaskId: r.hobie_task_id ? String(r.hobie_task_id) : null,
     createdAt: String(r.created_at),
     updatedAt: String(r.updated_at),
+    estimatedMinutes: r.estimated_minutes == null ? null : Number(r.estimated_minutes),
+    dueDate: r.due_date == null ? null : String(r.due_date),
+    priority: String(r.priority) as BoardCard["priority"],
+    version: Number(r.version),
   };
 }
 
@@ -78,19 +99,26 @@ export class BoardStore {
     return r ? rowToCard(r) : undefined;
   }
 
-  updateMeta(id: string, opts: { title?: string; notes?: string }): BoardCard | undefined {
+  checkVersion(id: string, expected: unknown): void {
+    const card = this.get(id);
+    if (!card || expected !== card.version) throw new BoardConflictError("This Board card changed elsewhere. Refresh before editing; your changes have not been applied.");
+  }
+
+  updateMeta(id: string, opts: { title?: string; notes?: string } & CardPlanningInput): BoardCard | undefined {
     const card = this.get(id);
     if (!card) return undefined;
     const title = opts.title !== undefined ? String(opts.title).trim().slice(0, MAX_TITLE) : card.title;
     if (!title) throw new Error("title is required");
     let notes = opts.notes !== undefined ? String(opts.notes).trim() : card.notes;
     if (notes.length > MAX_NOTES) notes = notes.slice(0, MAX_NOTES);
+    const planning = cardPlanning(opts, card);
     const now = new Date().toISOString();
-    this.db.prepare(`UPDATE cards SET title = ?, notes = ?, updated_at = ? WHERE id = ?`).run(title, notes, now, id);
+    this.db.prepare(`UPDATE cards SET title = ?, notes = ?, estimated_minutes = ?, due_date = ?, priority = ?, version = version + 1, updated_at = ? WHERE id = ?`)
+      .run(title, notes, planning.estimatedMinutes, planning.dueDate, planning.priority, now, id);
     return this.get(id);
   }
 
-  create(opts: { title: string; notes?: string; column?: BoardColumn }): BoardCard {
+  create(opts: { title: string; notes?: string; column?: BoardColumn } & CardPlanningInput): BoardCard {
     const title = String(opts.title ?? "").trim().slice(0, MAX_TITLE);
     if (!title) throw new Error("title is required");
     let notes = String(opts.notes ?? "").trim();
@@ -99,12 +127,13 @@ export class BoardStore {
     const now = new Date().toISOString();
     const position = this.nextPosition(column);
     const id = randomUUID();
+    const planning = cardPlanning(opts);
     this.db
       .prepare(
-        `INSERT INTO cards (id, title, notes, column, position, hobie_task_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`,
+        `INSERT INTO cards (id, title, notes, column, position, hobie_task_id, created_at, updated_at, estimated_minutes, due_date, priority)
+         VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
       )
-      .run(id, title, notes, column, position, now, now);
+      .run(id, title, notes, column, position, now, now, planning.estimatedMinutes, planning.dueDate, planning.priority);
     if (column !== "Backlog") this.recordEvent(id, null, column, now);
     return this.get(id)!;
   }
@@ -140,7 +169,7 @@ export class BoardStore {
 
     const position = opts.position ?? this.nextPosition(toColumn, id);
     this.db
-      .prepare(`UPDATE cards SET column = ?, position = ?, hobie_task_id = ?, updated_at = ? WHERE id = ?`)
+      .prepare(`UPDATE cards SET column = ?, position = ?, hobie_task_id = ?, updated_at = ?, version = version + 1 WHERE id = ?`)
       .run(toColumn, position, hobieTaskId, now, id);
 
     if (fromCol !== toColumn) this.recordEvent(id, fromCol, toColumn, now);
@@ -162,7 +191,7 @@ export class BoardStore {
       .get(READY_FOR_HOBIE, task.title) as Record<string, unknown> | undefined;
     if (!row) return undefined;
     const at = new Date().toISOString();
-    this.db.prepare(`UPDATE cards SET hobie_task_id = ?, updated_at = ? WHERE id = ?`).run(task.id, at, String(row.id));
+    this.db.prepare(`UPDATE cards SET hobie_task_id = ?, updated_at = ?, version = version + 1 WHERE id = ?`).run(task.id, at, String(row.id));
     return this.get(String(row.id));
   }
 

@@ -22,6 +22,10 @@ export interface BoardCard {
   hobieTaskId: string | null;
   createdAt: string;
   updatedAt: string;
+  estimatedMinutes: number | null;
+  dueDate: string | null;
+  priority: "low" | "normal" | "high";
+  version: number;
 }
 
 export interface CardMoveEvent {
