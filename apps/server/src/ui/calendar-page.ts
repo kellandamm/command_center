@@ -1,6 +1,7 @@
 import type { NavLink } from "./layout";
 import { page } from "./layout";
 import { calendarScript } from "./calendar-script";
+import { calendarPlanningScript } from "./calendar-planning-script";
 
 export function calendarPage(nav?: NavLink[]): string {
   return page({
@@ -22,6 +23,15 @@ export function calendarPage(nav?: NavLink[]): string {
     <p class="dim calendar-hint">Add calendars and subscriptions in Settings. Colors identify each calendar.</p>
     <div class="calendar-agenda-head"><h2 id="cal-agenda-title">Agenda</h2><span id="cal-agenda-count" class="dim"></span></div>
     <div id="cal-agenda" class="calendar-agenda"></div>
+    <section class="calendar-task-inbox" aria-labelledby="cal-task-heading">
+      <h2 id="cal-task-heading">Task inbox</h2>
+      <p class="calendar-hint dim">Your Board cards, not a second task list. Unscheduled means no remaining block on an enabled native calendar. Deadlines are not reservations.</p>
+      <p id="cal-task-status" role="status" class="dim">Loading tasks...</p>
+      <button id="cal-task-refresh" type="button" class="ghost">Refresh tasks</button>
+      <div id="cal-tasks"></div>
+      <form id="cal-task-capture"><label for="cal-task-title">Quick capture to Board</label><input id="cal-task-title" required maxlength="200" placeholder="Task title"><button type="submit">Add task</button></form>
+      <a href="/agent?view=board">Open Board</a>
+    </section>
   </aside>
   <section class="calendar-main" aria-label="Calendar view">
     <div class="calendar-toolbar">
@@ -44,6 +54,14 @@ export function calendarPage(nav?: NavLink[]): string {
 <style>
 .calendar-app{--calendar-red:#c93d48;--calendar-blue:#2767ad;--calendar-green:#29805c;--calendar-purple:#8150b0;--calendar-orange:#a66217;--calendar-teal:#237b88}
 .calendar-app [hidden]{display:none!important}
+.calendar-task-inbox{margin-top:1.5rem;border-top:1px solid var(--border);padding-top:1rem;min-width:0}
+.calendar-task-inbox h2{font-size:1rem}.calendar-task-inbox p,.calendar-task-inbox a,.calendar-task-inbox summary{font-size:.75rem;overflow-wrap:anywhere}
+.calendar-task-inbox a{display:block;text-decoration:underline;margin:.4rem 0}
+#cal-tasks{max-height:30rem;overflow:auto}
+.calendar-task-inbox summary{cursor:pointer;padding:.6rem 0}.calendar-task-inbox input{width:100%;min-width:0}
+.calendar-task{padding:.75rem 0;border-bottom:1px solid var(--border);overflow-wrap:anywhere}.calendar-task strong{font-size:.8rem}.calendar-task p{margin:.4rem 0;color:var(--dim)}
+.calendar-task-inbox form{margin:1rem 0}.calendar-task-inbox button{font-size:.75rem}
+@media(max-width:700px){.calendar-task-inbox{grid-column:1/-1}}
 html.dark .calendar-app{--calendar-red:#f3838b;--calendar-blue:#82b5f0;--calendar-green:#7dcc9e;--calendar-purple:#bd9beb;--calendar-orange:#eab576;--calendar-teal:#7ec7d0}
 .calendar-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin:0 0 1.5rem}
 .calendar-header p{font-size:.8rem;margin:.4rem 0 0}.calendar-header .calendar-eyebrow{font-size:.65rem;letter-spacing:.15em;margin:0 0 .5rem}
@@ -101,6 +119,6 @@ html.dark .calendar-app{--calendar-red:#f3838b;--calendar-blue:#82b5f0;--calenda
 @media(max-width:1050px){.calendar-workspace{grid-template-columns:12rem minmax(0,1fr)}.calendar-rail{padding:.75rem}.calendar-navigation h2{font-size:.85rem}}
 @media(max-width:700px){.calendar-workspace{grid-template-columns:minmax(0,1fr)}.calendar-rail{border-right:0;border-bottom:1px solid var(--border);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.25rem 1rem}.calendar-mini-header,.calendar-mini{grid-column:1}.calendar-rail>label,.calendar-rail>input,.calendar-rail-heading,#cal-sources,.calendar-rail>.calendar-hint{grid-column:2}.calendar-rail>label{grid-row:1;margin:0}.calendar-rail>input{grid-row:2;align-self:start}.calendar-rail-heading{margin:.5rem 0}.calendar-agenda-head,.calendar-agenda{grid-column:1/-1}.calendar-agenda{max-height:12rem}.calendar-toolbar{padding:.75rem}.calendar-view{max-height:65vh}.calendar-status-row{flex-wrap:wrap}}
 </style>`,
-    script: calendarScript,
+    script: calendarScript + calendarPlanningScript,
   });
 }

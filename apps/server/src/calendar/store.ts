@@ -164,6 +164,9 @@ export class CalendarStore {
     const body = object(input);
     return this.commit((next) => this.prepareEvent(next, body, id));
   }
+  previewEvent(input: unknown, id?: string): StoredEvent {
+    return this.prepareEvent(structuredClone(this.data), object(input), id);
+  }
   importEvents(calendarId: string, events: Record<string, unknown>[]): Promise<{ imported: number }> {
     return this.commit((next) => {
       let imported = 0;
@@ -187,6 +190,7 @@ export class CalendarStore {
       if (typeof body.allDay !== "boolean") throw new ValidationError("allDay must be boolean");
       const allDay = body.allDay;
       const timezone = calendarText(body.timezone, "Timezone", 100, true);
+      if (/^[+-]/.test(timezone)) throw new ValidationError("Timezone must be a valid IANA zone, not a fixed numeric offset");
       try { new Intl.DateTimeFormat("en-US", { timeZone: timezone }); }
       catch { throw new ValidationError("Timezone must be a valid IANA zone"); }
       const wallTime = (value: unknown): string => {

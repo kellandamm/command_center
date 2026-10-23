@@ -54,6 +54,8 @@ function renderBoard(){
       return '<li class="board-card" draggable="true" data-id="'+esc(c.id)+'">'
         +'<p class="board-card-title">'+esc(c.title)+'</p>'
         +(c.notes?'<p class="board-card-notes">'+esc(c.notes)+'</p>':'')
+        +'<p class="board-card-notes">'+esc((c.estimatedMinutes?c.estimatedMinutes+" min · ":"")+c.priority+(c.dueDate?" · Due "+c.dueDate:""))+'</p>'
+        +'<a href="/calendar/event?task='+encodeURIComponent(c.id)+'">Plan / edit task</a>'
         +'<label class="visually-hidden" for="move-'+esc(c.id)+'">Move card</label>'
         +'<select class="board-card-move" id="move-'+esc(c.id)+'" data-id="'+esc(c.id)+'">'+opts+'</select></li>';
     }).join("");
@@ -85,11 +87,12 @@ function renderBoard(){
   });
 }
 function moveCard(id,column){
-  return api("/api/board/cards","PATCH",{id:id,column:column}).then(function(r){
+  var card=boardCards.find(function(c){return c.id===id;});
+  return api("/api/board/cards","PATCH",{id:id,column:column,expectedVersion:card&&card.version}).then(function(r){
     boardCards=boardCards.map(function(c){return c.id===r.card.id?r.card:c});
     if(!boardCards.some(function(c){return c.id===r.card.id}))boardCards.push(r.card);
     renderBoard();
-  });
+  }).catch(function(error){alert(error.message||"Could not move card. Refresh before retrying.");});
 }
 function loadBoard(){
   return api("/api/board/cards").then(function(r){

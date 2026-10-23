@@ -12,7 +12,7 @@
     "test": "tsx --test test/*.test.ts",
     "test:notes-browser": "node scripts/build.mjs && tsx --test --test-concurrency=1 test/notes.browser.ts test/notes-productivity.browser.ts",
     "test:bookmarks-browser": "tsx --test test/bookmarks.browser.ts",
-    "test:calendar-browser": "tsx --test --test-concurrency=1 test/calendar.browser.ts test/calendar-managed.browser.ts",
+    "test:calendar-browser": "tsx --test --test-concurrency=1 test/calendar.browser.ts test/calendar-managed.browser.ts test/calendar-planning.browser.ts",
     "test:personal-dashboard-browser": "tsx --test test/personal-dashboard.browser.ts",
     "test:read-later-browser": "tsx --test test/read-later.browser.ts",
     "seed:dashboard-screenshot": "tsx scripts/seed-dashboard-screenshot.ts",

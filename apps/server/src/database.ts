@@ -43,4 +43,13 @@ export function initSchema(db: DatabaseSync): void {
       created_at TEXT NOT NULL
     );
   `);
+  const columns = new Set((db.prepare("PRAGMA table_info(cards)").all() as { name: string }[]).map((row) => row.name));
+  for (const [name, definition] of [
+    ["estimated_minutes", "INTEGER"],
+    ["due_date", "TEXT"],
+    ["priority", "TEXT NOT NULL DEFAULT 'normal'"],
+    ["version", "INTEGER NOT NULL DEFAULT 1"],
+  ] as const) {
+    if (!columns.has(name)) db.exec(`ALTER TABLE cards ADD COLUMN ${name} ${definition}`);
+  }
 }

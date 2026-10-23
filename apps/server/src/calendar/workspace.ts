@@ -1,7 +1,7 @@
 import type { Config } from "../config";
 import type { ConnectionsStore } from "../connections";
 import { fetchCalendarEvents, type CalendarSnapshot } from "./service";
-import { CalendarStore, calendarText, object, type CalendarRange } from "./store";
+import { CalendarStore, CalendarConflictError, calendarLocalInstant, calendarText, object, zonedParts, type CalendarRange } from "./store";
 import { parseIcsEvents, type CalendarEvent } from "./parse-ics";
 import { ValidationError } from "../settings";
 import { assertPublicUrl } from "../ssrf";
@@ -38,6 +38,78 @@ export class CalendarWorkspace {
     };
   }
   async snapshotGoogle(options: CalendarRange) { return this.google.snapshot(options); }
+  planning() {
+    const now = Date.now();
+    const calendars = this.store.list();
+    const blocks = this.store.events().filter((event) => event.taskId).map((event) => ({
+      ...event, enabled: calendars.some((calendar) => calendar.id === event.calendarId && calendar.enabled),
+      orphaned: !this.references?.board.get(event.taskId!),
+    }));
+    const linked = new Map(blocks.map((event) => [event.id, event]));
+    const hasRemainingTime = (end: string, allDay: boolean, timezone: string) =>
+      allDay ? zonedParts(new Date(now).toISOString(), timezone).day < end : Date.parse(end) > now;
+    const remaining = new Set(this.store.occurrences(new Date(now - 2 * 86_400_000), new Date(now + 367 * 86_400_000))
+      .filter((event) => {
+        const block = linked.get(event.eventId!);
+        return block && event.end && hasRemainingTime(event.allDay ? event.end.toISOString().slice(0, 10) : event.end.toISOString(), event.allDay, block.timezone);
+      }).map((event) => event.eventId));
+    return {
+      cards: (this.references?.board.list() ?? []).map((card) => ({
+        ...card, scheduled: blocks.some((event) => event.taskId === card.id && event.enabled && (hasRemainingTime(event.end, event.allDay, event.timezone) || remaining.has(event.id))),
+      })),
+      blocks, timezone: this.cfg.tz,
+    };
+  }
+  private nativeDraft(input: unknown, id?: string) {
+    const body = { ...object(input) };
+    if (body.taskId) {
+      const task = this.references?.board.get(calendarText(body.taskId, "taskId", 100, true));
+      if (!task) throw new ValidationError("Linked task no longer exists. Clear or change that link before saving.");
+      if (body.expectedTaskVersion !== task.version) throw new CalendarConflictError("This Board task changed elsewhere. Refresh before scheduling; your changes have not been applied.");
+    }
+    if (body.durationMinutes !== undefined) {
+      const duration = body.durationMinutes;
+      if (typeof duration !== "number" || !Number.isInteger(duration) || duration < 1 || duration > 1440 || body.allDay !== false) throw new ValidationError("Timed block duration must be a whole number of minutes from 1 to 1440");
+      const timezone = calendarText(body.timezone, "Timezone", 100, true);
+      try { new Intl.DateTimeFormat("en-US", { timeZone: timezone }); }
+      catch { throw new ValidationError("Timezone must be a valid IANA zone"); }
+      if (typeof body.localStart !== "string" || !/^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(body.localStart)) throw new ValidationError("Enter a valid local start");
+      const at = calendarLocalInstant(body.localStart.slice(0, 10), body.localStart.slice(11), timezone);
+      if (!at) throw new ValidationError("That local time does not exist because of a timezone clock change. Choose another time.");
+      body.end = new Date(at.getTime() + duration * 60_000).toISOString();
+      delete body.localEnd;
+    }
+    return this.store.previewEvent(body, id);
+  }
+  async preview(input: unknown, id?: string) {
+    const body = object(input);
+    const event = this.nativeDraft(body, id);
+    const from = event.allDay ? calendarLocalInstant(event.start, "00:00", event.timezone) : new Date(event.start);
+    const to = event.allDay ? calendarLocalInstant(event.end, "00:00", event.timezone) : new Date(event.end);
+    if (!from || !to) throw new ValidationError("The selected day boundary does not exist in this timezone");
+    const buffer = body.bufferMinutes ?? 0, workStart = body.workStart ?? "09:00", workEnd = body.workEnd ?? "17:00";
+    if (typeof buffer !== "number" || !Number.isInteger(buffer) || buffer < 0 || buffer > 120) throw new ValidationError("Buffer must be 0 to 120 whole minutes");
+    const validTime = (value: unknown): value is string => typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+    if (!validTime(workStart) || !validTime(workEnd) || workEnd <= workStart) throw new ValidationError("Working hours must be valid same-day start/end times");
+    // All-day dates occupy local days, although feed parsers represent them at UTC midnight.
+    const snapshot = await this.snapshot({ rangeStart: new Date(from.getTime() - buffer * 60_000 - 86_400_000), rangeEnd: new Date(to.getTime() + buffer * 60_000 + 86_400_000), limit: 10_000 });
+    const overlaps = snapshot.events.filter((row) => {
+      if (row.eventId === id) return false;
+      const start = row.allDay ? calendarLocalInstant(row.start.toISOString().slice(0, 10), "00:00", event.timezone) : row.start;
+      const end = row.allDay && row.end ? calendarLocalInstant(row.end.toISOString().slice(0, 10), "00:00", event.timezone) : row.end;
+      return start && end && start.getTime() < to.getTime() + buffer * 60_000 && end.getTime() > from.getTime() - buffer * 60_000;
+    });
+    const warnings: string[] = [];
+    if (overlaps.length) warnings.push(`${overlaps.length} event(s) overlap this time or its buffer: ${overlaps.slice(0, 5).map((row) => row.summary).join(", ")}`);
+    const start = zonedParts(new Date(from.getTime() - buffer * 60_000).toISOString(), event.timezone);
+    const end = zonedParts(new Date(to.getTime() + buffer * 60_000).toISOString(), event.timezone);
+    const weekday = new Date(start.day + "T12:00:00Z").getUTCDay();
+    if (event.allDay || start.day !== end.day || start.time < workStart || end.time > workEnd || weekday === 0 || weekday === 6) warnings.push("Outside the preview's Monday-Friday working hours.");
+    if (snapshot.truncated || snapshot.feeds.some((feed) => !feed.ok)) warnings.push("Availability is incomplete: a calendar is unavailable or results are limited. Check your other calendars before saving.");
+    if (snapshot.events.some((row) => !row.end)) warnings.push("Availability is incomplete: some events have no end time.");
+    if (event.recurrence !== "none") warnings.push("Availability preview checks only the first occurrence, not the entire series.");
+    return { event, warnings };
+  }
   async saveEvent(input: unknown, id?: string) {
     const body = object(input);
     if (id?.startsWith("google-") || (typeof body.calendarId === "string" && body.calendarId.startsWith("google-"))) {
@@ -52,7 +124,8 @@ export class CalendarWorkspace {
         : key === "spaceId" ? this.references?.notes.getSpace(value) : this.references?.board.get(value);
       if (!found) throw new ValidationError(`Linked ${key === "noteId" ? "note" : key === "spaceId" ? "Space" : "task"} no longer exists. Clear or change that link before saving.`);
     }
-    return this.store.saveEvent(body, id);
+    const event = this.nativeDraft(body, id);
+    return this.store.saveEvent({ ...event, expectedVersion: body.expectedVersion }, id);
   }
   async event(id: string) {
     return id.startsWith("google-") ? (await this.google.event(id)).event : this.store.event(id);
