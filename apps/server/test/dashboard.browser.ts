@@ -128,3 +128,109 @@ test("dashboard v1 panels load in browser", { timeout: 120_000 }, async () => {
     await rm(dataDir, { recursive: true, force: true });
   }
 });
+
+async function panelOverlaps(page: import("playwright").Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const items = Array.from(document.querySelectorAll("#dashboard-grid .dashboard-item"));
+    const boxes = items.map((el) => {
+      const r = el.getBoundingClientRect();
+      return {
+        id: el.getAttribute("data-panel-id") ?? "",
+        left: r.left,
+        top: r.top,
+        right: r.right,
+        bottom: r.bottom,
+      };
+    });
+    const hits: string[] = [];
+    const gap = 0.5;
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i];
+        const b = boxes[j];
+        const overlap =
+          a.left < b.right - gap &&
+          a.right > b.left + gap &&
+          a.top < b.bottom - gap &&
+          a.bottom > b.top + gap;
+        if (overlap) hits.push(`${a.id}×${b.id}`);
+      }
+    }
+    return hits;
+  });
+}
+
+test("dashboard packed desktop: drag, keyboard, resize, and viewport reflow", { timeout: 120_000 }, async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "cc-dash-packed-edit-"));
+  const port = 4600 + Math.floor(Math.random() * 500);
+  const base = `http://127.0.0.1:${port}`;
+  await new Promise<void>((resolve, reject) => {
+    const seed = spawn("pnpm", ["exec", "tsx", "scripts/seed-dashboard-screenshot.ts"], {
+      cwd: join(import.meta.dirname, ".."),
+      env: { ...process.env, DATA_DIR: dataDir },
+      stdio: "inherit",
+    });
+    seed.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`seed ${code}`))));
+  });
+  const app = startServer(dataDir, port);
+  const browser = await chromium.launch();
+  try {
+    await waitForServer(base);
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    await page.goto(`${base}/`);
+    await page.waitForSelector("#dashboard-grid.is-packed", { timeout: 20_000 });
+    await page.waitForSelector("#panel-tasks", { timeout: 20_000 });
+
+    const tasksHandle = page.locator('[data-panel-id="tasks"] .dashboard-drag-handle');
+    const tasksY0 = Number(await page.locator('[data-panel-id="tasks"]').getAttribute("data-logical-y"));
+    const tBox = await tasksHandle.boundingBox();
+    assert.ok(tBox);
+    await page.mouse.move(tBox.x + tBox.width / 2, tBox.y + tBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(tBox.x + tBox.width / 2, tBox.y + 220, { steps: 15 });
+    await page.mouse.up();
+    await page.waitForFunction(
+      (start) => Number(document.querySelector('[data-panel-id="tasks"]')?.getAttribute("data-logical-y")) > start,
+      tasksY0,
+      { timeout: 3000 },
+    );
+    const tasksYDrag = Number(await page.locator('[data-panel-id="tasks"]').getAttribute("data-logical-y"));
+    assert.ok(tasksYDrag > tasksY0, `drag should increase logical y (${tasksY0} -> ${tasksYDrag})`);
+
+    await tasksHandle.focus();
+    const tasksYKey0 = Number(await page.locator('[data-panel-id="tasks"]').getAttribute("data-logical-y"));
+    await page.keyboard.press("ArrowDown");
+    await page.waitForFunction(
+      (start) => Number(document.querySelector('[data-panel-id="tasks"]')?.getAttribute("data-logical-y")) > start,
+      tasksYKey0,
+      { timeout: 3000 },
+    );
+    const tasksY1 = Number(await page.locator('[data-panel-id="tasks"]').getAttribute("data-logical-y"));
+    assert.ok(tasksY1 > tasksYKey0, `ArrowDown should increase logical y (${tasksYKey0} -> ${tasksY1})`);
+
+    const tasksH0 = Number(
+      await page.locator('[data-panel-id="tasks"]').getAttribute("data-logical-h"),
+    );
+    const resize = page.locator('[data-panel-id="tasks"] .dashboard-resize');
+    const rBox = await resize.boundingBox();
+    assert.ok(rBox);
+    await page.mouse.move(rBox.x + rBox.width / 2, rBox.y + rBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(rBox.x + rBox.width / 2, rBox.y + 80, { steps: 8 });
+    await page.mouse.up();
+    await sleep(450);
+    const tasksH1 = Number(
+      await page.locator('[data-panel-id="tasks"]').getAttribute("data-logical-h"),
+    );
+    assert.ok(tasksH1 > tasksH0, `resize should increase logical h (${tasksH0} -> ${tasksH1})`);
+
+    await page.setViewportSize({ width: 1100, height: 800 });
+    await sleep(300);
+    const overlaps = await panelOverlaps(page);
+    assert.deepEqual(overlaps, [], `viewport resize should not overlap panels: ${overlaps.join(", ")}`);
+  } finally {
+    await browser.close();
+    app.kill("SIGTERM");
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});

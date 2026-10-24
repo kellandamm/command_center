@@ -148,16 +148,9 @@ ${DASHBOARD_GRID_LAYOUT_HELPERS}
   }
   function rowIndexFromY(clientY,gridTop,m){
     var y=clientY-gridTop;
-    if(!isStacked()&&lastPack){
-      var best=0,bestDist=1e9;
-      readLayout().panels.forEach(function(p){
-        var rect=lastPack.rects[p.id];
-        if(!rect)return;
-        var mid=rect.top+rect.height*0.5;
-        var dist=Math.abs(y-mid);
-        if(dist<bestDist){bestDist=dist;best=p.y;}
-      });
-      return Math.max(0,best);
+    if(!isStacked()){
+      var maxEnd=parseInt(grid.dataset.maxEnd||"8",10)||8;
+      return Math.max(0,Math.min(maxEnd-1,Math.floor(y/(m.rowH+GAP))));
     }
     var maxEnd=parseInt(grid.dataset.maxEnd||"8",10)||8;
     for(var r=0;r<maxEnd;r++){
@@ -258,6 +251,12 @@ ${DASHBOARD_GRID_LAYOUT_HELPERS}
       applyEntry(el,entry);
     });
   }
+  function updatePanel(id,patch){
+    var panels=readLayout().panels.map(function(p){
+      return p.id===id?Object.assign({},p,patch):p;
+    });
+    applyPanels(panels);
+  }
   function scheduleSave(){
     if(saveTimer)clearTimeout(saveTimer);
     saveTimer=setTimeout(function(){
@@ -330,14 +329,19 @@ ${DASHBOARD_GRID_LAYOUT_HELPERS}
         drag.setPointerCapture(ev.pointerId);
         var startCell=cellFromPoint(ev.clientX,ev.clientY);
         var ox=parseInt(item.style.getPropertyValue("--gc-start"),10)-1||0;
-        var oy=parseInt(item.style.getPropertyValue("--gr-start"),10)-1||0;
+        var oy=parseInt(item.dataset.logicalY||(parseInt(item.style.getPropertyValue("--gr-start"),10)-1||0),10);
+        var ow=parseInt(item.style.getPropertyValue("--gc-span"),10)||3;
         var dx=startCell.x-ox,dy=startCell.y-oy;
         function move(e){
           var cell=cellFromPoint(e.clientX,e.clientY);
-          var nx=Math.max(0,Math.min(COLS-(parseInt(item.style.getPropertyValue("--gc-span"),10)||3),cell.x-dx));
+          var nx=Math.max(0,Math.min(COLS-ow,cell.x-dx));
           var ny=Math.max(0,cell.y-dy);
-          item.style.setProperty("--gc-start",nx+1);
-          item.style.setProperty("--gr-start",ny+1);
+          if(isStacked()){
+            item.style.setProperty("--gc-start",nx+1);
+            item.style.setProperty("--gr-start",ny+1);
+          }else{
+            updatePanel(id,{x:nx,y:ny,w:ow});
+          }
         }
         function up(){
           item.classList.remove("is-dragging");
@@ -356,7 +360,7 @@ ${DASHBOARD_GRID_LAYOUT_HELPERS}
         ev.preventDefault();
         resize.setPointerCapture(ev.pointerId);
         var startW=parseInt(item.style.getPropertyValue("--gc-span"),10)||3;
-        var startH=parseInt(item.style.getPropertyValue("--gr-span"),10)||3;
+        var startH=parseInt(item.dataset.logicalH||item.dataset.fullH||"3",10)||3;
         var startX=ev.clientX,startY=ev.clientY;
         function move(e){
           var m=gridMetrics();
@@ -366,9 +370,14 @@ ${DASHBOARD_GRID_LAYOUT_HELPERS}
           var h=Math.max(2,Math.min(24,startH+dh));
           var x=parseInt(item.style.getPropertyValue("--gc-start"),10)-1||0;
           if(x+w>COLS)w=COLS-x;
-          item.style.setProperty("--gc-span",w);
-          item.style.setProperty("--gr-span",h);
-          item.dataset.fullH=String(h);
+          if(isStacked()){
+            item.style.setProperty("--gc-span",w);
+            item.style.setProperty("--gr-span",h);
+            item.dataset.fullH=String(h);
+            item.dataset.logicalH=String(h);
+          }else{
+            updatePanel(id,{x:x,w:w,h:h});
+          }
         }
         function up(){
           resize.releasePointerCapture(ev.pointerId);
@@ -385,14 +394,18 @@ ${DASHBOARD_GRID_LAYOUT_HELPERS}
         if(ev.key!=="ArrowLeft"&&ev.key!=="ArrowRight"&&ev.key!=="ArrowUp"&&ev.key!=="ArrowDown")return;
         ev.preventDefault();
         var x=parseInt(item.style.getPropertyValue("--gc-start"),10)-1||0;
-        var y=parseInt(item.style.getPropertyValue("--gr-start"),10)-1||0;
+        var y=parseInt(item.dataset.logicalY||(parseInt(item.style.getPropertyValue("--gr-start"),10)-1||0),10);
         var w=parseInt(item.style.getPropertyValue("--gc-span"),10)||3;
         if(ev.key==="ArrowLeft")x=Math.max(0,x-1);
         if(ev.key==="ArrowRight")x=Math.min(COLS-w,x+1);
         if(ev.key==="ArrowUp")y=Math.max(0,y-1);
         if(ev.key==="ArrowDown")y=y+1;
-        item.style.setProperty("--gc-start",x+1);
-        item.style.setProperty("--gr-start",y+1);
+        if(isStacked()){
+          item.style.setProperty("--gc-start",x+1);
+          item.style.setProperty("--gr-start",y+1);
+        }else{
+          updatePanel(id,{x:x,y:y,w:w});
+        }
         lastMovedId=id;
         scheduleSave();
       });
@@ -407,7 +420,10 @@ ${DASHBOARD_GRID_LAYOUT_HELPERS}
   window.applyDashboardLayout=applyLayout;
   setupChrome();
   syncGridRows(readLayout().panels);
-  window.addEventListener("resize",function(){syncGridRows(readLayout().panels)});
+  window.addEventListener("resize",function(){
+    if(isStacked())syncGridRows(readLayout().panels);
+    else applyPanels(readLayout().panels);
+  });
   api("/api/dashboard-layout").then(function(r){applyLayout(r.layout||{});}).catch(function(){});
   var reset=document.getElementById("dashboard-reset-layout");
   if(reset)reset.addEventListener("click",function(){
