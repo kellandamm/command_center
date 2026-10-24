@@ -3,7 +3,7 @@ import { ValidationError } from "../settings";
 import { llmConfig } from "../config";
 import { chatCompletion } from "../llm/provider";
 import type { NotesStore } from "../notes/store";
-import { isNoteSensitive, notesForLlmContext } from "../notes/sensitive";
+import { isNoteSensitive, legacyMainNoteForAgents, notesForLlmContext } from "../notes/sensitive";
 import { renderNoteMarkdown } from "../notes/markdown";
 import { fetchCalendarEvents } from "../calendar/service";
 import type { PanelModule } from "./types";
@@ -58,8 +58,8 @@ export const notesPanel: PanelModule = {
     };
     const error = (status: number, message: string) => json(status, { error: message });
     if (path === "/api/notes" && req.method === "GET") {
-      const content = await ctx.notes.read();
-      json(200, { content });
+      const legacy = legacyMainNoteForAgents(ctx.notes.mainLegacyNote(), await ctx.notes.read());
+      json(200, legacy.redacted ? { content: "", redacted: true } : { content: legacy.content });
       return true;
     }
     if (path === "/api/notes" && req.method === "PUT") {

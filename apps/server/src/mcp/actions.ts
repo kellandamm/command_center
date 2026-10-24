@@ -3,6 +3,7 @@ import type { Config } from "../config";
 import { todoistConfigured } from "../config";
 import { createTask } from "../todoist/client";
 import type { NotesStore } from "../notes/store";
+import { isNoteSensitive, legacyMainNoteForAgents, type AgentLegacyNoteResult } from "../notes/sensitive";
 import type { BoardStore } from "../board/store";
 import { BOARD_COLUMNS, type BoardColumn } from "../board/types";
 import type { HobieQueueStore } from "../stores/hobie-queue";
@@ -20,14 +21,21 @@ export interface IntegrationDeps {
   wins: WinsStore;
 }
 
-export async function actionNotesRead(deps: IntegrationDeps): Promise<{ content: string }> {
-  return { content: await deps.notes.read() };
+export async function actionNotesRead(deps: IntegrationDeps): Promise<AgentLegacyNoteResult> {
+  const note = deps.notes.mainLegacyNote();
+  const content = await deps.notes.read();
+  return legacyMainNoteForAgents(note, content);
 }
 
-export async function actionNotesAppend(deps: IntegrationDeps, clientId: string, text: string): Promise<{ content: string }> {
+export async function actionNotesAppend(deps: IntegrationDeps, clientId: string, text: string): Promise<AgentLegacyNoteResult> {
+  const note = deps.notes.mainLegacyNote();
+  if (note && isNoteSensitive(note)) {
+    return { content: "", redacted: true };
+  }
   const line = `[mcp:${clientId}] ${stripHtml(text)}`;
   const content = await deps.notes.append(line);
-  return { content };
+  const updated = deps.notes.mainLegacyNote();
+  return legacyMainNoteForAgents(updated, content);
 }
 
 export async function actionPanelPostUpdate(

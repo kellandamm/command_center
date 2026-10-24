@@ -15,3 +15,14 @@ export function redactNoteForCatalog(note: KnowledgeNote): KnowledgeNote {
 export function notesForLlmContext(notes: KnowledgeNote[]): KnowledgeNote[] {
   return notes.filter((note) => !isNoteSensitive(note));
 }
+
+export interface AgentLegacyNoteResult {
+  content: string;
+  redacted?: boolean;
+}
+
+/** Legacy “Main notes” content for agents, webhooks, and non-owner API surfaces. */
+export function legacyMainNoteForAgents(note: KnowledgeNote | undefined, content: string): AgentLegacyNoteResult {
+  if (note && isNoteSensitive(note)) return { content: "", redacted: true };
+  return { content };
+}

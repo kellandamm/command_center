@@ -25,6 +25,7 @@ function focusTasksForPicker(tasks: TodoistTask[], now: Date, tz: string): Array
   const { overdue, today } = partitionTodayAndOverdue(tasks, now, tz);
   const picked = [...overdue, ...today];
   const seen = new Set(picked.map((t) => t.id));
+  // shortcut: pad the picker with undated tasks when today/overdue lists are short.
   for (const task of tasks) {
     if (picked.length >= 40) break;
     if (!seen.has(task.id)) {

@@ -212,9 +212,13 @@ export class NotesStore {
     return serialized;
   }
 
+  /** Dashboard / MCP “Main notes” legacy record (not the full knowledge library). */
+  mainLegacyNote(): KnowledgeNote | undefined {
+    return this.data.notes.find((item) => item.legacy === true || (item.title === "Main notes" && item.legacy !== false));
+  }
+
   async read(): Promise<string> {
-    const note = this.data.notes.find((item) => item.legacy === true || (item.title === "Main notes" && item.legacy !== false));
-    return note?.content ?? "";
+    return this.mainLegacyNote()?.content ?? "";
   }
 
   async write(content: string): Promise<void> {
@@ -223,7 +227,7 @@ export class NotesStore {
     if (bytes > MAX_BYTES) throw new ValidationError(`note exceeds ${MAX_BYTES} bytes`);
     await this.updateData(() => {
       const now = new Date().toISOString();
-      const note = this.data.notes.find((item) => item.legacy === true || (item.title === "Main notes" && item.legacy !== false));
+      const note = this.mainLegacyNote();
       if (note) {
         this.recordRevision(note);
         note.content = content;
@@ -289,7 +293,7 @@ export class NotesStore {
     if (!addition) throw new ValidationError("text is required");
     return this.updateData(() => {
       const now = new Date().toISOString();
-      let note = this.data.notes.find((item) => item.legacy === true || (item.title === "Main notes" && item.legacy !== false));
+      let note = this.mainLegacyNote();
       if (!note) {
         note = {
           id: randomUUID(),
