@@ -13,29 +13,40 @@ import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
-async function addStroke(page: Page) {
-  await page.waitForFunction(() => typeof window.whiteboardEditor !== "undefined", undefined, { timeout: 30_000 });
-  await page.evaluate(() => {
-    window.whiteboardEditor!.loadScene({
-      type: "excalidraw",
-      version: 2,
-      source: "command-center",
-      elements: [
-        {
-          id: "stroke-1",
-          type: "freedraw",
-          x: 120,
-          y: 140,
-          width: 160,
-          height: 90,
-          points: [[0, 0], [80, 45], [160, 90]],
-        },
-      ],
-      appState: {},
-      files: {},
-    });
-    document.dispatchEvent(new CustomEvent("whiteboard:change"));
-  });
+function allowedConsoleNoise(text: string): boolean {
+  if (/fonts\.(googleapis|gstatic)\.com/i.test(text)) return true;
+  if (text.includes("cf-access-jwt-assertion") && text.includes("CORS")) return true;
+  if (text === "Failed to load resource: net::ERR_FAILED") return true;
+  if (text.includes("ERR_FAILED") && /font/i.test(text)) return true;
+  if (text.includes("net::ERR_ABORTED") && /font/i.test(text)) return true;
+  return false;
+}
+
+async function assertEditorVisible(page: Page) {
+  await page.locator(".excalidraw").waitFor({ state: "visible", timeout: 30_000 });
+  await page.locator(".excalidraw .App-toolbar").waitFor({ state: "visible", timeout: 30_000 });
+  const canvasCount = await page.locator("#whiteboard-root canvas").count();
+  assert.ok(canvasCount > 0, "expected at least one Excalidraw canvas");
+}
+
+async function drawStrokeWithMouse(page: Page) {
+  await assertEditorVisible(page);
+  await page.locator(".excalidraw").click();
+  const freedrawTool = page.locator(".excalidraw .ToolIcon_type_freedraw");
+  if (await freedrawTool.count()) await freedrawTool.first().click();
+  else await page.keyboard.press("p");
+  const canvas = page.locator("#whiteboard-root canvas").last();
+  await canvas.scrollIntoViewIfNeeded();
+  const box = await canvas.boundingBox();
+  assert.ok(box, "canvas has layout");
+  const x0 = box.x + box.width * 0.3;
+  const y0 = box.y + box.height * 0.45;
+  const x1 = box.x + box.width * 0.7;
+  const y1 = box.y + box.height * 0.55;
+  await page.mouse.move(x0, y0);
+  await page.mouse.down({ button: "left" });
+  await page.mouse.move(x1, y1, { steps: 20 });
+  await page.mouse.up({ button: "left" });
   await page.waitForFunction(
     () => {
       const scene = window.whiteboardEditor?.getScene() as { elements?: unknown[] } | undefined;
@@ -46,17 +57,7 @@ async function addStroke(page: Page) {
   );
 }
 
-function regressionConsoleErrors(messages: string[]): string[] {
-  return messages.filter(
-    (e) =>
-      e.includes(".agent-tabs{display:flex")
-      || e.includes("MIME type ('application/json')")
-      || e.includes("Refused to apply style")
-      || e.includes("Refused to execute script"),
-  );
-}
-
-test("whiteboard page loads editor assets, saves strokes, and has no leaked layout CSS", { timeout: 180_000 }, async () => {
+test("whiteboard renders Excalidraw, saves a drawn stroke, and reloads it", { timeout: 180_000 }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-whiteboard-browser-"));
   const cfg = loadConfig({
     DATA_DIR: dir,
@@ -81,35 +82,58 @@ test("whiteboard page loads editor assets, saves strokes, and has no leaked layo
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const browser = await chromium.launch();
+  const pageErrors: string[] = [];
+  const consoleErrors: string[] = [];
   try {
     const context = await browser.newContext({
       viewport: { width: 1280, height: 800 },
       extraHTTPHeaders: { "cf-access-jwt-assertion": "owner" },
     });
+    await context.addInitScript(() => {
+      const sw = navigator.serviceWorker;
+      if (!sw) return;
+      sw.register = async () => ({}) as ServiceWorkerRegistration;
+    });
     const page = await context.newPage();
-    const consoleErrors: string[] = [];
+    page.on("pageerror", (err) => pageErrors.push(String(err)));
     page.on("console", (msg) => {
       if (msg.type() === "error") consoleErrors.push(msg.text());
     });
-    page.on("pageerror", (err) => consoleErrors.push(String(err)));
     await page.route(/https:\/\/fonts\.(googleapis|gstatic)\.com\//, (route) => route.abort());
+    await page.route("**/sw.js", (route) => route.fulfill({ status: 200, body: "// noop", contentType: "text/javascript" }));
+
     await page.goto(`${base}/whiteboard`, { waitUntil: "networkidle" });
-    const leakedLayoutCss = await page.evaluate(() => document.body.innerText.includes(".agent-tabs{display:flex"));
-    assert.equal(leakedLayoutCss, false, "layout CSS must not render as visible page text");
+    assert.equal(
+      await page.evaluate(() => document.body.innerText.includes(".agent-tabs{display:flex")),
+      false,
+      "layout CSS must not render as visible page text",
+    );
+
     await page.getByRole("button", { name: "New board" }).click();
-    await page.waitForFunction(() => document.querySelector("#whiteboard-list button.ghost"), undefined, { timeout: 15_000 });
-    await addStroke(page);
+    await page.locator("#whiteboard-list button.ghost").first().waitFor({ timeout: 15_000 });
+    await assertEditorVisible(page);
+
+    const saveDone = page.waitForResponse(
+      (res) => res.request().method() === "PUT" && /\/api\/whiteboard\/scenes\/[^/]+$/.test(res.url()) && res.ok(),
+      { timeout: 25_000 },
+    );
+    await drawStrokeWithMouse(page);
+    await saveDone;
     await page.waitForFunction(
       () => (document.getElementById("whiteboard-status")?.textContent ?? "").includes("Saved"),
       undefined,
       { timeout: 20_000 },
     );
+
     const elementCountBefore = await page.evaluate(() => {
       const scene = window.whiteboardEditor?.getScene() as { elements?: unknown[] };
       return scene?.elements?.length ?? 0;
     });
     assert.ok(elementCountBefore > 0);
+
     await page.reload({ waitUntil: "networkidle" });
+    await page.locator("#whiteboard-list button.ghost").first().click();
+    await assertEditorVisible(page);
     await page.waitForFunction(
       () => {
         const scene = window.whiteboardEditor?.getScene() as { elements?: unknown[] } | undefined;
@@ -123,7 +147,9 @@ test("whiteboard page loads editor assets, saves strokes, and has no leaked layo
       return scene?.elements?.length ?? 0;
     });
     assert.equal(elementCountAfter, elementCountBefore);
-    assert.deepEqual(regressionConsoleErrors(consoleErrors), []);
+
+    assert.deepEqual(pageErrors, []);
+    assert.deepEqual(consoleErrors.filter((e) => !allowedConsoleNoise(e)), []);
   } finally {
     await browser.close();
     await closeIntegrationServer(server, integration);

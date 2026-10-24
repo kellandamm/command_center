@@ -228,6 +228,17 @@ export function createApp(app: App): Server {
 
       if (await handleSharePublicRoutes(app.cfg, app.shareLinks, shareLinkRateLimiter, req, res, path)) return;
 
+      const getEarly = method === "GET" || method === "HEAD";
+      if (getEarly && path === "/assets/whiteboard-editor.js") {
+        return send(res, 200, await whiteboardEditorScript(), "text/javascript", { "cache-control": "public, max-age=86400" });
+      }
+      if (getEarly && path.startsWith("/assets/excalidraw/")) {
+        const relative = path.slice("/assets/excalidraw/".length);
+        const asset = await readExcalidrawAsset(relative);
+        if (!asset) return json(res, 404, { error: "not found" });
+        return send(res, 200, asset, excalidrawAssetContentType(relative), { "cache-control": "public, max-age=86400" });
+      }
+
       const who = await app.auth(req, url);
       if (!who.ok) return send(res, who.status, `<h1>${who.status}</h1><p>${who.reason}</p>`);
       const extra: Record<string, string> = who.setCookie ? { "set-cookie": who.setCookie } : {};
@@ -235,15 +246,6 @@ export function createApp(app: App): Server {
       const get = method === "GET" || method === "HEAD";
 
       if (get && path === "/assets/notes-editor.js") return send(res, 200, await notesEditorScript(), "text/javascript", extra);
-      if (get && path === "/assets/whiteboard-editor.js") {
-        return send(res, 200, await whiteboardEditorScript(), "text/javascript", extra);
-      }
-      if (get && path.startsWith("/assets/excalidraw/")) {
-        const relative = path.slice("/assets/excalidraw/".length);
-        const asset = await readExcalidrawAsset(relative);
-        if (!asset) return json(res, 404, { error: "not found" });
-        return send(res, 200, asset, excalidrawAssetContentType(relative), { ...extra, "cache-control": "public, max-age=86400" });
-      }
       if (app.calendar && await handleCalendarRoutes(app.calendar, req, res, path, who.owner === true, readBody)) return;
       if (path === "/api/connections" || path.startsWith("/api/connections/")) {
         if (!who.owner) return json(res, 403, { error: "Connection management requires a verified owner login. Set OWNER_EMAILS and sign in through Cloudflare Access; machine/admin tokens cannot manage keys." });
