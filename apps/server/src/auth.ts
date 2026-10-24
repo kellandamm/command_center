@@ -4,7 +4,9 @@ import type { Config } from "./config";
 import { accessJwtFromRequest, createCfAccessRemoteJwtVerifier } from "./cf-access";
 import type { JWTPayload } from "jose";
 
-export type AuthResult = { ok: true; who: string; owner?: boolean; setCookie?: string } | { ok: false; status: 401 | 403; reason: string };
+export type AuthResult =
+  | { ok: true; who: string; owner?: boolean; email?: string; serviceToken?: boolean; setCookie?: string }
+  | { ok: false; status: 401 | 403; reason: string };
 
 const sha = (s: string) => createHash("sha256").update(s).digest();
 export const tokenEquals = (a: string, b: string) => timingSafeEqual(sha(a), sha(b));
@@ -35,10 +37,15 @@ export function makeAuthenticator(cfg: Config, verifyJwt?: (token: string) => Pr
         try {
           const payload = await verify(token);
           if (typeof payload === "string") return { ok: true, who: payload };
-          const email = typeof payload.email === "string" ? payload.email.toLowerCase() : "";
+          const serviceToken = Boolean(payload.common_name);
+          const emailRaw = typeof payload.email === "string" ? payload.email.trim() : "";
+          const email = emailRaw ? emailRaw.toLowerCase() : undefined;
           return {
-            ok: true, who: String(payload.email ?? payload.sub ?? "access-user"),
-            owner: !payload.common_name && !!email && cfg.ownerEmails.includes(email),
+            ok: true,
+            who: String(payload.email ?? payload.sub ?? "access-user"),
+            owner: !serviceToken && !!email && cfg.ownerEmails.includes(email),
+            email: serviceToken ? undefined : email,
+            serviceToken,
           };
         } catch {
           // fall through: a bad Access token may still be accompanied by a valid admin token

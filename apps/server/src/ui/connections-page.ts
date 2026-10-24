@@ -62,7 +62,16 @@ function renderConnections(data){
     section.appendChild(form);box.appendChild(section);
   });
 }
-api("/api/connections").then(renderConnections).catch(function(error){$("connection-loading").textContent=error.message||"Could not load connections. Reload to retry.";});
+function loadConnections(){
+  return api("/api/settings").then(function(settingsRes){
+    var meta=settingsRes.meta||{};
+    return api("/api/connections").then(renderConnections).catch(function(error){
+      var hint=ownerViewOnlyHint(meta);
+      $("connection-loading").textContent=hint||error.message||"Could not load connections. Reload to retry.";
+    });
+  }).catch(function(error){$("connection-loading").textContent=error.message||"Could not load connections. Reload to retry.";});
+}
+loadConnections();
 `,
   });
 }

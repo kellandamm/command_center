@@ -60,7 +60,7 @@ import { dashboardPage, settingsPage } from "./ui/pages";
 import type { AttentionStore } from "./attention/store";
 import type { LaunchpadStore } from "./launchpad/store";
 import type { FocusSessionsStore } from "./focus/store";
-import { OWNER_ACTION_FORBIDDEN, canManageSharedServerState } from "./owner-auth";
+import { OWNER_ACTION_FORBIDDEN, canManageSharedServerState, computeOwnerReason } from "./owner-auth";
 import { connectionProvider, type ConnectionsStore } from "./connections";
 import { connectionsPage } from "./ui/connections-page";
 import { notesEditorScript } from "./ui/notes-editor-asset";
@@ -394,18 +394,23 @@ export function createApp(app: App): Server {
         return json(res, 200, { layout });
       }
 
-      if (get && path === "/api/settings") return json(res, 200, {
-        settings: app.settings.get(),
-        briefingProviders: { search: Boolean(app.cfg.braveSearchApiKey), summarizer: llmConfigured(app.cfg) },
-        meta: {
-          canManage: canManageSharedServerState(app.cfg, { owner: who.owner === true, who: who.who }),
-          ownerEmailsConfigured: app.cfg.ownerEmails.length > 0,
-          features: {
-            shareLinksEnabled: app.cfg.shareLinksEnabled,
-            whiteboardEnabled: app.cfg.whiteboardEnabled,
+      if (get && path === "/api/settings") {
+        const principal = { owner: who.owner === true, who: who.who, email: who.email, serviceToken: who.serviceToken };
+        return json(res, 200, {
+          settings: app.settings.get(),
+          briefingProviders: { search: Boolean(app.cfg.braveSearchApiKey), summarizer: llmConfigured(app.cfg) },
+          meta: {
+            canManage: canManageSharedServerState(app.cfg, principal),
+            signedInAs: who.who,
+            ownerReason: computeOwnerReason(app.cfg, principal),
+            ownerEmailsConfigured: app.cfg.ownerEmails.length > 0,
+            features: {
+              shareLinksEnabled: app.cfg.shareLinksEnabled,
+              whiteboardEnabled: app.cfg.whiteboardEnabled,
+            },
           },
-        },
-      });
+        });
+      }
       if (req.method === "PUT" && path === "/api/settings") {
         if (!canManageSharedServerState(app.cfg, { owner: who.owner === true, who: who.who })) {
           return json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
