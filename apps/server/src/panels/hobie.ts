@@ -1,15 +1,13 @@
+import { panelCard } from "../ui/components";
 import type { PanelModule } from "./types";
 
 export const hobiePanel: PanelModule = {
   id: "hobie",
   title: "Hobie board",
-  pageHref: "/board",
-  dashboardHtml: `
-<section class="card" id="panel-hobie">
-  <h2 style="margin:0 0 8px">Hobie board</h2>
-  <p class="dim">Kanban columns linked to the Hobie queue.</p>
-  <ul id="hobie-board-counts" class="todoist-list"></ul>
-</section>`,
+  pageHref: "/agent?view=board",
+  dashboardHtml: panelCard("panel-hobie", `
+  <p class="dim ui-card-desc">Kanban columns linked to the Hobie queue.</p>
+  <ul id="hobie-board-counts" class="todoist-list"></ul>`),
   async handle(ctx, req, res, path) {
     const json = (status: number, data: unknown) => {
       res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
@@ -62,7 +60,7 @@ function renderHobieBoardCounts(counts){
   if(!el)return;
   var cols=counts||{};
   var keys=Object.keys(cols);
-  if(!keys.length){el.innerHTML='<li class="dim">Board empty.</li>';return;}
+  if(!keys.length){el.innerHTML='<li><div class="ui-empty" role="status"><p class="ui-empty-title">Board empty.</p></div></li>';return;}
   el.innerHTML=keys.map(function(k){
     return '<li class="todoist-item"><strong>'+esc(k)+'</strong> <span class="dim">'+esc(String(cols[k]))+'</span></li>';
   }).join("");

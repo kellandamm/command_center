@@ -42,7 +42,7 @@ export const dashboardGridCss = `
   padding:.25rem;border-radius:calc(var(--radius) - 4px);font-size:1rem;line-height:1;cursor:pointer}
 .dashboard-panel-body{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto;padding:.5rem .65rem .65rem;display:flex;flex-direction:column;gap:.35rem;overscroll-behavior:contain}
 .dashboard-panel-body .panel-scroll-region{flex:0 0 auto;min-height:0;overflow:visible}
-@media(min-width:901px){
+@media(min-width:769px){
   .dashboard-item:not(.is-collapsed) .dashboard-panel-body{max-height:100%}
 }
 .dashboard-panel-body>.row:first-child{display:none}
@@ -56,7 +56,7 @@ export const dashboardGridCss = `
 .dashboard-item.is-collapsed .dashboard-resize{display:none}
 #panel-notes #notes-editor{min-height:3rem;flex:1;max-height:100%;resize:none;font-size:.8125rem}
 #panel-notes .dim{font-size:.75rem;margin:0}
-@media(max-width:900px){
+@media(max-width:768px){
   .app-shell:has(.dashboard-page){height:auto;max-height:none;overflow:visible}
   .page-content:has(.dashboard-page){overflow:visible;flex:none;min-height:auto}
   .dashboard-page{flex:none;min-height:auto}
@@ -96,7 +96,7 @@ export function dashboardGridScript(): string {
     var hits=(panels||[]).filter(function(p){return panelCoversRow(p,row)});
     return hits.length>0&&hits.every(function(p){return p.collapsed});
   }
-  function isStacked(){return window.matchMedia("(max-width: 900px)").matches}
+  function isStacked(){return window.matchMedia("(max-width: 768px)").matches}
   function syncGridRows(panels){
     if(isStacked()){
       grid.classList.add("is-stacked");
@@ -152,13 +152,8 @@ export function dashboardGridScript(): string {
   }
 
   function titleFor(id){
-    var map={
-      tasks:"Tasks",attention:"Attention",heatmap:"Activity heatmap",launchpad:"Launchpad",
-      activity:"Activity",hobie:"Hobie queue","daily-briefing":"Daily briefing",
-      weather:"Weather",calendar:"Calendar",notes:"Notes","host-health":"Host health",
-      recallio:"Recallio"
-    };
-    return map[id]||id;
+    if(typeof PANEL_TITLES!=="undefined"&&PANEL_TITLES&&PANEL_TITLES[id])return PANEL_TITLES[id];
+    return id;
   }
 
   function applyEntry(el,entry){

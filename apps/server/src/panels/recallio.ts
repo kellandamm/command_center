@@ -1,19 +1,17 @@
 import { recallioConfigured, searchRecallio } from "../recallio/client";
+import { panelCard } from "../ui/components";
 import type { PanelModule } from "./types";
 
 export const recallioPanel: PanelModule = {
   id: "recallio",
   title: "Recallio search",
-  dashboardHtml: `
-<section class="card" id="panel-recallio">
-  <h2 style="margin:0 0 8px">Recallio search</h2>
+  dashboardHtml: panelCard("panel-recallio", `
   <p class="dim" id="recallio-status"></p>
-  <form id="recallio-form" class="row" style="gap:8px;margin:10px 0">
-    <input type="search" id="recallio-q" placeholder="Search memories…" autocomplete="off" style="flex:1" disabled>
+  <form id="recallio-form" class="row recallio-form">
+    <input type="search" id="recallio-q" placeholder="Search memories…" autocomplete="off" disabled>
     <button type="submit" id="recallio-submit" disabled>Search</button>
   </form>
-  <div id="recallio-results"></div>
-</section>`,
+  <div id="recallio-results"></div>`),
   async handle(ctx, req, res, path) {
     const json = (status: number, data: unknown) => {
       res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
@@ -65,7 +63,7 @@ function renderRecallio(r){
     if(hit.snippet&&hit.snippet!==hit.title)html+='<p class="dim" style="margin:.35em 0">'+esc(hit.snippet)+'</p>';
     html+='</div>';
   });
-  box.innerHTML=html||'<p class="dim">No matches.</p>';
+  box.innerHTML=html||'<div class="ui-empty" role="status"><p class="ui-empty-title">No matches.</p></div>';
 }
 function runRecallioSearch(){
   var q=(document.getElementById("recallio-q")||{}).value||"";

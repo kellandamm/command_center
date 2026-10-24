@@ -4,6 +4,7 @@ import { listTasks, partitionTodayAndOverdue, type TodoistTask } from "../todois
 import { ValidationError } from "../settings";
 import { OWNER_ACTION_FORBIDDEN } from "../owner-auth";
 import { validateFocusSessionInput } from "../focus/store";
+import { panelCard } from "../ui/components";
 import type { PanelModule } from "./types";
 
 function ownerDenied(res: import("node:http").ServerResponse): void {
@@ -43,24 +44,22 @@ function focusTasksForPicker(tasks: TodoistTask[], now: Date, tz: string): Array
 export const focusPanel: PanelModule = {
   id: "focus",
   title: "Focus",
-  dashboardHtml: `
-<section class="card" id="panel-focus">
+  dashboardHtml: panelCard("panel-focus", `
   <p class="dim" id="focus-status">Pick a Todoist task and start a focus session.</p>
   <div class="row focus-controls">
     <label class="dim">Work (min)
-      <input id="focus-work-min" type="number" min="1" max="180" value="25" style="width:4rem" />
+      <input id="focus-work-min" type="number" min="1" max="180" value="25" />
     </label>
     <label class="dim">Break (min)
-      <input id="focus-break-min" type="number" min="1" max="60" value="5" style="width:4rem" />
+      <input id="focus-break-min" type="number" min="1" max="60" value="5" />
     </label>
   </div>
-  <select id="focus-task-select" class="panel-scroll-region" style="width:100%;margin:.35rem 0" aria-label="Todoist task"></select>
-  <div class="row" style="margin:.35rem 0">
+  <select id="focus-task-select" class="panel-scroll-region focus-task-select" aria-label="Todoist task"></select>
+  <div class="row focus-actions">
     <button type="button" id="focus-start">Start focus</button>
     <button type="button" id="focus-stop" class="ghost" hidden>End session</button>
   </div>
-  <p id="focus-timer" class="focus-timer" aria-live="polite"></p>
-</section>`,
+  <p id="focus-timer" class="focus-timer" aria-live="polite"></p>`),
   async handle(ctx, req, res, path) {
     const json = (status: number, data: unknown) => {
       res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });

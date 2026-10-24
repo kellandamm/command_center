@@ -1,18 +1,17 @@
 import { aggregateDailyCounts, buildHeatmapDays, heatmapDateRange, dayKeyFromIso } from "../heatmap/counts";
 import { dayKey } from "../store";
+import { panelCard } from "../ui/components";
 import type { PanelModule } from "./types";
 
 export const heatmapPanel: PanelModule = {
   id: "heatmap",
-  title: "Activity",
+  title: "Activity heatmap",
   pageHref: "/agent?view=activity",
-  dashboardHtml: `
-<section class="card" id="panel-heatmap">
-  <p class="dim">Last 26 weeks of board moves, wins, note edits, and focus sessions.</p>
+  dashboardHtml: panelCard("panel-heatmap", `
+  <p class="dim ui-card-desc">Last 26 weeks of board moves, wins, note edits, and focus sessions.</p>
   <div id="heatmap-scroll" class="heatmap-scroll panel-scroll-region">
     <div id="heatmap-grid" class="heatmap-grid" role="img" aria-label="Activity heatmap"></div>
-  </div>
-</section>`,
+  </div>`),
   async handle(ctx, req, res, path) {
     const json = (status: number, data: unknown) => {
       res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });

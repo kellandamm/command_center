@@ -1,4 +1,5 @@
 import { fetchCalendarEvents } from "../calendar/service";
+import { loadingState, panelCard } from "../ui/components";
 import type { PanelModule } from "./types";
 import { ValidationError } from "../settings";
 
@@ -6,12 +7,9 @@ export const calendarPanel: PanelModule = {
   id: "calendar",
   title: "Calendar",
   pageHref: "/calendar",
-  dashboardHtml: `
-<section class="card" id="panel-calendar">
-  <h2 style="margin:0 0 8px">Calendar</h2>
-  <p class="dim" id="calendar-status">Loading…</p>
-  <ul id="calendar-list" style="margin:0;padding-left:1.2rem"></ul>
-</section>`,
+  dashboardHtml: panelCard("panel-calendar", `
+  <div id="calendar-status-wrap">${loadingState()}</div>
+  <ul id="calendar-list" class="ui-list"></ul>`),
   async handle(ctx, req, res, path) {
     const json = (status: number, data: unknown) => {
       res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
@@ -61,20 +59,21 @@ function fmtEventWhen(ev){
   return d.toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
 }
 function renderCalendar(r){
-  var st=document.getElementById("calendar-status");
+  var stWrap=document.getElementById("calendar-status-wrap");
   var list=document.getElementById("calendar-list");
   if(!r.configured){
-    st.textContent="No calendars connected. Open Settings > Calendars to add one.";
-    list.innerHTML="";
+    if(stWrap)stWrap.innerHTML='<div class="ui-error" role="alert"><p class="ui-error-text bad">No calendars connected. Open Settings &gt; Calendars to add one.</p></div>';
+    if(list)list.innerHTML="";
     return;
   }
   var bad=(r.feeds||[]).filter(function(f){return !f.ok});
-  st.textContent=(r.events||[]).length+" upcoming"
-    +(bad.length?" · "+bad.length+" feed error(s)":"");
+  if(stWrap)stWrap.innerHTML='<p class="dim" id="calendar-status">'+(r.events||[]).length+" upcoming"
+    +(bad.length?" · "+bad.length+" feed error(s)":"")+'</p>';
+  if(!list)return;
   list.innerHTML=(r.events||[]).map(function(ev){
     return '<li><strong>'+esc(ev.summary)+'</strong> · '+esc(fmtEventWhen(ev))
       +(ev.location?' · <span class="dim">'+esc(ev.location)+'</span>':'')+'</li>';
-  }).join("")||'<li class="dim">No upcoming events in the next two weeks.</li>';
+  }).join("")||'<li><div class="ui-empty" role="status"><p class="ui-empty-title">No upcoming events in the next two weeks.</p></div></li>';
 }
 function loadCalendar(){return api("/api/calendar").then(renderCalendar)}
 loadCalendar();

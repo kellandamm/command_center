@@ -1,3 +1,4 @@
+import { panelCard } from "../ui/components";
 import type { PanelModule } from "./types";
 import { ValidationError } from "../settings";
 
@@ -21,16 +22,14 @@ async function readJsonBody(req: import("node:http").IncomingMessage): Promise<R
 export const launchpadPanel: PanelModule = {
   id: "launchpad",
   title: "Launchpad",
-  dashboardHtml: `
-<section class="card" id="panel-launchpad">
+  dashboardHtml: panelCard("panel-launchpad", `
   <div id="launchpad-grid" class="launchpad-grid panel-scroll-region"></div>
   <form id="launchpad-form" class="launchpad-form row" hidden>
     <input id="launchpad-label" placeholder="Label" maxlength="120" required />
     <input id="launchpad-url" placeholder="https://…" maxlength="2048" required />
     <input id="launchpad-emoji" placeholder="Emoji" maxlength="8" />
     <button type="submit">Add link</button>
-  </form>
-</section>`,
+  </form>`),
   async handle(ctx, req, res, path) {
     const json = (status: number, data: unknown) => {
       res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
@@ -86,7 +85,7 @@ function renderLaunchpad(data){
     var del=data.owner?'<button type="button" class="ghost launchpad-remove" data-id="'+esc(link.id)+'">Remove</button>':'';
     return '<a class="launchpad-tile" href="'+esc(link.url)+'" target="_blank" rel="noopener noreferrer">'
       +'<span class="launchpad-label">'+emoji+esc(link.label)+'</span>'+del+'</a>';
-  }).join(""):'<p class="dim">No links yet.</p>';
+  }).join(""):'<div class="ui-empty" role="status"><p class="ui-empty-title">No links yet.</p></div>';
   if(form)form.hidden=!data.owner;
   grid.querySelectorAll(".launchpad-remove").forEach(function(btn){
     btn.onclick=function(e){e.preventDefault();

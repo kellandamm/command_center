@@ -42,6 +42,7 @@ export const dashboardPanelCss = `
 
 const PANEL_SCRIPTS = [
   activityDashboardScript,
+  focusDashboardScript,
   hobieDashboardScript,
   dailyBriefingDashboardScript,
   weatherDashboardScript,
@@ -74,6 +75,7 @@ export function dashboardPage(nav?: NavLink[]): string {
   const pageLinks = Object.fromEntries(
     panels.filter((p) => p.pageHref).map((p) => [p.id, p.pageHref!]),
   );
+  const panelTitles = Object.fromEntries(panels.map((p) => [p.id, p.title]));
   return page({
     title: "Command center",
     active: "/",
@@ -91,6 +93,7 @@ export function dashboardPage(nav?: NavLink[]): string {
 </div>`,
     script: `
 var PANEL_PAGE_LINKS=${JSON.stringify(pageLinks)};
+var PANEL_TITLES=${JSON.stringify(panelTitles)};
 ${dashboardGridScript()}
 document.getElementById("dashboard-import-layout")?.addEventListener("change",function(ev){
   var input=ev.target;var file=input.files&&input.files[0];if(!file)return;

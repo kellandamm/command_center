@@ -1,21 +1,21 @@
 import { fetchDockerSnapshot } from "../docker/read-client";
 import { collectHostMetrics } from "../host/metrics";
 import { dockerSocketPath } from "../config";
+import { loadingState, panelCard } from "../ui/components";
 import type { PanelModule } from "./types";
 
 export const hostHealthPanel: PanelModule = {
   id: "host-health",
   title: "Server health",
-  dashboardHtml: `
-<section class="card" id="panel-host-health">
-  <div class="row"><h2 style="margin:0">Server health</h2>
-  <button type="button" class="ghost" id="host-health-refresh" style="margin-left:auto">Refresh</button></div>
-  <p class="dim" id="host-health-meta">Loading…</p>
+  dashboardHtml: panelCard("panel-host-health", `
+  <div class="host-health-toolbar row">
+    <div id="host-health-meta-wrap" class="host-health-meta">${loadingState()}</div>
+    <button type="button" class="ghost" id="host-health-refresh">Refresh</button>
+  </div>
   <div id="host-health-host"></div>
-  <h3 style="margin:1em 0 .4em;font-size:1rem">Containers</h3>
+  <h3 class="host-health-subhead">Containers</h3>
   <p class="dim" id="host-health-docker-note"></p>
-  <div id="host-health-containers"></div>
-</section>`,
+  <div id="host-health-containers"></div>`),
   async handle(ctx, req, res, path) {
     const json = (status: number, data: unknown) => {
       res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
@@ -34,22 +34,22 @@ export const hostHealthPanel: PanelModule = {
 
 export function hostHealthDashboardScript(): string {
   return `
-function bar(pct){var n=Math.max(0,Math.min(100,Number(pct)||0));return '<div style="background:var(--line);border-radius:6px;height:8px;flex:1;min-width:80px"><div style="width:'+n+'%;height:100%;background:var(--accent);border-radius:6px"></div></div>';}
+function bar(pct){var n=Math.max(0,Math.min(100,Number(pct)||0));return '<div class="host-metric-bar"><span style="width:'+n+'%"></span></div>';}
 function hostBlock(h){
   var cpu=h.cpu||{};
   var mem=h.memory||{};
   var disk=h.disk;
-  var html='<div class="row" style="align-items:flex-start;gap:16px">';
-  html+='<div style="flex:1;min-width:200px"><strong>'+esc(h.hostname||"host")+'</strong><p class="dim" style="margin:.3em 0">Uptime '+Math.floor((h.uptimeSec||0)/3600)+'h · '+cpu.cores+' cores</p>';
-  html+='<p class="dim" style="margin:0">Load '+((cpu.loadAvg||[]).map(function(x){return Number(x).toFixed(2)}).join(" / ")||"—")+'</p></div>';
-  html+='<div style="flex:2;min-width:240px">';
-  html+='<div class="row" style="margin-bottom:8px"><span style="min-width:72px">CPU</span>'+bar(cpu.usedPercent)+'<span class="dim" style="min-width:48px;text-align:right">'+(cpu.usedPercent!=null?cpu.usedPercent+"%":"…")+'</span></div>';
-  html+='<div class="row" style="margin-bottom:8px"><span style="min-width:72px">Memory</span>'+bar(mem.usedPercent)+'<span class="dim" style="min-width:90px;text-align:right">'+esc(fmtB(mem.totalBytes-mem.freeBytes))+' / '+esc(fmtB(mem.totalBytes))+'</span></div>';
+  var html='<div class="row host-health-host-grid">';
+  html+='<div class="host-health-host-meta"><strong>'+esc(h.hostname||"host")+'</strong><p class="dim">Uptime '+Math.floor((h.uptimeSec||0)/3600)+'h · '+cpu.cores+' cores</p>';
+  html+='<p class="dim">Load '+((cpu.loadAvg||[]).map(function(x){return Number(x).toFixed(2)}).join(" / ")||"—")+'</p></div>';
+  html+='<div class="host-health-metrics">';
+  html+='<div class="row host-metric-row"><span class="host-metric-label">CPU</span>'+bar(cpu.usedPercent)+'<span class="dim host-metric-value">'+(cpu.usedPercent!=null?cpu.usedPercent+"%":"…")+'</span></div>';
+  html+='<div class="row host-metric-row"><span class="host-metric-label">Memory</span>'+bar(mem.usedPercent)+'<span class="dim host-metric-value">'+esc(fmtB(mem.totalBytes-mem.freeBytes))+' / '+esc(fmtB(mem.totalBytes))+'</span></div>';
   if(disk){
-    html+='<div class="row"><span style="min-width:72px">Disk</span>'+bar(disk.usedPercent)+'<span class="dim" style="min-width:90px;text-align:right">'+esc(fmtB(disk.totalBytes-disk.freeBytes))+' / '+esc(fmtB(disk.totalBytes))+'</span></div>';
-    html+='<p class="dim" style="margin:.4em 0 0;font-size:.85rem">'+esc(disk.path)+'</p>';
+    html+='<div class="row host-metric-row"><span class="host-metric-label">Disk</span>'+bar(disk.usedPercent)+'<span class="dim host-metric-value">'+esc(fmtB(disk.totalBytes-disk.freeBytes))+' / '+esc(fmtB(disk.totalBytes))+'</span></div>';
+    html+='<p class="dim host-disk-path">'+esc(disk.path)+'</p>';
   }else if(h.diskError){
-    html+='<p class="dim" style="margin:0">Disk: '+esc(h.diskError)+'</p>';
+    html+='<p class="dim">Disk: '+esc(h.diskError)+'</p>';
   }
   html+='</div></div>';
   return html;
@@ -65,24 +65,25 @@ function renderContainers(d){
   var note=document.getElementById("host-health-docker-note");
   if(!d.available){
     note.textContent=d.reason||"Docker unavailable";
-    return '<p class="dim">No container data.</p>';
+    return '<div class="ui-empty" role="status"><p class="ui-empty-title">No container data.</p></div>';
   }
   note.textContent=(d.version?"Engine "+d.version+" · ":"")+(d.containers||[]).length+" container(s) · read-only";
   var rows=d.containers||[];
-  if(!rows.length)return '<p class="dim">No containers reported.</p>';
-  var html='<table style="width:100%;border-collapse:collapse;font-size:.9rem"><thead><tr class="dim"><th style="text-align:left;padding:6px 4px">Name</th><th style="text-align:left;padding:6px 4px">State</th><th style="text-align:left;padding:6px 4px">Status</th></tr></thead><tbody>';
+  if(!rows.length)return '<div class="ui-empty" role="status"><p class="ui-empty-title">No containers reported.</p></div>';
+  var html='<table class="ui-table"><caption class="sr-only">Docker containers</caption><thead><tr><th scope="col">Name</th><th scope="col">State</th><th scope="col">Status</th></tr></thead><tbody>';
   rows.forEach(function(c){
     var cls=c.state==="running"?"ok":"dim";
     var health=c.health?(" · health "+c.health):"";
-    html+='<tr><td style="padding:6px 4px;border-top:1px solid var(--line)"><strong>'+esc(c.name)+'</strong><br><span class="dim">'+esc(c.image)+'</span></td>';
-    html+='<td style="padding:6px 4px;border-top:1px solid var(--line)" class="'+cls+'">'+esc(c.state)+'</td>';
-    html+='<td style="padding:6px 4px;border-top:1px solid var(--line)" class="dim">'+esc(c.status)+health+'</td></tr>';
+    html+='<tr><td><strong>'+esc(c.name)+'</strong><br><span class="dim">'+esc(c.image)+'</span></td>';
+    html+='<td class="'+cls+'">'+esc(c.state)+'</td>';
+    html+='<td class="dim">'+esc(c.status)+health+'</td></tr>';
   });
   html+='</tbody></table>';
   return html;
 }
 function renderHostHealth(data){
-  document.getElementById("host-health-meta").textContent="Updated "+new Date().toISOString()+" · metrics are read-only";
+  var metaWrap=document.getElementById("host-health-meta-wrap");
+  if(metaWrap)metaWrap.innerHTML='<p class="dim" id="host-health-meta">Updated '+esc(new Date().toISOString())+' · metrics are read-only</p>';
   document.getElementById("host-health-host").innerHTML=hostBlock(data.host||{});
   document.getElementById("host-health-containers").innerHTML=renderContainers(data.docker||{available:false,containers:[]});
 }

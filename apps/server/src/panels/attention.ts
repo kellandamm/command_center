@@ -4,6 +4,7 @@ import type { TimelineEvent } from "../attention/types";
 import { snoozeUntil } from "../attention/store";
 import { dayKey } from "../store";
 import { ValidationError } from "../settings";
+import { panelCard } from "../ui/components";
 import type { PanelModule } from "./types";
 
 import { OWNER_ACTION_FORBIDDEN } from "../owner-auth";
@@ -16,10 +17,8 @@ function ownerDenied(res: import("node:http").ServerResponse): void {
 export const attentionPanel: PanelModule = {
   id: "attention",
   title: "Attention",
-  dashboardHtml: `
-<section class="card" id="panel-attention">
-  <div id="attention-sections" class="attention-sections panel-scroll-region"></div>
-</section>`,
+  dashboardHtml: panelCard("panel-attention", `
+  <div id="attention-sections" class="attention-sections panel-scroll-region"></div>`),
   async handle(ctx, req, res, path) {
     const json = (status: number, data: unknown) => {
       res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
@@ -108,7 +107,7 @@ function renderAttention(data){
   if(!root)return;
   var sections=data.sections||[];
   if(!sections.some(function(s){return s.items&&s.items.length;})){
-    root.innerHTML='<p class="dim">Nothing needs your attention right now.</p>';
+    root.innerHTML='<div class="ui-empty" role="status"><p class="ui-empty-title">Nothing needs your attention right now.</p></div>';
     return;
   }
   root.innerHTML=sections.map(function(section){

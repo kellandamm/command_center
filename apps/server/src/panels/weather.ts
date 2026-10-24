@@ -1,15 +1,13 @@
 import { fetchOpenMeteo } from "../weather/open-meteo";
+import { loadingState, panelCard } from "../ui/components";
 import type { PanelModule } from "./types";
 
 export const weatherPanel: PanelModule = {
   id: "weather",
   title: "Weather",
-  dashboardHtml: `
-<section class="card" id="panel-weather">
-  <h2 style="margin:0 0 8px">Weather</h2>
-  <p class="dim" id="weather-status">Loading…</p>
-  <div id="weather-body"></div>
-</section>`,
+  dashboardHtml: panelCard("panel-weather", `
+  <div id="weather-status-wrap">${loadingState()}</div>
+  <div id="weather-body"></div>`),
   async handle(ctx, req, res, path) {
     const json = (status: number, data: unknown) => {
       res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
@@ -41,21 +39,21 @@ export const weatherPanel: PanelModule = {
 export function weatherDashboardScript(): string {
   return `
 function renderWeather(r){
-  var st=document.getElementById("weather-status");
+  var stWrap=document.getElementById("weather-status-wrap");
   var body=document.getElementById("weather-body");
   if(!r.ok){
-    st.textContent=r.error||"Weather unavailable";
-    body.innerHTML="";
+    if(stWrap)stWrap.innerHTML='<div class="ui-error" role="alert"><p class="ui-error-text bad">'+esc(r.error||"Weather unavailable")+'</p></div>';
+    if(body)body.innerHTML="";
     return;
   }
   var w=r.weather;
   var cur=w.current.temperatureC;
   var unit="°C";
-  st.textContent=w.label+" · "+(w.latitude.toFixed(2))+", "+(w.longitude.toFixed(2));
+  if(stWrap)stWrap.innerHTML='<p class="dim" id="weather-status">'+esc(w.label)+" · "+(w.latitude.toFixed(2))+", "+(w.longitude.toFixed(2))+'</p>';
   var hi=w.today.highC, lo=w.today.lowC;
   var wind=w.current.windKmh;
-  body.innerHTML='<p style="font-size:1.6rem;margin:.2em 0">'+(cur!=null?Math.round(cur)+unit:"—")+'</p>'
-    +'<p class="dim" style="margin:0">Today '
+  if(body)body.innerHTML='<p class="weather-temp">'+(cur!=null?Math.round(cur)+unit:"—")+'</p>'
+    +'<p class="dim weather-meta">Today '
     +(hi!=null&&lo!=null?Math.round(lo)+'–'+Math.round(hi)+unit:"")
     +(wind!=null?' · Wind '+Math.round(wind)+' km/h':'')+'</p>';
 }
