@@ -24,7 +24,8 @@ export interface Config {
   cfAccessClientId: string | null;
   cfAccessClientSecret: string | null;
   cfTeamDomain: string | null;
-  cfAud: string | null;
+  /** Cloudflare Access application AUD tags (from `CF_ACCESS_AUD`, comma-separated). */
+  cfAud: string[] | null;
   adminToken: string | null;
   allowInsecureNoAuth: boolean;
   /** Unix socket path for read-only Docker Engine API; null disables container list. */
@@ -45,6 +46,8 @@ export interface Config {
   webhookSecret: string | null;
   /** Shared secret for POST /api/bookmarks/import (X bookmarks); ≥ 24 chars. */
   bookmarksImportSecret: string | null;
+  /** Optional allow-list of Access service-token client ids (`common_name`) for bookmarks import. */
+  bookmarksImportAllowedClientIds: string[];
   hobiePollToken: string | null;
   mcpMaxHobiePending: number;
   connectionsMasterKey: string | null;
@@ -88,13 +91,18 @@ function parseJsonRecord(raw: string | undefined): Record<string, string> {
   }
 }
 
-/** Split `ICS_URLS` on commas; empty segments are dropped. */
-export function parseIcsUrls(raw: string | undefined): string[] {
+/** Split on commas; empty segments are dropped. */
+export function parseCommaList(raw: string | undefined): string[] {
   if (!raw || !raw.trim()) return [];
   return raw
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+/** Split `ICS_URLS` on commas; empty segments are dropped. */
+export function parseIcsUrls(raw: string | undefined): string[] {
+  return parseCommaList(raw);
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -107,7 +115,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error(`TZ is not a valid IANA time zone: ${tz}`);
   }
   const cfTeamDomain = blank(env.CF_ACCESS_TEAM_DOMAIN)?.replace(/^https?:\/\//, "").replace(/\/+$/, "") ?? null;
-  const cfAud = blank(env.CF_ACCESS_AUD);
+  const cfAudParts = parseCommaList(env.CF_ACCESS_AUD);
+  const cfAud = cfAudParts.length ? cfAudParts : null;
   if (Boolean(cfTeamDomain) !== Boolean(cfAud)) {
     throw new Error("Set both CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD, or neither.");
   }
@@ -177,6 +186,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     mcpCfClientMap: parseJsonRecord(env.MCP_CF_CLIENT_MAP),
     webhookSecret,
     bookmarksImportSecret,
+    bookmarksImportAllowedClientIds: parseCommaList(env.BOOKMARKS_IMPORT_ALLOWED_CLIENT_IDS),
     hobiePollToken,
     mcpMaxHobiePending: Math.min(50, Math.max(1, Number(env.MCP_MAX_HOBIE_PENDING ?? 20) || 20)),
     connectionsMasterKey,

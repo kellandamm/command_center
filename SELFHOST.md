@@ -28,7 +28,7 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 | `TODOIST_API_TOKEN` | Optional. [Todoist REST API](https://developer.todoist.com/rest/v2/) token for the **Todoist** panel (today/overdue tasks, quick-add, complete). Without it the panel shows a clear disabled message. |
 | `GITHUB_TOKEN` | Optional. Personal access token (classic or fine-grained) for the **GitHub** panel. Public data works without it; the panel degrades gracefully on rate limits. |
 | `GITHUB_USERNAME` | GitHub login for open issues/PRs and public events. Default `kellandamm`. |
-| `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` | Cloudflare Access JWT on every request (`Cf-Access-Jwt-Assertion`). Set both or neither. |
+| `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` | Cloudflare Access JWT on every request (`Cf-Access-Jwt-Assertion`). Set both or neither. `CF_ACCESS_AUD` may be a comma-separated list when multiple Access applications protect the same hostname. |
 | `ADMIN_TOKEN` | ≥ 24 chars. `Authorization: Bearer …`, or `/?token=…` once (HttpOnly cookie; needs HTTPS). |
 | `ALLOW_INSECURE_NO_AUTH=1` | Localhost only. Without any auth setting the server refuses to start. |
 | `TZ` | Calendar dates, briefing day boundary, and settings times use this zone. |
@@ -43,6 +43,7 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 | `MCP_APP_TOKENS` | JSON map of MCP client id → bearer token (≥ 24 chars). Used with `/mcp` after CF client id checks. |
 | `WEBHOOK_SECRET` | ≥ 24 chars. Webhook requires **`X-Webhook-Secret`** plus a verified **`Cf-Access-Jwt-Assertion`** (Access injects this for service tokens). `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD` must be set. |
 | `BOOKMARKS_IMPORT_SECRET` | Optional (≥ 24 chars). Enables **`POST /api/bookmarks/import`** for X bookmarks: send **`X-Bookmarks-Secret`** with the same value plus a verified **`Cf-Access-Jwt-Assertion`** (Access service token). When unset, X import returns **404**; the browser Bookmarks page JSON import is unchanged. |
+| `BOOKMARKS_IMPORT_ALLOWED_CLIENT_IDS` | Optional comma-separated Access service-token client IDs (JWT **`common_name`**). When set, import also requires the verified JWT’s service token id to be in the list; when unset, any verified service token is accepted. The raw `CF-Access-Client-Id` header is not trusted. |
 | `HOBIE_POLL_TOKEN` | Optional bearer for Hobie to `GET /api/hobie/tasks` and `POST /api/hobie/claim`. Admin or MCP tokens also work. |
 | `MCP_MAX_HOBIE_PENDING` | Max pending Hobie tasks (default 20). |
 
@@ -199,7 +200,7 @@ The folder/tag sidebar uses existing Spaces as folders, shared with Notes and As
 
 Pages are saved only when you press Save or Save & summarize in the extension (or Read Later). Summarize is also available on each unsummarized link and in its reading view, alongside folder assignment, tags, Assistant, and note/task creation. The extension sends the page URL, title, and up to 20,000 characters of selected or readable text; the capture token can only save pages and cannot read your library. Download the extension from `/settings/capture`, unzip it, and load it unpacked in Chrome.
 
-**X bookmarks import:** set `BOOKMARKS_IMPORT_SECRET` (≥ 24 characters) and route an external job through Cloudflare Access with a service token. `POST /api/bookmarks/import` with JSON `{"items":[{post_id, post_url, author_handle, text, created_at, urls:[]}]}` (up to 100 items per request, 512 KB body). Re-posting the same `post_id` is ignored. Summaries run in the background and appear under **Read Later → From X**. Example:
+**X bookmarks import:** set `BOOKMARKS_IMPORT_SECRET` (≥ 24 characters) and route an external job through Cloudflare Access with a service token. Optionally set `BOOKMARKS_IMPORT_ALLOWED_CLIENT_IDS` to restrict which service tokens may call import (matched on JWT **`common_name`**). `POST /api/bookmarks/import` with JSON `{"items":[{post_id, post_url, author_handle, text, created_at, urls:[]}]}` (up to 100 items per request, 512 KB body). Re-posting the same `post_id` is ignored. Summaries run in the background and appear under **Read Later → From X**. Example:
 
 ```bash
 curl -sS -X POST "https://command.example.com/api/bookmarks/import" \
