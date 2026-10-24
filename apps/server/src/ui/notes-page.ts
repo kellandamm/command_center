@@ -12,20 +12,29 @@ export function noteToolsPage(nav: NavLink[] | undefined, connections: boolean):
     description: connections ? "Follow the links between your notes." : "Your material stays yours. Transfer Markdown or back up the complete workspace.",
     active: "/notes", nav, tabs: tabs(connections ? "/notes/connections" : "/notes/transfer"),
     body: connections ? '<p class="dim">Connect notes by writing [[Note title]] in the note body.</p><div id="note-connections" class="workspace-list"></div>' :
-      `<div class="workspace-form"><h2>Export</h2><div class="row"><a class="btn ghost" href="/api/knowledge/export.md">Export Markdown</a><a class="btn ghost" href="/api/knowledge/export.json">Download full backup</a></div>
-<p class="dim">The JSON backup includes notes, sources, summaries, archive status, and spaces.</p>
-<div class="workspace-details"><h2>Import</h2><label for="transfer-file">Markdown note or JSON backup</label><input id="transfer-file" type="file" accept=".md,.json"><button id="transfer-import" type="button">Import file</button><p class="dim">Backups merge without overwriting existing records.</p></div></div>`,
+      `<div class="workspace-form"><h2>Export</h2><div class="row"><a class="btn ghost" href="/api/knowledge/export.md">Export Markdown</a><a class="btn ghost" href="/api/knowledge/export.json">Download full backup</a><a class="btn ghost" href="/api/knowledge/export.zip">Export ZIP (folder tree)</a></div>
+<p class="dim warn">ZIP and Markdown exports are unencrypted plaintext. Anyone with the file can read your notes.</p>
+<p class="dim">The JSON backup includes notes, sources, summaries, archive status, and spaces. ZIP export keeps Spaces as top-level folders (owner login required).</p>
+<div class="workspace-details"><h2>Import</h2><label for="transfer-file">Markdown note, JSON backup, or notes ZIP</label><input id="transfer-file" type="file" accept=".md,.json,.zip"><button id="transfer-import" type="button">Import file</button><p class="dim">Backups merge without overwriting existing records. ZIP import accepts Obsidian vaults, Notion Markdown exports, and Mintype ZIPs (owner login required).</p></div></div>`,
     script: connections ? `
 api("/api/knowledge/graph").then(function(graph){
   var box=$("note-connections");
   if(!graph.edges.length){emptyState(box,"No connections yet","Add a [[link]] to another note, then come back here.");return;}
   graph.edges.forEach(function(edge){var a=graph.nodes.find(function(n){return n.id===edge.from;}),b=graph.nodes.find(function(n){return n.id===edge.to;});if(!a||!b)return;var row=element("div",undefined,"workspace-item");row.append(appLink(a.title,"/notes?note="+encodeURIComponent(a.id)),element("span","links to","dim"),appLink(b.title,"/notes?note="+encodeURIComponent(b.id)));box.append(row);});
 }).catch(fail);` : `
+function importZipFile(file){
+  return file.arrayBuffer().then(function(bytes){
+    return fetch("/api/knowledge/import.zip",{method:"POST",headers:{"x-ah":"1","content-type":"application/zip"},body:bytes}).then(function(r){
+      return r.json().catch(function(){return{};}).then(function(j){if(!r.ok)throw new Error(j.error||("HTTP "+r.status));return j;});
+    });
+  });
+}
 $("transfer-import").onclick=function(){busy(this,async function(){
-  var file=$("transfer-file").files[0];if(!file)throw new Error("Choose a Markdown file or JSON backup first.");
-  var text=await file.text();
+  var file=$("transfer-file").files[0];if(!file)throw new Error("Choose a Markdown file, JSON backup, or ZIP first.");
+  if(/\\.zip$/i.test(file.name)){var zipResult=await importZipFile(file);message("Imported "+zipResult.notesAdded+" notes and "+zipResult.spacesAdded+" spaces; "+zipResult.duplicatesRenamed+" titles renamed; "+zipResult.skippedAttachments.length+" attachments skipped.");}
+  else {var text=await file.text();
   if(/\\.json$/i.test(file.name)){var result=await api("/api/knowledge/import.json","POST",JSON.parse(text));message("Imported "+result.notes+" notes, "+result.sources+" sources, and "+result.spaces+" spaces. "+result.skipped+" duplicates skipped.");}
-  else {await api("/api/knowledge/import","POST",{title:file.name.replace(/\\.md$/i,""),markdown:text});message("Note imported. Find it in My notes.");}
+  else {await api("/api/knowledge/import","POST",{title:file.name.replace(/\\.md$/i,""),markdown:text});message("Note imported. Find it in My notes.");}}
 });};`,
   });
 }
@@ -84,8 +93,10 @@ export function notesPage(nav?: NavLink[]): string {
       <div class="notes-file-actions">
         <a class="btn ghost" href="/api/knowledge/export.md">Export Markdown</a>
         <a class="btn ghost" href="/api/knowledge/export.json">Download backup</a>
-        <label class="btn ghost" style="margin:0;cursor:pointer">Import file<input id="knowledge-import-file" type="file" accept=".md,.json,text/markdown,application/json" hidden></label>
+        <a class="btn ghost" href="/api/knowledge/export.zip">Export ZIP</a>
+        <label class="btn ghost" style="margin:0;cursor:pointer">Import file<input id="knowledge-import-file" type="file" accept=".md,.json,.zip,text/markdown,application/json,application/zip" hidden></label>
       </div>
+      <p class="dim warn">ZIP/Markdown exports are unencrypted plaintext. ZIP import/export requires an owner Cloudflare Access login.</p>
     </details>
   </aside>
   <div class="notes-main">
@@ -110,7 +121,7 @@ export function notesPage(nav?: NavLink[]): string {
       </div>
       <fieldset id="knowledge-fields" class="notes-document" disabled>
       <details class="notes-tools"><summary>Document tools</summary>
-      <div class="row"><button id="knowledge-pin" class="ghost" type="button" disabled>Pin note</button><button id="knowledge-archive" class="ghost" type="button" disabled>Archive note</button><button id="knowledge-sensitive" class="ghost" type="button" disabled title="Exclude from AI, Attention, search previews, browser drafts, and exports">Sensitive</button><button id="knowledge-duplicate" class="ghost" type="button" disabled>Duplicate note</button><button id="knowledge-review" class="ghost" type="button" disabled>Review latest saved version</button></div>
+      <div class="row"><button id="knowledge-pin" class="ghost" type="button" disabled>Pin note</button><button id="knowledge-archive" class="ghost" type="button" disabled>Archive note</button><button id="knowledge-sensitive" class="ghost" type="button" disabled title="Exclude from AI, Attention, search previews, browser drafts, and exports">Sensitive</button><button id="knowledge-duplicate" class="ghost" type="button" disabled>Duplicate note</button><button id="knowledge-share" class="ghost" type="button" disabled hidden>Share read-only link</button><button id="knowledge-review" class="ghost" type="button" disabled>Review latest saved version</button></div>
       <label for="knowledge-template">Start from a template</label><select id="knowledge-template"><option value="">Choose a template</option><option value="meeting">Meeting notes</option><option value="daily">Daily plan</option><option value="research">Research brief</option></select>
       <button id="knowledge-template-use" class="ghost" type="button">Insert template</button>
       <p class="dim">Templates insert at the end of your note. Rename with the title field; move with Note properties.</p>
@@ -185,6 +196,14 @@ export function notesPage(nav?: NavLink[]): string {
     <div id="knowledge-status" class="dim" aria-live="polite" style="margin-top:.75rem"></div>
   </div>
 </div>
+<dialog id="knowledge-share-dialog" aria-labelledby="knowledge-share-title"><h2 id="knowledge-share-title">Share read-only link</h2>
+<p class="dim">Creates an encrypted snapshot. The decryption key stays in your browser and is only in the link fragment (#…); the server stores ciphertext only.</p>
+<label for="knowledge-share-expiry">Link expires after</label>
+<select id="knowledge-share-expiry"><option value="3600">1 hour</option><option value="86400" selected>24 hours</option><option value="604800">7 days</option></select>
+<div class="row" style="margin-top:.75rem"><button id="knowledge-share-create" type="button">Create link</button><button id="knowledge-share-close" type="button" class="ghost">Close</button></div>
+<p id="knowledge-share-status" class="dim" role="status"></p>
+<label for="knowledge-share-url" hidden>Share URL</label><input id="knowledge-share-url" type="url" readonly hidden style="width:100%;margin-top:.5rem">
+<button id="knowledge-share-copy" type="button" class="ghost" hidden>Copy link</button></dialog>
 <dialog id="knowledge-switcher" aria-labelledby="knowledge-switch-title"><h2 id="knowledge-switch-title">Switch note</h2>
 <label for="knowledge-switch-query">Find by title</label><input id="knowledge-switch-query" type="search" autocomplete="off"><div id="knowledge-switch-results"></div><button id="knowledge-switch-close" type="button" class="ghost">Close</button></dialog>
 <style>
@@ -248,12 +267,20 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     script: `
 (function(){
   var state={notes:[],sources:[],spaces:[],current:null,spaceFilter:null,query:"",recordOptions:null,dirty:false,revision:0,tabs:[],recent:[],latest:null};
+  var serverCaps={owner:false,shareLinksEnabled:false};
   var saveTimer,previewTimer,savePromise=null,previewRevision=0,loading=true,transitioning=false;
   var draftPrefix="cc.notes.draft.",draftSetting="cc.notes.recovery",activeDraftKey=null,draftsEnabled=false,recoveryPaused=false,findEnd=0;
   var $=function(id){return document.getElementById(id);};
   var status=$("knowledge-status");
   function apiCall(path,method,body){
     return api(path,method||"GET",body);
+  }
+  function importZipFile(file){
+    return file.arrayBuffer().then(function(bytes){
+      return fetch("/api/knowledge/import.zip",{method:"POST",headers:{"x-ah":"1","content-type":"application/zip"},body:bytes}).then(function(r){
+        return r.json().catch(function(){return{};}).then(function(j){if(!r.ok)throw new Error(j.error||("HTTP "+r.status));return j;});
+      });
+    });
   }
   function node(tag,cls,text){
     var el=document.createElement(tag);
@@ -501,6 +528,13 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     $("knowledge-note-url").value=state.current?(state.current.sourceUrl||""):"";
     $("knowledge-editor-heading").textContent=state.current?state.current.title:"Start with an idea";
     $("knowledge-delete-note").disabled=!state.current;
+    var shareBtn=$("knowledge-share");
+    if(shareBtn){
+      var canShare=serverCaps.owner&&serverCaps.shareLinksEnabled&&state.current&&!state.current.sensitive;
+      shareBtn.hidden=!serverCaps.owner||!serverCaps.shareLinksEnabled;
+      shareBtn.disabled=!canShare;
+      shareBtn.title=state.current&&state.current.sensitive?"Sensitive notes cannot be shared.":"";
+    }
     $("knowledge-history").replaceChildren();
     $("knowledge-save-status").textContent=state.current?"Saved to your library":"Changes save automatically";
     renderBacklinks();
@@ -805,13 +839,18 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
   };
   $("knowledge-import-file").onchange=function(){
     var file=this.files&&this.files[0];if(!file)return;
+    var done=function(result){
+      status.textContent=result.zip?"ZIP import: "+result.zip.notesAdded+" notes, "+result.zip.spacesAdded+" spaces; "+result.zip.duplicatesRenamed+" renamed; "+result.zip.skippedAttachments.length+" attachments skipped.":result.backup?"Backup merged: "+result.result.notes+" notes, "+result.result.sources+" sources, "+result.result.spaces+" spaces added; "+result.result.skipped+" duplicates skipped.":"Markdown imported as a note.";
+      return load();
+    };
+    if(/\\.zip$/i.test(file.name)){
+      importZipFile(file).then(function(zipResult){return done({zip:zipResult});}).catch(showError).finally(function(){$("knowledge-import-file").value="";});
+      return;
+    }
     file.text().then(function(content){
       if(/\\.json$/i.test(file.name))return apiCall("/api/knowledge/import.json","POST",JSON.parse(content)).then(function(result){return {backup:true,result:result};});
       return apiCall("/api/knowledge/import","POST",{title:file.name.replace(/\\.md$/i,""),markdown:content}).then(function(){return {backup:false};});
-    }).then(function(result){
-      status.textContent=result.backup?"Backup merged: "+result.result.notes+" notes, "+result.result.sources+" sources, "+result.result.spaces+" spaces added; "+result.result.skipped+" duplicates skipped.":"Markdown imported as a note.";
-      return load();
-    }).catch(showError).finally(function(){$("knowledge-import-file").value="";});
+    }).then(done).catch(showError).finally(function(){$("knowledge-import-file").value="";});
   };
   $("knowledge-ask").onclick=function(){
     var spaceId=$("knowledge-ask-space").value,question=$("knowledge-question").value.trim();
@@ -828,7 +867,55 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
       });
     }).catch(function(e){$("knowledge-answer").textContent=e.message||"Could not answer";});
   };
-  function initialLoad(){return load().then(renderGraph).catch(function(error){showError(error);status.appendChild(document.createTextNode(" Retry loading your notes. Your saved content has not been changed."));$("knowledge-retry-load").hidden=false;});}
+  function bytesToB64url(bytes){
+    var bin="";bytes.forEach(function(b){bin+=String.fromCharCode(b);});
+    return btoa(bin).split("+").join("-").split("/").join("_").replace(/=+$/,"");
+  }
+  function b64FromBuffer(buf){
+    var bytes=new Uint8Array(buf),bin="";bytes.forEach(function(b){bin+=String.fromCharCode(b);});
+    return btoa(bin);
+  }
+  $("knowledge-share").onclick=function(){
+    $("knowledge-share-status").textContent="";$("knowledge-share-url").hidden=true;$("knowledge-share-copy").hidden=true;
+    $("knowledge-share-dialog").showModal();
+  };
+  $("knowledge-share-close").onclick=function(){$("knowledge-share-dialog").close();};
+  $("knowledge-share-copy").onclick=function(){
+    var input=$("knowledge-share-url");input.hidden=false;input.select();
+    navigator.clipboard.writeText(input.value).then(function(){$("knowledge-share-status").textContent="Link copied.";}).catch(function(){$("knowledge-share-status").textContent="Copy the link manually.";});
+  };
+  $("knowledge-share-create").onclick=function(){
+    if(!state.current||state.current.sensitive)return;
+    var seconds=Number($("knowledge-share-expiry").value)||86400;
+    var button=this;button.disabled=true;$("knowledge-share-status").textContent="Encrypting snapshot…";
+    saveNote().then(function(){
+      var note=state.current,title=note.title||"Untitled",content=$("knowledge-body").value;
+      return apiCall("/api/knowledge/preview","POST",{content:content}).then(function(preview){
+        var snapshot=JSON.stringify({title:title,html:preview.html});
+        return crypto.subtle.generateKey({name:"AES-GCM",length:256},true,["encrypt","decrypt"]).then(function(key){
+          return crypto.subtle.exportKey("raw",key).then(function(rawKey){
+            var iv=crypto.getRandomValues(new Uint8Array(12));
+            return crypto.subtle.encrypt({name:"AES-GCM",iv:iv},key,new TextEncoder().encode(snapshot)).then(function(ciphertext){
+              return apiCall("/api/knowledge/notes/"+encodeURIComponent(note.id)+"/share-links","POST",{
+                ciphertext:b64FromBuffer(ciphertext),iv:b64FromBuffer(iv),expiresInSeconds:seconds
+              }).then(function(created){
+                var url=location.origin+"/share/"+created.id+"#"+bytesToB64url(new Uint8Array(rawKey));
+                $("knowledge-share-url").value=url;$("knowledge-share-url").hidden=false;$("knowledge-share-copy").hidden=false;
+                $("knowledge-share-status").textContent="Share link created. Send the full URL including #.";
+              });
+            });
+          });
+        });
+      });
+    }).catch(showError).finally(function(){button.disabled=false;});
+  };
+  function initialLoad(){
+    return api("/api/state").then(function(data){
+      serverCaps.owner=!!data.owner;serverCaps.shareLinksEnabled=!!data.shareLinksEnabled;
+    }).catch(function(){}).then(function(){
+      return load().then(renderGraph);
+    }).catch(function(error){showError(error);status.appendChild(document.createTextNode(" Retry loading your notes. Your saved content has not been changed."));$("knowledge-retry-load").hidden=false;});
+  }
   $("knowledge-retry-load").querySelector("button").onclick=initialLoad;
   initialLoad();
 })();`,

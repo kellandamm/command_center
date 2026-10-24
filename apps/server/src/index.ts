@@ -26,6 +26,8 @@ import { CalendarWorkspace } from "./calendar/workspace";
 import { AttentionStore } from "./attention/store";
 import { LaunchpadStore } from "./launchpad/store";
 import { FocusSessionsStore } from "./focus/store";
+import { ShareLinksStore } from "./share-links/store";
+import { WhiteboardStore } from "./whiteboard/store";
 
 async function main() {
   const deployment = loadConfig();
@@ -59,6 +61,8 @@ async function main() {
   const attention = await AttentionStore.open(cfg.dataDir);
   const launchpad = await LaunchpadStore.open(cfg.dataDir);
   const focusSessions = await FocusSessionsStore.open(cfg.dataDir);
+  const shareLinks = await ShareLinksStore.open(cfg.dataDir);
+  const whiteboard = await WhiteboardStore.open(cfg.dataDir);
 
   const scheduler = new Scheduler({
     cfg,
@@ -89,8 +93,10 @@ async function main() {
     attention,
     launchpad,
     focusSessions,
+    whiteboard,
     connections,
     calendar,
+    shareLinks,
   });
   server.listen(cfg.port, cfg.host, () => {
     console.log(`command-center ${cfg.version} listening on ${cfg.host}:${cfg.port} (tz ${cfg.tz})`);

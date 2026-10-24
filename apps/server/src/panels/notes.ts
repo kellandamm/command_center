@@ -1,4 +1,4 @@
-import type { IncomingMessage } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { ValidationError } from "../settings";
 import { llmConfig } from "../config";
 import { chatCompletion } from "../llm/provider";
@@ -11,10 +11,31 @@ import {
 } from "../notes/sensitive";
 import { renderNoteMarkdown } from "../notes/markdown";
 import { fetchCalendarEvents } from "../calendar/service";
+import { notesZipLimitsFromEnv } from "../notes/zip-limits";
+import { readNotesZip } from "../notes/zip-read";
+import { buildNotesZipExport } from "../notes/zip-export";
+import { OWNER_ACTION_FORBIDDEN } from "../owner-auth";
 import type { PanelModule } from "./types";
 
 const MAX_KNOWLEDGE_QUESTIONS_PER_HOUR = 10;
 const knowledgeQuestionTimes = new WeakMap<NotesStore, number[]>();
+
+function ownerDenied(res: ServerResponse): void {
+  res.writeHead(403, { "content-type": "application/json", "cache-control": "no-store" });
+  res.end(JSON.stringify({ error: OWNER_ACTION_FORBIDDEN }));
+}
+
+async function readBinary(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of req as AsyncIterable<Buffer | string>) {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += buf.length;
+    if (total > maxBytes) throw new ValidationError("request body too large");
+    chunks.push(buf);
+  }
+  return Buffer.concat(chunks);
+}
 
 async function readJson(req: IncomingMessage, maxBytes = 1_000_000): Promise<Record<string, unknown>> {
   let body = "";
@@ -332,6 +353,22 @@ export const notesPanel: PanelModule = {
       return true;
     }
 
+    if (path === "/api/knowledge/export.zip" && req.method === "GET") {
+      if (!ctx.owner) return ownerDenied(res), true;
+      const limits = notesZipLimitsFromEnv();
+      const { zip: archive, exported, skippedSensitive } = buildNotesZipExport(ctx.notes.listNotes(), ctx.notes.listSpaces());
+      res.writeHead(200, {
+        "content-type": "application/zip",
+        "content-disposition": 'attachment; filename="command-center-notes.zip"',
+        "cache-control": "no-store",
+        "x-cc-notes-exported": String(exported),
+        "x-cc-notes-skipped-sensitive": String(skippedSensitive),
+        "x-cc-zip-max-compressed-bytes": String(limits.maxCompressedBytes),
+      });
+      res.end(archive);
+      return true;
+    }
+
     if (path === "/api/knowledge/export.md" && req.method === "GET") {
       const url = new URL(req.url ?? "/", "http://local");
       const includeSensitive = url.searchParams.get("includeSensitive") === "true";
@@ -376,6 +413,19 @@ export const notesPanel: PanelModule = {
 
     if (path === "/api/knowledge/import.json" && req.method === "POST") {
       const result = await ctx.notes.importBackup(await readJson(req, 20_000_000));
+      json(200, { ok: true, ...result });
+      return true;
+    }
+
+    if (path === "/api/knowledge/import.zip" && req.method === "POST") {
+      if (!ctx.owner) return ownerDenied(res), true;
+      const limits = notesZipLimitsFromEnv();
+      const body = await readBinary(req, limits.maxCompressedBytes);
+      const parsed = await readNotesZip(body, limits);
+      if (!parsed.entries.length) {
+        throw new ValidationError("zip archive contains no importable Markdown notes");
+      }
+      const result = await ctx.notes.importZipEntries(parsed);
       json(200, { ok: true, ...result });
       return true;
     }

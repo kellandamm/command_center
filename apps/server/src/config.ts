@@ -59,6 +59,13 @@ export interface Config {
   googleClientId: string | null;
   googleClientSecret: string | null;
   googleRedirectUri: string | null;
+  /** Expiring encrypted note share links (public /share/*). Off until Infra Ops configures Access bypass. */
+  shareLinksEnabled: boolean;
+  shareLinksMaxActive: number;
+  shareLinksMaxCiphertextBytes: number;
+  shareLinksRateLimitPerMinute: number;
+  /** Optional Excalidraw whiteboard page (`WHITEBOARD_ENABLED`, default off). */
+  whiteboardEnabled: boolean;
 }
 
 export interface LlmConfig {
@@ -200,6 +207,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     googleClientId,
     googleClientSecret,
     googleRedirectUri,
+    shareLinksEnabled: truthy(env.SHARE_LINKS_ENABLED),
+    shareLinksMaxActive: Math.min(200, Math.max(1, Number(env.SHARE_LINKS_MAX_ACTIVE ?? 50) || 50)),
+    shareLinksMaxCiphertextBytes: Math.min(
+      2_000_000,
+      Math.max(10_000, Number(env.SHARE_LINKS_MAX_CIPHERTEXT_BYTES ?? 512_000) || 512_000),
+    ),
+    shareLinksRateLimitPerMinute: Math.min(300, Math.max(1, Number(env.SHARE_LINKS_RATE_LIMIT_PER_MINUTE ?? 60) || 60)),
+    whiteboardEnabled: truthy(env.WHITEBOARD_ENABLED),
   };
 }
 

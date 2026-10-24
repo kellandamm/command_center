@@ -12,10 +12,12 @@ import { WinsRollupService } from "../src/wins/rollup-service";
 import { AttentionStore } from "../src/attention/store";
 import { LaunchpadStore } from "../src/launchpad/store";
 import { FocusSessionsStore } from "../src/focus/store";
+import { WhiteboardStore } from "../src/whiteboard/store";
 import type { Config } from "../src/config";
 import type { Server } from "node:http";
 import { XBookmarksStore } from "../src/read-later/x-bookmarks-store";
 import { XBookmarksService } from "../src/read-later/x-bookmarks-service";
+import { ShareLinksStore } from "../src/share-links/store";
 
 export async function closeIntegrationServer(
   server: Server,
@@ -57,5 +59,7 @@ export async function openIntegrationStores(dataDir: string, cfg?: Config) {
     attention: await AttentionStore.open(dataDir),
     launchpad: await LaunchpadStore.open(dataDir),
     focusSessions: await FocusSessionsStore.open(dataDir),
+    shareLinks: await ShareLinksStore.open(dataDir),
+    whiteboard: await WhiteboardStore.open(dataDir),
   };
 }
