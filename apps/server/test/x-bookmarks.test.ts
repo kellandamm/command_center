@@ -171,6 +171,58 @@ test("x bookmarks: auth rejects missing JWT and bad secret", async () => {
   }
 });
 
+test("x bookmarks: client id allow-list rejects unlisted service token", async () => {
+  const h = await harness({ BOOKMARKS_IMPORT_ALLOWED_CLIENT_IDS: "bookmarks-bot" });
+  try {
+    const keys = await createTestCfAccessJwt();
+    setIntegrationCfAccessVerifier(keys.verifier);
+    const otherJwt = await keys.signServiceTokenJwt("other-service-id");
+    const denied = await fetch(`${h.base}/api/bookmarks/import`, {
+      method: "POST",
+      headers: {
+        "cf-access-jwt-assertion": otherJwt,
+        "x-bookmarks-secret": IMPORT_SECRET,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ items: [{ ...sampleItem, post_id: "denied" }] }),
+    });
+    assert.equal(denied.status, 403);
+    assert.match((await denied.json()).error, /not allowed/i);
+  } finally {
+    await h.close();
+  }
+});
+
+test("x bookmarks: client id allow-list accepts listed token; unset list allows any verified JWT", async () => {
+  const restricted = await harness({ BOOKMARKS_IMPORT_ALLOWED_CLIENT_IDS: "bookmarks-bot" });
+  try {
+    const jwtHdr = await accessJwtHeaders();
+    const ok = await fetch(`${restricted.base}/api/bookmarks/import`, {
+      method: "POST",
+      headers: { ...jwtHdr, "x-bookmarks-secret": IMPORT_SECRET, "content-type": "application/json" },
+      body: JSON.stringify({ items: [{ ...sampleItem, post_id: "allowed" }] }),
+    });
+    assert.equal(ok.status, 200);
+    await new Promise((r) => setTimeout(r, 200));
+  } finally {
+    await restricted.close();
+  }
+
+  const open = await harness();
+  try {
+    const jwtHdr = await accessJwtHeaders();
+    const ok = await fetch(`${open.base}/api/bookmarks/import`, {
+      method: "POST",
+      headers: { ...jwtHdr, "x-bookmarks-secret": IMPORT_SECRET, "content-type": "application/json" },
+      body: JSON.stringify({ items: [{ ...sampleItem, post_id: "open-ok" }] }),
+    });
+    assert.equal(ok.status, 200);
+    await new Promise((r) => setTimeout(r, 200));
+  } finally {
+    await open.close();
+  }
+});
+
 test("x bookmarks: summarizer failure retries once then marks failed", async () => {
   let llmCalls = 0;
   const h = await harness({}, {

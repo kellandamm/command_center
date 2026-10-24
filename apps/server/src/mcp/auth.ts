@@ -83,10 +83,18 @@ export async function authenticateBookmarksImport(cfg: Config, req: IncomingMess
   if (!token) return { ok: false, status: 403, reason: "Cf-Access-Jwt-Assertion required" };
   const verify = resolveIntegrationVerifier(cfg);
   if (!verify) return { ok: false, status: 403, reason: "Cloudflare Access JWT verification is not configured" };
+  let payload;
   try {
-    await verify(token);
+    payload = await verify(token);
   } catch {
     return { ok: false, status: 403, reason: "Invalid or expired Cloudflare Access JWT" };
+  }
+  const allowed = cfg.bookmarksImportAllowedClientIds;
+  if (allowed.length) {
+    const serviceId = serviceTokenClientIdFromPayload(payload);
+    if (!serviceId || !allowed.includes(serviceId)) {
+      return { ok: false, status: 403, reason: "Access service token is not allowed for bookmarks import" };
+    }
   }
   const header = req.headers["x-bookmarks-secret"];
   const presented = (Array.isArray(header) ? header[0] : header) ?? "";

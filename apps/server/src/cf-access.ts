@@ -2,7 +2,7 @@ import { createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } 
 import type { Config } from "./config";
 
 export function cfAccessConfigured(cfg: Config): boolean {
-  return Boolean(cfg.cfTeamDomain && cfg.cfAud);
+  return Boolean(cfg.cfTeamDomain && cfg.cfAud?.length);
 }
 
 export function cfAccessIssuer(cfg: Config): string | null {
@@ -15,7 +15,7 @@ export type CfAccessJwtVerifier = (token: string) => Promise<JWTPayload>;
 export function createCfAccessJwtVerifier(cfg: Config, getKey: JWTVerifyGetKey): CfAccessJwtVerifier | null {
   const issuer = cfAccessIssuer(cfg);
   const aud = cfg.cfAud;
-  if (!issuer || !aud) return null;
+  if (!issuer || !aud?.length) return null;
   return async (token) => {
     const { payload } = await jwtVerify(token, getKey, { issuer, audience: aud });
     return payload;
