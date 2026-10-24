@@ -78,6 +78,7 @@ import { handleWhiteboardRoutes } from "./whiteboard/routes";
 import { excalidrawAssetContentType, readExcalidrawAsset } from "./whiteboard/assets";
 import { whiteboardPage } from "./ui/whiteboard-page";
 import { whiteboardEditorScript } from "./ui/whiteboard-editor-asset";
+import { readBody, readRawBody } from "./request-body";
 
 export interface App {
   cfg: Config;
@@ -117,27 +118,6 @@ function send(res: ServerResponse, status: number, body: string | Buffer, type =
   res.end(body);
 }
 const json = (res: ServerResponse, status: number, data: unknown) => send(res, status, JSON.stringify(data), "application/json");
-
-async function readRawBody(req: IncomingMessage, limit = 200_000): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const c of req) {
-    size += (c as Buffer).length;
-    if (size > limit) throw new ValidationError("request body too large");
-    chunks.push(c as Buffer);
-  }
-  return Buffer.concat(chunks);
-}
-
-async function readBody(req: IncomingMessage, limit = 200_000): Promise<unknown> {
-  const raw = await readRawBody(req, limit);
-  if (!raw.length) return {};
-  try {
-    return JSON.parse(raw.toString("utf8"));
-  } catch {
-    throw new ValidationError("invalid JSON");
-  }
-}
 
 const icons = new Map<string, Buffer>();
 const icon = (name: string, size: number, maskable = false) => icons.get(name) ?? (icons.set(name, iconPng(size, maskable)), icons.get(name)!);

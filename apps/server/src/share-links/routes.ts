@@ -6,6 +6,7 @@ import { ValidationError } from "../settings";
 import { sharePageHtml } from "../ui/share-page";
 import { shareViewerScript } from "../ui/share-viewer-script";
 import { clientIp, ShareLinkRateLimiter } from "./rate-limit";
+import { readJsonObjectBody } from "../request-body";
 import { SHARE_LINK_ID_RE, ShareLinksStore } from "./store";
 
 const SECURITY_PUBLIC: Record<string, string> = {
@@ -130,22 +131,6 @@ function serveSharePublic(
   return true;
 }
 
-async function readJsonBody(req: IncomingMessage, limit: number): Promise<Record<string, unknown>> {
-  let body = "";
-  for await (const chunk of req as AsyncIterable<Buffer | string>) {
-    body += chunk.toString();
-    if (Buffer.byteLength(body, "utf8") > limit) throw new ValidationError("request body too large");
-  }
-  try {
-    const parsed = JSON.parse(body || "{}") as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("body must be an object");
-    return parsed as Record<string, unknown>;
-  } catch (err) {
-    if (err instanceof SyntaxError) throw new ValidationError("invalid JSON");
-    throw new ValidationError(err instanceof Error ? err.message : "invalid request");
-  }
-}
-
 export async function handleShareOwnerRoutes(
   cfg: Config,
   notes: NotesStore,
@@ -194,7 +179,7 @@ export async function handleShareOwnerRoutes(
     if ((note as { sensitive?: boolean }).sensitive === true) {
       return jsonOwner(403, { error: "sensitive notes cannot be shared" }), true;
     }
-    const body = await readJsonBody(req, cfg.shareLinksMaxCiphertextBytes + 4096);
+    const body = await readJsonObjectBody(req, cfg.shareLinksMaxCiphertextBytes + 4096);
     const ciphertext = typeof body.ciphertext === "string" ? body.ciphertext : "";
     const iv = typeof body.iv === "string" ? body.iv : "";
     const expiresInSeconds = typeof body.expiresInSeconds === "number" ? body.expiresInSeconds : 86_400;
