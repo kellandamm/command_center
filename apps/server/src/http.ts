@@ -69,6 +69,9 @@ import { handleCalendarRoutes } from "./calendar/routes";
 import { exportCalendar } from "./calendar/export";
 import { calendarSettingsPage } from "./ui/calendar-settings-page";
 import { calendarEventPage } from "./ui/calendar-event-page";
+import { ShareLinksStore } from "./share-links/store";
+import { ShareLinkRateLimiter } from "./share-links/rate-limit";
+import { handleShareOwnerRoutes, handleSharePublicRoutes } from "./share-links/routes";
 
 export interface App {
   cfg: Config;
@@ -91,6 +94,7 @@ export interface App {
   launchpad: LaunchpadStore;
   connections?: ConnectionsStore;
   calendar?: CalendarWorkspace;
+  shareLinks: ShareLinksStore;
 }
 
 const SECURITY: Record<string, string> = {
@@ -158,6 +162,7 @@ export function createApp(app: App): Server {
   const captureAccess = new CaptureAccess(app.cfg.dataDir);
   const extensionZip = zip(captureExtensionFiles);
   const queueNonces = new QueueNonceStore(QUEUE_HMAC_WINDOW_SEC * 1000);
+  const shareLinkRateLimiter = new ShareLinkRateLimiter(app.cfg.shareLinksRateLimitPerMinute);
   app.xBookmarksService.start();
 
   return createServer(async (req, res) => {
@@ -231,6 +236,8 @@ export function createApp(app: App): Server {
           return;
         }
       }
+
+      if (await handleSharePublicRoutes(app.cfg, app.shareLinks, shareLinkRateLimiter, req, res, path)) return;
 
       const who = await app.auth(req, url);
       if (!who.ok) return send(res, who.status, `<h1>${who.status}</h1><p>${who.reason}</p>`);
@@ -344,6 +351,7 @@ export function createApp(app: App): Server {
         return json(res, 404, { error: "bookmark route not found" });
       }
 
+      if (await handleShareOwnerRoutes(app.cfg, app.notes, app.shareLinks, req, res, path, who.owner === true)) return;
       if (handleAgentQueueOwnerApi(app.agentTaskQueue, app.agentApprovals, req, res, path, who.owner === true)) return;
       if (await handleAgentApprovalRoutes(app.cfg, app.agentApprovals, req, res, path, who.owner === true, readBody)) return;
 
@@ -353,6 +361,8 @@ export function createApp(app: App): Server {
           tz: app.cfg.tz,
           llmEnabled: llmConfigured(app.cfg),
           recallioEnabled: recallioConfigured(app.cfg),
+          shareLinksEnabled: app.cfg.shareLinksEnabled,
+          owner: who.owner === true,
         });
       }
       if (get && path === "/api/dashboard-layout") return json(res, 200, { layout: app.dashboardLayout.get() });
