@@ -70,7 +70,7 @@ test("personal dashboard, settings and briefing work without retired integration
     });
     await page.goto("http://personal.test/");
     t.diagnostic("Dashboard opened");
-    await page.waitForFunction(() => document.querySelector("#dashboard-hobie-count")?.textContent !== "Loading…");
+    await page.waitForSelector("#panel-tasks", { timeout: 15_000 });
     assert.equal(await page.locator(".sidebar-nav").getByRole("link", { name: /News|Summaries|AI Security/ }).count(), 0);
     await page.goto("http://personal.test/settings");
     t.diagnostic("Settings opened");

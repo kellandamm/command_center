@@ -45,7 +45,7 @@ test("settings: retired integration settings are ignored while personal preferen
     assert.equal("fetchIntervalMinutes" in store.get(), false);
     assert.equal("feedScope" in store.get(), false);
     assert.equal(store.get().briefingTime, "08:30");
-    assert.equal(store.get().viewPreferences.dashboard.calendar, false);
+    assert.equal("dashboard" in store.get().viewPreferences, false);
     assert.equal(store.get().viewPreferences.briefing.topics, true);
     assert.equal("github" in store.get().viewPreferences.briefing, false);
     const json = JSON.stringify(store.get());
@@ -110,7 +110,7 @@ test("settings: view preferences customize page defaults and retain other defaul
   assert.equal(next.viewPreferences.calendar.weekStartsOn, "sunday");
   assert.equal(next.viewPreferences.activity.limit, 50);
   assert.equal(next.viewPreferences.notes.fontSize, "medium");
-  assert.equal(next.viewPreferences.dashboard.hobie, true);
+  assert.equal(next.viewPreferences.briefing.weather, true);
   assert.throws(
     () => applySettings(DEFAULT_SETTINGS, { viewPreferences: { calendar: { weekStartsOn: "friday" } } }),
     /viewPreferences\.calendar\.weekStartsOn is invalid/,

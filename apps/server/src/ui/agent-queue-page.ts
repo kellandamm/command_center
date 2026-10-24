@@ -64,9 +64,19 @@ async function loadCcQueue(){
     }else fail(err);
   }
 }
+function queueStatusFromPrefs(prefs){
+  var status=prefs&&prefs.hobie&&prefs.hobie.status||"all";
+  $("queue-status").value=status==="all"?"":status;
+}
+function persistQueueStatus(){
+  var value=$("queue-status").value;
+  var status=value||"all";
+  return api("/api/settings","PUT",{viewPreferences:{hobie:{status:status}}}).catch(function(){});
+}
 $("queue-refresh").onclick=function(){busy(this,function(){return Promise.all([loadBoardQueue(),loadCcQueue()]);});};
-$("queue-status").onchange=function(){loadBoardQueue().catch(fail);};
-loadBoardQueue().catch(fail);loadCcQueue().catch(function(){});
+$("queue-status").onchange=function(){persistQueueStatus().then(loadBoardQueue).catch(fail);};
+window.viewPreferencesReady.then(function(prefs){queueStatusFromPrefs(prefs);return loadBoardQueue();}).catch(fail);
+loadCcQueue().catch(function(){});
 `,
   });
 }
