@@ -228,7 +228,7 @@ const THEME_SCRIPT = `
 })();
 `;
 
-export function page(opts: { title: string; body: string; active?: string; script?: string; nav?: NavLink[]; extraCss?: string }): string {
+export function page(opts: { title: string; body: string; active?: string; script?: string; nav?: NavLink[]; extraCss?: string; extraHead?: string }): string {
   const agentSections = [
     ["/board", "board", "Board"], ["/agent/queue", "queue", "Queue"],
     ["/wins", "wins", "Wins"], ["/assistant", "assistant", "Assistant"], ["/activity", "activity", "Activity"],
@@ -264,7 +264,7 @@ export function page(opts: { title: string; body: string; active?: string; scrip
 .agent-tabs{display:flex;gap:1.5rem;border-bottom:1px solid var(--border);margin-bottom:1.5rem;overflow:auto}
 .agent-tabs a{padding:.75rem 0;white-space:nowrap;color:var(--muted-foreground)}
 .agent-tabs a[aria-current=page]{color:var(--foreground);border-bottom:2px solid var(--foreground);font-weight:600}
-html,body{font-family:Inter,ui-sans-serif,system-ui,sans-serif}</style></head>
+html,body{font-family:Inter,ui-sans-serif,system-ui,sans-serif}</style>${opts.extraHead ?? ""}</head>
 <body>${shell}
 <script>
 ${THEME_SCRIPT}

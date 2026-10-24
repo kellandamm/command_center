@@ -22,6 +22,7 @@ const whiteboard = await build({
   write: false,
   jsx: "automatic",
   loader: { ".css": "empty" },
+  define: { "process.env.NODE_ENV": '"production"' },
 });
 const whiteboardScript = whiteboard.outputFiles[0].text;
 await import("node:fs/promises").then(({ writeFile }) =>

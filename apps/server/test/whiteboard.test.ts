@@ -14,8 +14,19 @@ import { OWNER_ACTION_FORBIDDEN } from "../src/owner-auth";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 import { sanitizeWhiteboardScene, MAX_WHITEBOARD_SCENE_BYTES } from "../src/whiteboard/sanitize";
 import { WhiteboardStore } from "../src/whiteboard/store";
+import { whiteboardPage } from "../src/ui/whiteboard-page";
 
 const TOKEN = "w".repeat(32);
+
+test("whiteboard page does not leak layout css as visible head text", () => {
+  const html = whiteboardPage();
+  const bodyStart = html.indexOf("<body>");
+  const lastStyleClose = html.lastIndexOf("</style>", bodyStart);
+  const headTail = html.slice(lastStyleClose + "</style>".length, bodyStart);
+  assert.doesNotMatch(headTail, /\.agent-tabs\{display:flex/);
+  assert.match(html, /<link rel="stylesheet" href="\/assets\/excalidraw\/index\.css"/);
+  assert.match(html, /<script defer src="\/assets\/whiteboard-editor\.js"><\/script>/);
+});
 
 test("whiteboard sanitize allowlists embedded images only", () => {
   const scene = sanitizeWhiteboardScene({

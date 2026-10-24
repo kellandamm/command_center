@@ -8,10 +8,11 @@ const whiteboardCss = `
 .whiteboard-canvas-wrap{border:1px solid var(--border);border-radius:var(--radius);min-height:32rem;height:calc(100vh - 11rem);overflow:hidden;background:var(--card)}
 #whiteboard-root{width:100%;height:100%}
 @media(max-width:900px){.whiteboard-workspace{grid-template-columns:1fr}.whiteboard-canvas-wrap{min-height:24rem;height:70vh}}
-</style>
-<link rel="stylesheet" href="/assets/excalidraw/index.css" />
+`;
+
+const whiteboardHead = `<link rel="stylesheet" href="/assets/excalidraw/index.css" />
 <script>window.EXCALIDRAW_ASSET_PATH="/assets/excalidraw/";</script>
-<script src="/assets/whiteboard-editor.js"></script>`;
+<script defer src="/assets/whiteboard-editor.js"></script>`;
 
 export function whiteboardPage(nav?: NavLink[]): string {
   return page({
@@ -19,6 +20,7 @@ export function whiteboardPage(nav?: NavLink[]): string {
     active: "/whiteboard",
     nav,
     extraCss: whiteboardCss,
+    extraHead: whiteboardHead,
     body: `<header class="page-header"><h1>Whiteboard</h1><p class="dim">Sketch ideas with Excalidraw. Scenes are stored on the server as JSON.</p></header>
 <div class="whiteboard-workspace">
   <aside class="whiteboard-rail card" aria-label="Board list">
@@ -89,6 +91,12 @@ $("whiteboard-new").onclick=function(){
     return openScene(res.scene.id);
   }).catch(fail);
 };
-loadIndex().catch(fail);
+function syncEditorScene(){
+  if(whiteboardState.current&&window.whiteboardEditor){
+    window.whiteboardEditor.loadScene(whiteboardState.current.scene);
+  }
+}
+document.addEventListener("whiteboard:ready",syncEditorScene);
+loadIndex().then(syncEditorScene).catch(fail);
 `;
 }
