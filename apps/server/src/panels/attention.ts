@@ -5,12 +5,11 @@ import { dayKey } from "../store";
 import { ValidationError } from "../settings";
 import type { PanelModule } from "./types";
 
-const OWNER_MSG =
-  "Connection management requires a verified owner login. Set OWNER_EMAILS and sign in through Cloudflare Access; machine/admin tokens cannot manage keys.";
+import { OWNER_ACTION_FORBIDDEN } from "../owner-auth";
 
 function ownerDenied(res: import("node:http").ServerResponse): void {
   res.writeHead(403, { "content-type": "application/json", "cache-control": "no-store" });
-  res.end(JSON.stringify({ error: OWNER_MSG }));
+  res.end(JSON.stringify({ error: OWNER_ACTION_FORBIDDEN }));
 }
 
 export const attentionPanel: PanelModule = {

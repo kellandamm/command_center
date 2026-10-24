@@ -1,12 +1,11 @@
 import type { PanelModule } from "./types";
 import { ValidationError } from "../settings";
 
-const OWNER_MSG =
-  "Connection management requires a verified owner login. Set OWNER_EMAILS and sign in through Cloudflare Access; machine/admin tokens cannot manage keys.";
+import { OWNER_ACTION_FORBIDDEN } from "../owner-auth";
 
 function ownerDenied(res: import("node:http").ServerResponse): void {
   res.writeHead(403, { "content-type": "application/json", "cache-control": "no-store" });
-  res.end(JSON.stringify({ error: OWNER_MSG }));
+  res.end(JSON.stringify({ error: OWNER_ACTION_FORBIDDEN }));
 }
 
 async function readJsonBody(req: import("node:http").IncomingMessage): Promise<Record<string, unknown>> {

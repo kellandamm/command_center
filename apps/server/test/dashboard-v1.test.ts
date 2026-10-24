@@ -1,8 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { SESSION_GAP_MS, buildSessions } from "../src/attention/sessions";
 import { pickRediscover } from "../src/attention/rediscover";
@@ -23,8 +25,7 @@ import { panels } from "../src/panels/registry";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
 const TOKEN = "d".repeat(32);
-const OWNER_MSG =
-  "Connection management requires a verified owner login. Set OWNER_EMAILS and sign in through Cloudflare Access; machine/admin tokens cannot manage keys.";
+import { OWNER_ACTION_FORBIDDEN } from "../src/owner-auth";
 
 function card(partial: Partial<BoardCard> & Pick<BoardCard, "id" | "title">): BoardCard {
   return {
@@ -120,6 +121,43 @@ test("attention store: drops expired snoozes on load", async () => {
   }
 });
 
+async function seedDashboardDir(dir: string): Promise<void> {
+  const serverDir = join(fileURLToPath(new URL(".", import.meta.url)), "..");
+  await new Promise<void>((resolve, reject) => {
+    const seed = spawn("pnpm", ["exec", "tsx", "scripts/seed-dashboard-screenshot.ts"], {
+      cwd: serverDir,
+      env: { ...process.env, DATA_DIR: dir, TZ: "UTC" },
+      stdio: "inherit",
+    });
+    seed.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`seed exited ${code}`))));
+  });
+}
+
+test("heatmap API returns non-zero seeded counts and intensity levels", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-heatmap-api-"));
+  const cfg = loadConfig({ DATA_DIR: dir, ADMIN_TOKEN: TOKEN, ALLOW_INSECURE_NO_AUTH: "1", TZ: "UTC" });
+  await seedDashboardDir(dir);
+  const settings = new SettingsStore(dir);
+  await settings.load();
+  const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
+  const notes = await NotesStore.open(dir);
+  const integration = await openIntegrationStores(dir, cfg);
+  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, dailyBriefing, notes, ...integration });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    const res = await fetch(`${base}/api/dashboard/heatmap`, { headers: { authorization: `Bearer ${TOKEN}` } });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { days: Array<{ count: number; level: number }> };
+    const active = body.days.filter((d) => d.count > 0);
+    assert.ok(active.length >= 3, `expected seeded activity days, got ${active.length}`);
+    assert.ok(active.some((d) => d.level > 0), "expected at least one non-zero intensity level");
+  } finally {
+    await closeIntegrationServer(server, integration);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("heatmap: aggregates counts per local day", () => {
   const { days } = heatmapDateRange(new Date("2026-10-24T15:00:00.000Z"));
   const counts = aggregateDailyCounts(
@@ -167,7 +205,7 @@ test("dashboard v1 write routes require owner", async () => {
       const res = await fetch(`${base}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
       assert.equal(res.status, 403);
       const json = await res.json();
-      assert.equal(json.error, OWNER_MSG);
+      assert.equal(json.error, OWNER_ACTION_FORBIDDEN);
     }
     const layoutRes = await fetch(`${base}/api/dashboard-layout/import`, {
       method: "POST",

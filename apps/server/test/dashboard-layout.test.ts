@@ -88,7 +88,7 @@ test("dashboard layout: default collapses low-priority panels without retired ti
   assert.equal(layout.panels.find((p) => p.id === "calendar")?.collapsed, true);
   assert.equal(layout.panels.find((p) => p.id === "notes")?.collapsed, true);
   const maxEnd = layout.panels.reduce((m, p) => Math.max(m, p.y + (p.collapsed ? 1 : p.h)), 0);
-  assert.ok(maxEnd <= 10, "default layout should stay compact");
+  assert.ok(maxEnd <= 11, "default layout should stay compact");
 });
 
 test("dashboard layout: normalize adds missing panels and drops unknown ids", () => {

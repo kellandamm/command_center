@@ -115,12 +115,22 @@ const DASHBOARD_V1_SHOTS: Shot[] = [
     prepare: async (page) => {
       await page.waitForSelector("#panel-tasks #tasks-list li", { timeout: 20_000 });
       await page.waitForSelector("#panel-attention .attention-reason", { timeout: 20_000 });
-      await page.waitForSelector("#panel-heatmap .heatmap-cell", { timeout: 20_000 });
+      await page.waitForSelector("#panel-heatmap .heatmap-cell.level-1, #panel-heatmap .heatmap-cell.level-2", { timeout: 20_000 });
       await page.waitForSelector("#panel-launchpad .launchpad-tile", { timeout: 20_000 });
     },
   },
   {
     out: "docs/screenshots/dashboard-v1/attention-1280x800.png",
+    path: "/",
+    marker: "Dashboard",
+    prepare: async (page) => {
+      await page.waitForSelector(".attention-block h3", { timeout: 20_000 });
+      await page.waitForFunction(() => document.querySelectorAll(".attention-block").length >= 4);
+      await page.locator("#panel-attention").scrollIntoViewIfNeeded();
+    },
+  },
+  {
+    out: "docs/screenshots/dashboard-v1/attention-panel.png",
     path: "/",
     marker: "Dashboard",
     clipSelector: "#panel-attention",

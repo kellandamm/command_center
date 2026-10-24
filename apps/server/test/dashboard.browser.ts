@@ -61,6 +61,9 @@ test("dashboard v1 panels load in browser", { timeout: 120_000 }, async () => {
     await page.waitForSelector("#panel-attention .attention-reason", { timeout: 20_000 });
     await page.waitForSelector("#panel-heatmap .heatmap-cell.level-1, #panel-heatmap .heatmap-cell.level-2", { timeout: 20_000 });
     await page.waitForSelector("#panel-launchpad .launchpad-tile", { timeout: 20_000 });
+    assert.ok(await page.locator(".attention-block h3", { hasText: "Continue working" }).count());
+    assert.ok(await page.locator(".attention-block h3", { hasText: "On this day" }).count());
+    assert.ok(await page.locator(".attention-block h3", { hasText: "Rediscover" }).count());
     assert.match(await page.locator("h1").first().textContent() ?? "", /Dashboard/i);
     await page.setViewportSize({ width: 390, height: 844 });
     assert.ok(await page.locator("#dashboard-grid .dashboard-item").count() >= 4);

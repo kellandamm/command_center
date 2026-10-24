@@ -54,8 +54,15 @@ export const dashboardGridCss = `
 #panel-notes #notes-editor{min-height:3rem;flex:1;max-height:100%;resize:none;font-size:.8125rem}
 #panel-notes .dim{font-size:.75rem;margin:0}
 @media(max-width:900px){
-  .dashboard-grid{grid-template-columns:repeat(6,minmax(0,1fr))}
-  .dashboard-item{grid-column:1/-1!important;grid-row:auto!important;height:auto!important}
+  .app-shell:has(.dashboard-page){height:auto;max-height:none;overflow:visible}
+  .page-content:has(.dashboard-page){overflow:visible;flex:none;min-height:auto}
+  .dashboard-page{flex:none;min-height:auto}
+  .dashboard-grid{grid-template-columns:repeat(6,minmax(0,1fr));height:auto!important;max-height:none!important;grid-template-rows:none!important}
+  .dashboard-grid.is-stacked .dashboard-item{height:auto!important;max-height:none!important}
+  .dashboard-item{grid-column:1/-1!important;grid-row:auto!important;height:auto!important;max-height:none!important;overflow:visible}
+  .dashboard-item:not(.is-collapsed)>.card{height:auto;overflow:visible}
+  .dashboard-item:not(.is-collapsed) .dashboard-panel-body{overflow:visible;flex:none;min-height:auto}
+  .dashboard-item:not(.is-collapsed) .dashboard-panel-body .panel-scroll-region{overflow:visible;flex:none;min-height:auto}
   .dashboard-drag-handle,.dashboard-resize{display:none}
 }
 `;
@@ -86,7 +93,16 @@ export function dashboardGridScript(): string {
     var hits=(panels||[]).filter(function(p){return panelCoversRow(p,row)});
     return hits.length>0&&hits.every(function(p){return p.collapsed});
   }
+  function isStacked(){return window.matchMedia("(max-width: 900px)").matches}
   function syncGridRows(panels){
+    if(isStacked()){
+      grid.classList.add("is-stacked");
+      grid.style.gridTemplateRows="";
+      grid.style.height="auto";
+      grid.style.maxHeight="none";
+      return;
+    }
+    grid.classList.remove("is-stacked");
     var maxEnd=layoutMaxEnd(panels);
     grid.style.setProperty("--dash-rows",String(maxEnd));
     var page=document.querySelector(".dashboard-page");

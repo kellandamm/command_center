@@ -46,6 +46,7 @@ import { zip } from "./read-later/zip";
 import { dashboardPage, settingsPage } from "./ui/pages";
 import type { AttentionStore } from "./attention/store";
 import type { LaunchpadStore } from "./launchpad/store";
+import { OWNER_ACTION_FORBIDDEN } from "./owner-auth";
 import { connectionProvider, type ConnectionsStore } from "./connections";
 import { connectionsPage } from "./ui/connections-page";
 import { notesEditorScript } from "./ui/notes-editor-asset";
@@ -303,11 +304,7 @@ export function createApp(app: App): Server {
         return json(res, 200, { layout });
       }
       if (req.method === "POST" && path === "/api/dashboard-layout/import") {
-        if (!who.owner) {
-          return json(res, 403, {
-            error: "Connection management requires a verified owner login. Set OWNER_EMAILS and sign in through Cloudflare Access; machine/admin tokens cannot manage keys.",
-          });
-        }
+        if (!who.owner) return json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
         const layout = await app.dashboardLayout.update(await readBody(req, 64_000));
         return json(res, 200, { layout });
       }
