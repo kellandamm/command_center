@@ -119,10 +119,12 @@ function renderAttention(data){
         +'<button type="button" class="ghost attention-snooze" data-id="'+esc(item.id)+'" title="Snooze">⏸</button>'
         +'<button type="button" class="ghost attention-hide" data-id="'+esc(item.id)+'" title="Don\\'t rediscover">✕</button>'
         +'</span>';
+      var warn=/overdue|due today/i.test(item.reason)?" attention-warn":"";
       return '<li class="todoist-item attention-item"><a href="'+esc(item.href)+'"><strong>'+esc(item.title)+'</strong></a>'
-        +'<div class="dim attention-reason">'+esc(item.reason)+'</div>'+controls+'</li>';
+        +'<div class="dim attention-reason'+warn+'">'+esc(item.reason)+'</div>'+controls+'</li>';
     }).join("");
-    return '<section class="attention-block"><h3>'+esc(section.title)+'</h3><ul class="todoist-list">'+items+'</ul></section>';
+    var blockCls=section.id==="due"?" attention-block-warn":"";
+    return '<section class="attention-block'+blockCls+'"><h3>'+esc(section.title)+'</h3><ul class="todoist-list">'+items+'</ul></section>';
   }).join("");
   root.querySelectorAll(".attention-pin").forEach(function(btn){
     btn.onclick=function(){attentionAction("/api/attention/pin",{id:btn.dataset.id,pinned:true});};

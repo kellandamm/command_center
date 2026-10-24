@@ -52,6 +52,8 @@ const PAIRS: Array<{ fg: string; bg: string; label: string }> = [
   { fg: "warning-foreground", bg: "warning", label: "warning" },
   { fg: "attention-foreground", bg: "attention", label: "attention" },
   { fg: "destructive", bg: "background", label: "destructive text" },
+  { fg: "selected-foreground", bg: "selected", label: "selected control" },
+  { fg: "sidebar-primary-foreground", bg: "sidebar-primary", label: "sidebar active" },
 ];
 
 function assertThemeContrast(mode: string, tokens: ThemeTokens) {
