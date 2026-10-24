@@ -168,6 +168,16 @@ The search accepts JSON either as an array of hits or as `{ results | items | me
 
 Back up the volume to keep Board, Wins, briefings, and personal knowledge. The Notes page can export an ordinary Markdown bundle or a complete JSON backup; JSON imports merge records without overwriting existing entries.
 
+**ZIP import/export (owner login):** Import & export can also move a folder tree as a ZIP of Markdown (Obsidian vaults, Notion Markdown exports, or Mintype-style archives). Top-level folders become Spaces; deeper folders become tags. Attachments under `attachments/` are reported but not stored (Command Center does not host note file attachments). Exports are plaintext—treat ZIP files like any unencrypted backup. Limits are configurable:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `NOTES_ZIP_MAX_COMPRESSED_BYTES` | `26214400` (25 MiB) | Max uploaded ZIP size |
+| `NOTES_ZIP_MAX_UNCOMPRESSED_BYTES` | `104857600` (100 MiB) | Max total uncompressed bytes while streaming |
+| `NOTES_ZIP_MAX_ENTRY_BYTES` | `2097152` (2 MiB) | Max single extracted entry |
+| `NOTES_ZIP_MAX_ENTRIES` | `5000` | Max file entries per archive |
+| `NOTES_ZIP_MAX_COMPRESSION_RATIO` | `100` | Reject suspicious compression ratios (zip bombs) |
+
 ### Daily Briefing and removed integrations
 
 Settings controls the daily briefing time (default `06:00`, using `TZ`). Daily Briefing contains weather, calendar, and a keyword digest. Todoist, GitHub activity, and Agent board/wins sections are no longer generated or displayed in briefings; the separate Agent workflows remain unchanged.

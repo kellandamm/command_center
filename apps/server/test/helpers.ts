@@ -11,6 +11,7 @@ import { WinsStore } from "../src/wins/store";
 import { WinsRollupService } from "../src/wins/rollup-service";
 import { AttentionStore } from "../src/attention/store";
 import { LaunchpadStore } from "../src/launchpad/store";
+import { WhiteboardStore } from "../src/whiteboard/store";
 import type { Config } from "../src/config";
 import type { Server } from "node:http";
 import { XBookmarksStore } from "../src/read-later/x-bookmarks-store";
@@ -57,5 +58,6 @@ export async function openIntegrationStores(dataDir: string, cfg?: Config) {
     attention: await AttentionStore.open(dataDir),
     launchpad: await LaunchpadStore.open(dataDir),
     shareLinks: await ShareLinksStore.open(dataDir),
+    whiteboard: await WhiteboardStore.open(dataDir),
   };
 }

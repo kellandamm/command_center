@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ValidationError } from "../settings";
 import { writeFileAtomic } from "../store";
+import { buildZipNotesFromEntries, type ZipImportReport } from "./zip-import";
+import type { ZipReadResult } from "./zip-read";
 
 const NOTES_FILE = "notes.md";
 const KNOWLEDGE_FILE = "knowledge.json";
@@ -709,5 +711,39 @@ export class NotesStore {
     if (value === undefined || value === null || value === "") return null;
     if (typeof value !== "string" || !this.data.spaces.some((space) => space.id === value)) throw new ValidationError("spaceId is invalid");
     return value;
+  }
+
+  async importZipEntries(readResult: ZipReadResult): Promise<ZipImportReport> {
+    const planned = buildZipNotesFromEntries(readResult, this.data);
+    return this.updateData(() => {
+      const now = new Date().toISOString();
+      this.data.spaces.push(...planned.createdSpaces);
+      let notesAdded = 0;
+      for (const item of planned.notes) {
+        const content = markdownContent(item.content);
+        this.data.notes.push({
+          id: randomUUID(),
+          title: text(item.title, "title", 240, true),
+          content,
+          tags: tags(item.tags),
+          spaceId: item.spaceId && this.data.spaces.some((space) => space.id === item.spaceId) ? item.spaceId : null,
+          sourceUrl: null,
+          legacy: false,
+          version: 1,
+          pinned: false,
+          archivedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        });
+        notesAdded += 1;
+      }
+      return {
+        notesAdded,
+        spacesAdded: planned.spacesAdded,
+        duplicatesRenamed: planned.duplicatesRenamed,
+        skippedAttachments: readResult.skippedAttachments,
+        skippedOther: readResult.skippedOther,
+      };
+    });
   }
 }

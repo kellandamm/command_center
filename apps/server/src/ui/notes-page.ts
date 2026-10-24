@@ -12,20 +12,29 @@ export function noteToolsPage(nav: NavLink[] | undefined, connections: boolean):
     description: connections ? "Follow the links between your notes." : "Your material stays yours. Transfer Markdown or back up the complete workspace.",
     active: "/notes", nav, tabs: tabs(connections ? "/notes/connections" : "/notes/transfer"),
     body: connections ? '<p class="dim">Connect notes by writing [[Note title]] in the note body.</p><div id="note-connections" class="workspace-list"></div>' :
-      `<div class="workspace-form"><h2>Export</h2><div class="row"><a class="btn ghost" href="/api/knowledge/export.md">Export Markdown</a><a class="btn ghost" href="/api/knowledge/export.json">Download full backup</a></div>
-<p class="dim">The JSON backup includes notes, sources, summaries, archive status, and spaces.</p>
-<div class="workspace-details"><h2>Import</h2><label for="transfer-file">Markdown note or JSON backup</label><input id="transfer-file" type="file" accept=".md,.json"><button id="transfer-import" type="button">Import file</button><p class="dim">Backups merge without overwriting existing records.</p></div></div>`,
+      `<div class="workspace-form"><h2>Export</h2><div class="row"><a class="btn ghost" href="/api/knowledge/export.md">Export Markdown</a><a class="btn ghost" href="/api/knowledge/export.json">Download full backup</a><a class="btn ghost" href="/api/knowledge/export.zip">Export ZIP (folder tree)</a></div>
+<p class="dim warn">ZIP and Markdown exports are unencrypted plaintext. Anyone with the file can read your notes.</p>
+<p class="dim">The JSON backup includes notes, sources, summaries, archive status, and spaces. ZIP export keeps Spaces as top-level folders (owner login required).</p>
+<div class="workspace-details"><h2>Import</h2><label for="transfer-file">Markdown note, JSON backup, or notes ZIP</label><input id="transfer-file" type="file" accept=".md,.json,.zip"><button id="transfer-import" type="button">Import file</button><p class="dim">Backups merge without overwriting existing records. ZIP import accepts Obsidian vaults, Notion Markdown exports, and Mintype ZIPs (owner login required).</p></div></div>`,
     script: connections ? `
 api("/api/knowledge/graph").then(function(graph){
   var box=$("note-connections");
   if(!graph.edges.length){emptyState(box,"No connections yet","Add a [[link]] to another note, then come back here.");return;}
   graph.edges.forEach(function(edge){var a=graph.nodes.find(function(n){return n.id===edge.from;}),b=graph.nodes.find(function(n){return n.id===edge.to;});if(!a||!b)return;var row=element("div",undefined,"workspace-item");row.append(appLink(a.title,"/notes?note="+encodeURIComponent(a.id)),element("span","links to","dim"),appLink(b.title,"/notes?note="+encodeURIComponent(b.id)));box.append(row);});
 }).catch(fail);` : `
+function importZipFile(file){
+  return file.arrayBuffer().then(function(bytes){
+    return fetch("/api/knowledge/import.zip",{method:"POST",headers:{"x-ah":"1","content-type":"application/zip"},body:bytes}).then(function(r){
+      return r.json().catch(function(){return{};}).then(function(j){if(!r.ok)throw new Error(j.error||("HTTP "+r.status));return j;});
+    });
+  });
+}
 $("transfer-import").onclick=function(){busy(this,async function(){
-  var file=$("transfer-file").files[0];if(!file)throw new Error("Choose a Markdown file or JSON backup first.");
-  var text=await file.text();
+  var file=$("transfer-file").files[0];if(!file)throw new Error("Choose a Markdown file, JSON backup, or ZIP first.");
+  if(/\\.zip$/i.test(file.name)){var zipResult=await importZipFile(file);message("Imported "+zipResult.notesAdded+" notes and "+zipResult.spacesAdded+" spaces; "+zipResult.duplicatesRenamed+" titles renamed; "+zipResult.skippedAttachments.length+" attachments skipped.");}
+  else {var text=await file.text();
   if(/\\.json$/i.test(file.name)){var result=await api("/api/knowledge/import.json","POST",JSON.parse(text));message("Imported "+result.notes+" notes, "+result.sources+" sources, and "+result.spaces+" spaces. "+result.skipped+" duplicates skipped.");}
-  else {await api("/api/knowledge/import","POST",{title:file.name.replace(/\\.md$/i,""),markdown:text});message("Note imported. Find it in My notes.");}
+  else {await api("/api/knowledge/import","POST",{title:file.name.replace(/\\.md$/i,""),markdown:text});message("Note imported. Find it in My notes.");}}
 });};`,
   });
 }
@@ -84,8 +93,10 @@ export function notesPage(nav?: NavLink[]): string {
       <div class="notes-file-actions">
         <a class="btn ghost" href="/api/knowledge/export.md">Export Markdown</a>
         <a class="btn ghost" href="/api/knowledge/export.json">Download backup</a>
-        <label class="btn ghost" style="margin:0;cursor:pointer">Import file<input id="knowledge-import-file" type="file" accept=".md,.json,text/markdown,application/json" hidden></label>
+        <a class="btn ghost" href="/api/knowledge/export.zip">Export ZIP</a>
+        <label class="btn ghost" style="margin:0;cursor:pointer">Import file<input id="knowledge-import-file" type="file" accept=".md,.json,.zip,text/markdown,application/json,application/zip" hidden></label>
       </div>
+      <p class="dim warn">ZIP/Markdown exports are unencrypted plaintext. ZIP import/export requires an owner Cloudflare Access login.</p>
     </details>
   </aside>
   <div class="notes-main">
@@ -263,6 +274,13 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
   var status=$("knowledge-status");
   function apiCall(path,method,body){
     return api(path,method||"GET",body);
+  }
+  function importZipFile(file){
+    return file.arrayBuffer().then(function(bytes){
+      return fetch("/api/knowledge/import.zip",{method:"POST",headers:{"x-ah":"1","content-type":"application/zip"},body:bytes}).then(function(r){
+        return r.json().catch(function(){return{};}).then(function(j){if(!r.ok)throw new Error(j.error||("HTTP "+r.status));return j;});
+      });
+    });
   }
   function node(tag,cls,text){
     var el=document.createElement(tag);
@@ -789,13 +807,18 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
   };
   $("knowledge-import-file").onchange=function(){
     var file=this.files&&this.files[0];if(!file)return;
+    var done=function(result){
+      status.textContent=result.zip?"ZIP import: "+result.zip.notesAdded+" notes, "+result.zip.spacesAdded+" spaces; "+result.zip.duplicatesRenamed+" renamed; "+result.zip.skippedAttachments.length+" attachments skipped.":result.backup?"Backup merged: "+result.result.notes+" notes, "+result.result.sources+" sources, "+result.result.spaces+" spaces added; "+result.result.skipped+" duplicates skipped.":"Markdown imported as a note.";
+      return load();
+    };
+    if(/\\.zip$/i.test(file.name)){
+      importZipFile(file).then(function(zipResult){return done({zip:zipResult});}).catch(showError).finally(function(){$("knowledge-import-file").value="";});
+      return;
+    }
     file.text().then(function(content){
       if(/\\.json$/i.test(file.name))return apiCall("/api/knowledge/import.json","POST",JSON.parse(content)).then(function(result){return {backup:true,result:result};});
       return apiCall("/api/knowledge/import","POST",{title:file.name.replace(/\\.md$/i,""),markdown:content}).then(function(){return {backup:false};});
-    }).then(function(result){
-      status.textContent=result.backup?"Backup merged: "+result.result.notes+" notes, "+result.result.sources+" sources, "+result.result.spaces+" spaces added; "+result.result.skipped+" duplicates skipped.":"Markdown imported as a note.";
-      return load();
-    }).catch(showError).finally(function(){$("knowledge-import-file").value="";});
+    }).then(done).catch(showError).finally(function(){$("knowledge-import-file").value="";});
   };
   $("knowledge-ask").onclick=function(){
     var spaceId=$("knowledge-ask-space").value,question=$("knowledge-question").value.trim();

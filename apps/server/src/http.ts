@@ -72,6 +72,11 @@ import { calendarEventPage } from "./ui/calendar-event-page";
 import { ShareLinksStore } from "./share-links/store";
 import { ShareLinkRateLimiter } from "./share-links/rate-limit";
 import { handleShareOwnerRoutes, handleSharePublicRoutes } from "./share-links/routes";
+import { WhiteboardStore } from "./whiteboard/store";
+import { handleWhiteboardRoutes } from "./whiteboard/routes";
+import { excalidrawAssetContentType, readExcalidrawAsset } from "./whiteboard/assets";
+import { whiteboardPage } from "./ui/whiteboard-page";
+import { whiteboardEditorScript } from "./ui/whiteboard-editor-asset";
 
 export interface App {
   cfg: Config;
@@ -92,6 +97,7 @@ export interface App {
   dashboardLayout: DashboardLayoutStore;
   attention: AttentionStore;
   launchpad: LaunchpadStore;
+  whiteboard: WhiteboardStore;
   connections?: ConnectionsStore;
   calendar?: CalendarWorkspace;
   shareLinks: ShareLinksStore;
@@ -246,6 +252,15 @@ export function createApp(app: App): Server {
       const get = method === "GET" || method === "HEAD";
 
       if (get && path === "/assets/notes-editor.js") return send(res, 200, await notesEditorScript(), "text/javascript", extra);
+      if (get && path === "/assets/whiteboard-editor.js") {
+        return send(res, 200, await whiteboardEditorScript(), "text/javascript", extra);
+      }
+      if (get && path.startsWith("/assets/excalidraw/")) {
+        const relative = path.slice("/assets/excalidraw/".length);
+        const asset = await readExcalidrawAsset(relative);
+        if (!asset) return json(res, 404, { error: "not found" });
+        return send(res, 200, asset, excalidrawAssetContentType(relative), { ...extra, "cache-control": "public, max-age=86400" });
+      }
       if (app.calendar && await handleCalendarRoutes(app.calendar, req, res, path, who.owner === true, readBody)) return;
       if (path === "/api/connections" || path.startsWith("/api/connections/")) {
         if (!who.owner) return json(res, 403, { error: "Connection management requires a verified owner login. Set OWNER_EMAILS and sign in through Cloudflare Access; machine/admin tokens cannot manage keys." });
@@ -271,7 +286,7 @@ export function createApp(app: App): Server {
       if (get && path === "/icon-512.png") return send(res, 200, icon("512", 512), "image/png", extra);
       if (get && path === "/icon-maskable-512.png") return send(res, 200, icon("m512", 512, true), "image/png", extra);
 
-      const nav = () => visibleNavTabs(app.settings.get().sidebarTabs);
+      const nav = () => visibleNavTabs(app.settings.get().sidebarTabs, { whiteboard: app.cfg.whiteboardEnabled });
 
       if (get && path === "/") return send(res, 200, dashboardPage(nav()), undefined, extra);
       if (get && path === "/briefing") return send(res, 200, dailyBriefingPage(nav()), undefined, extra);
@@ -319,6 +334,10 @@ export function createApp(app: App): Server {
       if (get && path === "/calendar") return send(res, 200, calendarPage(nav()), undefined, extra);
       if (get && path === "/calendar/event") return send(res, 200, calendarEventPage(nav()), undefined, extra);
       if (get && path === "/settings") return send(res, 200, settingsPage(nav()), undefined, extra);
+      if (get && path === "/whiteboard") {
+        if (!app.cfg.whiteboardEnabled) return json(res, 404, { error: "not found" });
+        return send(res, 200, whiteboardPage(nav()), undefined, extra);
+      }
 
       if (get && path === "/api/bookmarks") return json(res, 200, app.bookmarks.list());
       if (get && path === "/api/bookmarks/export.json") {
@@ -406,6 +425,9 @@ export function createApp(app: App): Server {
         const bodyForApi = get ? undefined : await readBody(req);
         if (await handleBoardRoutes(app.board, app.hobieQueue, app.wins, app.cfg, req, res, path, bodyForApi)) return;
         if (await handleWinsRoutes(app.wins, app.cfg, app.winsRollup, req, res, path, bodyForApi)) return;
+      }
+      if (app.cfg.whiteboardEnabled && path.startsWith("/api/whiteboard/")) {
+        if (await handleWhiteboardRoutes(app.whiteboard, who.owner === true, req, res, path)) return;
       }
 
       for (const panel of panels) {

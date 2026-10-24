@@ -64,6 +64,8 @@ export interface Config {
   shareLinksMaxActive: number;
   shareLinksMaxCiphertextBytes: number;
   shareLinksRateLimitPerMinute: number;
+  /** Optional Excalidraw whiteboard page (`WHITEBOARD_ENABLED`, default off). */
+  whiteboardEnabled: boolean;
 }
 
 export interface LlmConfig {
@@ -212,6 +214,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       Math.max(10_000, Number(env.SHARE_LINKS_MAX_CIPHERTEXT_BYTES ?? 512_000) || 512_000),
     ),
     shareLinksRateLimitPerMinute: Math.min(300, Math.max(1, Number(env.SHARE_LINKS_RATE_LIMIT_PER_MINUTE ?? 60) || 60)),
+    whiteboardEnabled: truthy(env.WHITEBOARD_ENABLED),
   };
 }
 
