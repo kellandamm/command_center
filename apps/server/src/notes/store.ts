@@ -97,7 +97,6 @@ function archivedAt(value: unknown): string | null {
   if (typeof value !== "string" || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString() !== value) throw new ValidationError("archivedAt must be an ISO timestamp or null");
   return value;
 }
-
 function tags(value: unknown): string[] {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.some((tag) => typeof tag !== "string")) throw new ValidationError("tags must be a list of text");

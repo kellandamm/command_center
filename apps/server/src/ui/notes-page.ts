@@ -121,7 +121,7 @@ export function notesPage(nav?: NavLink[]): string {
       </div>
       <fieldset id="knowledge-fields" class="notes-document" disabled>
       <details class="notes-tools"><summary>Document tools</summary>
-      <div class="row"><button id="knowledge-pin" class="ghost" type="button" disabled>Pin note</button><button id="knowledge-archive" class="ghost" type="button" disabled>Archive note</button><button id="knowledge-duplicate" class="ghost" type="button" disabled>Duplicate note</button><button id="knowledge-review" class="ghost" type="button" disabled>Review latest saved version</button></div>
+      <div class="row"><button id="knowledge-pin" class="ghost" type="button" disabled>Pin note</button><button id="knowledge-archive" class="ghost" type="button" disabled>Archive note</button><button id="knowledge-duplicate" class="ghost" type="button" disabled>Duplicate note</button><button id="knowledge-share" class="ghost" type="button" disabled hidden>Share read-only link</button><button id="knowledge-review" class="ghost" type="button" disabled>Review latest saved version</button></div>
       <label for="knowledge-template">Start from a template</label><select id="knowledge-template"><option value="">Choose a template</option><option value="meeting">Meeting notes</option><option value="daily">Daily plan</option><option value="research">Research brief</option></select>
       <button id="knowledge-template-use" class="ghost" type="button">Insert template</button>
       <p class="dim">Templates insert at the end of your note. Rename with the title field; move with Note properties.</p>
@@ -196,6 +196,14 @@ export function notesPage(nav?: NavLink[]): string {
     <div id="knowledge-status" class="dim" aria-live="polite" style="margin-top:.75rem"></div>
   </div>
 </div>
+<dialog id="knowledge-share-dialog" aria-labelledby="knowledge-share-title"><h2 id="knowledge-share-title">Share read-only link</h2>
+<p class="dim">Creates an encrypted snapshot. The decryption key stays in your browser and is only in the link fragment (#…); the server stores ciphertext only.</p>
+<label for="knowledge-share-expiry">Link expires after</label>
+<select id="knowledge-share-expiry"><option value="3600">1 hour</option><option value="86400" selected>24 hours</option><option value="604800">7 days</option></select>
+<div class="row" style="margin-top:.75rem"><button id="knowledge-share-create" type="button">Create link</button><button id="knowledge-share-close" type="button" class="ghost">Close</button></div>
+<p id="knowledge-share-status" class="dim" role="status"></p>
+<label for="knowledge-share-url" hidden>Share URL</label><input id="knowledge-share-url" type="url" readonly hidden style="width:100%;margin-top:.5rem">
+<button id="knowledge-share-copy" type="button" class="ghost" hidden>Copy link</button></dialog>
 <dialog id="knowledge-switcher" aria-labelledby="knowledge-switch-title"><h2 id="knowledge-switch-title">Switch note</h2>
 <label for="knowledge-switch-query">Find by title</label><input id="knowledge-switch-query" type="search" autocomplete="off"><div id="knowledge-switch-results"></div><button id="knowledge-switch-close" type="button" class="ghost">Close</button></dialog>
 <style>
@@ -259,6 +267,7 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     script: `
 (function(){
   var state={notes:[],sources:[],spaces:[],current:null,spaceFilter:null,query:"",recordOptions:null,dirty:false,revision:0,tabs:[],recent:[],latest:null};
+  var serverCaps={owner:false,shareLinksEnabled:false};
   var saveTimer,previewTimer,savePromise=null,previewRevision=0,loading=true,transitioning=false;
   var draftPrefix="cc.notes.draft.",draftSetting="cc.notes.recovery",activeDraftKey=null,draftsEnabled=false,recoveryPaused=false,findEnd=0;
   var $=function(id){return document.getElementById(id);};
@@ -493,6 +502,13 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     $("knowledge-note-url").value=state.current?(state.current.sourceUrl||""):"";
     $("knowledge-editor-heading").textContent=state.current?state.current.title:"Start with an idea";
     $("knowledge-delete-note").disabled=!state.current;
+    var shareBtn=$("knowledge-share");
+    if(shareBtn){
+      var canShare=serverCaps.owner&&serverCaps.shareLinksEnabled&&state.current&&!state.current.sensitive;
+      shareBtn.hidden=!serverCaps.owner||!serverCaps.shareLinksEnabled;
+      shareBtn.disabled=!canShare;
+      shareBtn.title=state.current&&state.current.sensitive?"Sensitive notes cannot be shared.":"";
+    }
     $("knowledge-history").replaceChildren();
     $("knowledge-save-status").textContent=state.current?"Saved to your library":"Changes save automatically";
     renderBacklinks();
@@ -819,7 +835,55 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
       });
     }).catch(function(e){$("knowledge-answer").textContent=e.message||"Could not answer";});
   };
-  function initialLoad(){return load().then(renderGraph).catch(function(error){showError(error);status.appendChild(document.createTextNode(" Retry loading your notes. Your saved content has not been changed."));$("knowledge-retry-load").hidden=false;});}
+  function bytesToB64url(bytes){
+    var bin="";bytes.forEach(function(b){bin+=String.fromCharCode(b);});
+    return btoa(bin).split("+").join("-").split("/").join("_").replace(/=+$/,"");
+  }
+  function b64FromBuffer(buf){
+    var bytes=new Uint8Array(buf),bin="";bytes.forEach(function(b){bin+=String.fromCharCode(b);});
+    return btoa(bin);
+  }
+  $("knowledge-share").onclick=function(){
+    $("knowledge-share-status").textContent="";$("knowledge-share-url").hidden=true;$("knowledge-share-copy").hidden=true;
+    $("knowledge-share-dialog").showModal();
+  };
+  $("knowledge-share-close").onclick=function(){$("knowledge-share-dialog").close();};
+  $("knowledge-share-copy").onclick=function(){
+    var input=$("knowledge-share-url");input.hidden=false;input.select();
+    navigator.clipboard.writeText(input.value).then(function(){$("knowledge-share-status").textContent="Link copied.";}).catch(function(){$("knowledge-share-status").textContent="Copy the link manually.";});
+  };
+  $("knowledge-share-create").onclick=function(){
+    if(!state.current||state.current.sensitive)return;
+    var seconds=Number($("knowledge-share-expiry").value)||86400;
+    var button=this;button.disabled=true;$("knowledge-share-status").textContent="Encrypting snapshot…";
+    saveNote().then(function(){
+      var note=state.current,title=note.title||"Untitled",content=$("knowledge-body").value;
+      return apiCall("/api/knowledge/preview","POST",{content:content}).then(function(preview){
+        var snapshot=JSON.stringify({title:title,html:preview.html});
+        return crypto.subtle.generateKey({name:"AES-GCM",length:256},true,["encrypt","decrypt"]).then(function(key){
+          return crypto.subtle.exportKey("raw",key).then(function(rawKey){
+            var iv=crypto.getRandomValues(new Uint8Array(12));
+            return crypto.subtle.encrypt({name:"AES-GCM",iv:iv},key,new TextEncoder().encode(snapshot)).then(function(ciphertext){
+              return apiCall("/api/knowledge/notes/"+encodeURIComponent(note.id)+"/share-links","POST",{
+                ciphertext:b64FromBuffer(ciphertext),iv:b64FromBuffer(iv),expiresInSeconds:seconds
+              }).then(function(created){
+                var url=location.origin+"/share/"+created.id+"#"+bytesToB64url(new Uint8Array(rawKey));
+                $("knowledge-share-url").value=url;$("knowledge-share-url").hidden=false;$("knowledge-share-copy").hidden=false;
+                $("knowledge-share-status").textContent="Share link created. Send the full URL including #.";
+              });
+            });
+          });
+        });
+      });
+    }).catch(showError).finally(function(){button.disabled=false;});
+  };
+  function initialLoad(){
+    return api("/api/state").then(function(data){
+      serverCaps.owner=!!data.owner;serverCaps.shareLinksEnabled=!!data.shareLinksEnabled;
+    }).catch(function(){}).then(function(){
+      return load().then(renderGraph);
+    }).catch(function(error){showError(error);status.appendChild(document.createTextNode(" Retry loading your notes. Your saved content has not been changed."));$("knowledge-retry-load").hidden=false;});
+  }
   $("knowledge-retry-load").querySelector("button").onclick=initialLoad;
   initialLoad();
 })();`,
