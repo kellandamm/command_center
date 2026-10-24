@@ -44,6 +44,8 @@ import { CaptureAccess } from "./read-later/capture-access";
 import { captureExtensionFiles } from "./read-later/extension";
 import { zip } from "./read-later/zip";
 import { dashboardPage, settingsPage } from "./ui/pages";
+import type { AttentionStore } from "./attention/store";
+import type { LaunchpadStore } from "./launchpad/store";
 import { connectionProvider, type ConnectionsStore } from "./connections";
 import { connectionsPage } from "./ui/connections-page";
 import { notesEditorScript } from "./ui/notes-editor-asset";
@@ -67,6 +69,8 @@ export interface App {
   wins: WinsStore;
   winsRollup: WinsRollupService;
   dashboardLayout: DashboardLayoutStore;
+  attention: AttentionStore;
+  launchpad: LaunchpadStore;
   connections?: ConnectionsStore;
   calendar?: CalendarWorkspace;
 }
@@ -113,7 +117,7 @@ export function createApp(app: App): Server {
     wins: app.wins,
   });
 
-  const ctx = (): PanelContext => ({
+  const ctx = (owner: boolean): PanelContext => ({
     cfg: app.cfg,
     settings: app.settings,
     calendar: app.calendar,
@@ -122,6 +126,9 @@ export function createApp(app: App): Server {
     hobieQueue: app.hobieQueue,
     board: app.board,
     wins: app.wins,
+    attention: app.attention,
+    launchpad: app.launchpad,
+    owner,
   });
 
   const readLater = new ReadLaterService(app.cfg, app.notes);
@@ -285,8 +292,23 @@ export function createApp(app: App): Server {
         });
       }
       if (get && path === "/api/dashboard-layout") return json(res, 200, { layout: app.dashboardLayout.get() });
+      if (get && path === "/api/dashboard-layout/export.json") {
+        return send(res, 200, JSON.stringify(app.dashboardLayout.get(), null, 2), "application/json", {
+          ...extra,
+          "content-disposition": 'attachment; filename="dashboard-layout.json"',
+        });
+      }
       if (req.method === "PUT" && path === "/api/dashboard-layout") {
         const layout = await app.dashboardLayout.update(await readBody(req));
+        return json(res, 200, { layout });
+      }
+      if (req.method === "POST" && path === "/api/dashboard-layout/import") {
+        if (!who.owner) {
+          return json(res, 403, {
+            error: "Connection management requires a verified owner login. Set OWNER_EMAILS and sign in through Cloudflare Access; machine/admin tokens cannot manage keys.",
+          });
+        }
+        const layout = await app.dashboardLayout.update(await readBody(req, 64_000));
         return json(res, 200, { layout });
       }
       if (req.method === "POST" && path === "/api/dashboard-layout/reset") {
@@ -314,7 +336,7 @@ export function createApp(app: App): Server {
       }
 
       for (const panel of panels) {
-        if (panel.handle && (await panel.handle(ctx(), req, res, path))) return;
+        if (panel.handle && (await panel.handle(ctx(who.owner === true), req, res, path))) return;
       }
 
       return json(res, 404, { error: "not found" });

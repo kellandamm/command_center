@@ -212,6 +212,26 @@ export class BoardStore {
     return this.list().filter((c) => c.column === "Blocked on me");
   }
 
+  listCardEventActivity(limit = 2_000): Array<{ cardId: string; at: string; title: string }> {
+    const rows = this.db
+      .prepare(
+        `SELECT e.card_id, e.at, c.title
+         FROM card_events e
+         JOIN cards c ON c.id = e.card_id
+         ORDER BY e.at DESC
+         LIMIT ?`,
+      )
+      .all(limit) as { card_id: string; at: string; title: string }[];
+    return rows.map((r) => ({ cardId: r.card_id, at: r.at, title: r.title }));
+  }
+
+  eventTimestampsSince(isoSince: string): string[] {
+    const rows = this.db
+      .prepare(`SELECT at FROM card_events WHERE at >= ?`)
+      .all(isoSince) as { at: string }[];
+    return rows.map((r) => r.at);
+  }
+
   movesSince(isoSince: string): CardMoveEvent[] {
     const rows = this.db
       .prepare(

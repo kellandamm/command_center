@@ -14,29 +14,25 @@ import { noteToolsPage, notesPage } from "../src/ui/notes-page";
 import { bookmarksPage } from "../src/ui/bookmarks-page";
 import { dashboardPage, settingsPage } from "../src/ui/pages";
 
-test("ui: dashboard shows concise status summaries with links to full pages", () => {
+test("ui: dashboard renders draggable grid panels and v1 widgets", () => {
   const html = dashboardPage();
   assert.match(html, /class="app-shell"/);
   assert.match(html, /class="sidebar-nav"/);
-  assert.match(html, /class="dashboard-overview"/);
-  assert.match(html, /Needs attention/);
-  assert.match(html, /Hobie board/);
-  assert.match(html, /Read later/);
-  assert.match(html, /Next up/);
-  assert.match(html, /Today's briefing/);
-  assert.match(html, /Recent agent activity/);
+  assert.match(html, /id="dashboard-grid"/);
+  assert.match(html, /id="dashboard-reset-layout"/);
+  assert.match(html, /id="panel-tasks"/);
+  assert.match(html, /id="panel-attention"/);
+  assert.match(html, /id="panel-heatmap"/);
+  assert.match(html, /id="panel-launchpad"/);
+  assert.match(html, /data-panel-id="tasks"/);
+  assert.match(html, /\/api\/dashboard\/tasks/);
+  assert.match(html, /\/api\/dashboard\/attention/);
+  assert.match(html, /\/api\/dashboard\/heatmap/);
+  assert.match(html, /\/api\/launchpad/);
+  assert.match(html, /\/api\/dashboard-layout\/export\.json/);
+  assert.match(html, /\/api\/dashboard-layout\/import/);
   assert.match(html, /id="theme-toggle"/);
-  assert.match(html, /href="\/agent\?view=board"/);
-  assert.match(html, /href="\/library\?view=inbox"/);
-  assert.match(html, /\/api\/read-later/);
-  assert.doesNotMatch(html, /href="\/(?:news|summaries|ai-security)"/);
-  assert.match(html, /href="\/calendar"/);
-  assert.match(html, /href="\/briefing"/);
-  assert.match(html, /href="\/agent\?view=activity"/);
-  assert.doesNotMatch(html, /\/api\/(?:feeds|news|rss|summaries|ai-security)/);
-  assert.match(html, /\/api\/calendar\?horizonDays=7/);
-  assert.match(html, /\/api\/daily-briefing/);
-  assert.doesNotMatch(html, /dashboard-grid|dashboard-reset-layout|data-panel-id=/);
+  assert.doesNotMatch(html, /class="dashboard-overview"/);
 });
 
 test("ui: daily briefing page has source sections and nav link", () => {

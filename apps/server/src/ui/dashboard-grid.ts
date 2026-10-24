@@ -134,6 +134,7 @@ export function dashboardGridScript(): string {
 
   function titleFor(id){
     var map={
+      tasks:"Tasks",attention:"Attention",heatmap:"Activity heatmap",launchpad:"Launchpad",
       activity:"Activity",hobie:"Hobie queue","daily-briefing":"Daily briefing",
       weather:"Weather",calendar:"Calendar",notes:"Notes","host-health":"Host health",
       recallio:"Recallio"
@@ -360,6 +361,7 @@ export function dashboardGridScript(): string {
     });
   }
 
+  window.applyDashboardLayout=applyLayout;
   setupChrome();
   syncGridRows(readLayout().panels);
   window.addEventListener("resize",function(){syncGridRows(readLayout().panels)});

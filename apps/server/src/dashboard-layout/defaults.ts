@@ -7,18 +7,24 @@ export const DEFAULT_COLLAPSED_PANEL_IDS = new Set<string>([
   "recallio",
   "host-health",
   "notes",
+  "activity",
+  "hobie",
 ]);
 
-/** Compact layout for the remaining personal dashboard panels. */
+/** Compact layout for the personal dashboard panels. */
 export const DEFAULT_PANEL_LAYOUT: PanelLayoutEntry[] = [
-  { id: "calendar", x: 0, y: 0, w: 2, h: 2, collapsed: true },
-  { id: "recallio", x: 2, y: 0, w: 2, h: 2, collapsed: true },
-  { id: "host-health", x: 4, y: 0, w: 2, h: 2, collapsed: true },
-  { id: "activity", x: 0, y: 1, w: 3, h: 2 },
-  { id: "hobie", x: 3, y: 1, w: 3, h: 2 },
-  { id: "weather", x: 6, y: 1, w: 3, h: 2 },
+  { id: "tasks", x: 0, y: 0, w: 4, h: 3 },
+  { id: "attention", x: 4, y: 0, w: 5, h: 3 },
+  { id: "heatmap", x: 9, y: 0, w: 3, h: 2 },
+  { id: "launchpad", x: 9, y: 2, w: 3, h: 2 },
   { id: "daily-briefing", x: 0, y: 3, w: 6, h: 2 },
-  { id: "notes", x: 6, y: 3, w: 4, h: 2, collapsed: true },
+  { id: "calendar", x: 6, y: 3, w: 3, h: 2, collapsed: true },
+  { id: "weather", x: 9, y: 3, w: 3, h: 2 },
+  { id: "activity", x: 0, y: 5, w: 3, h: 2, collapsed: true },
+  { id: "hobie", x: 3, y: 5, w: 3, h: 2, collapsed: true },
+  { id: "notes", x: 6, y: 5, w: 3, h: 2, collapsed: true },
+  { id: "host-health", x: 9, y: 5, w: 3, h: 2, collapsed: true },
+  { id: "recallio", x: 0, y: 7, w: 3, h: 2, collapsed: true },
 ];
 
 const DEFAULT_BY_ID = new Map(DEFAULT_PANEL_LAYOUT.map((p) => [p.id, p]));
