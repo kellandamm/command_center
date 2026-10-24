@@ -78,6 +78,7 @@ test("vault: notion hex stripping and wikilinks", () => {
 test("sanitize: strips script tags from imported markdown", () => {
   const cleaned = sanitizeImportedMarkdown("# Hi\n<script>alert(1)</script>\n**bold**");
   assert.ok(!cleaned.includes("<script"));
+  assert.ok(!sanitizeImportedMarkdown("<script>alert(1)</script >").includes("<script"));
   assert.match(cleaned, /\*\*bold\*\*/);
 });
 
