@@ -419,11 +419,8 @@ ${DASHBOARD_GRID_LAYOUT_HELPERS}
 
   window.applyDashboardLayout=applyLayout;
   setupChrome();
-  syncGridRows(readLayout().panels);
-  window.addEventListener("resize",function(){
-    if(isStacked())syncGridRows(readLayout().panels);
-    else applyPanels(readLayout().panels);
-  });
+  applyPanels(readLayout().panels);
+  window.addEventListener("resize",function(){applyPanels(readLayout().panels)});
   api("/api/dashboard-layout").then(function(r){applyLayout(r.layout||{});}).catch(function(){});
   var reset=document.getElementById("dashboard-reset-layout");
   if(reset)reset.addEventListener("click",function(){

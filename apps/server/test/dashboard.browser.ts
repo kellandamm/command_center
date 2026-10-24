@@ -234,3 +234,61 @@ test("dashboard packed desktop: drag, keyboard, resize, and viewport reflow", { 
     await rm(dataDir, { recursive: true, force: true });
   }
 });
+
+test("dashboard: bootstrap without layout API and breakpoint reflow", { timeout: 120_000 }, async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "cc-dash-bootstrap-"));
+  const port = 4700 + Math.floor(Math.random() * 500);
+  const base = `http://127.0.0.1:${port}`;
+  await new Promise<void>((resolve, reject) => {
+    const seed = spawn("pnpm", ["exec", "tsx", "scripts/seed-dashboard-screenshot.ts"], {
+      cwd: join(import.meta.dirname, ".."),
+      env: { ...process.env, DATA_DIR: dataDir },
+      stdio: "inherit",
+    });
+    seed.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`seed ${code}`))));
+  });
+  const app = startServer(dataDir, port);
+  const browser = await chromium.launch();
+  try {
+    await waitForServer(base);
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    await page.route("**/api/dashboard-layout", (route) => route.abort());
+    await page.goto(`${base}/`);
+    await page.waitForSelector("#dashboard-grid.is-packed", { timeout: 20_000 });
+    await page.waitForSelector("#panel-tasks", { timeout: 20_000 });
+    await sleep(600);
+    let overlaps = await panelOverlaps(page);
+    assert.deepEqual(
+      overlaps,
+      [],
+      `panels should not overlap when layout API fails: ${overlaps.join(", ")}`,
+    );
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForSelector("#dashboard-grid.is-stacked", { timeout: 10_000 });
+    await sleep(200);
+    const stackedInline = await page.evaluate(() => {
+      const bad: string[] = [];
+      document.querySelectorAll("#dashboard-grid .dashboard-item").forEach((el) => {
+        const id = el.getAttribute("data-panel-id") || "";
+        const style = (el as HTMLElement).style;
+        ["left", "top", "width", "height"].forEach((prop) => {
+          const v = style[prop as "left"];
+          if (v && v.endsWith("px")) bad.push(`${id}:${prop}=${v}`);
+        });
+      });
+      return bad;
+    });
+    assert.deepEqual(stackedInline, [], `stacked mode should clear packed inline px: ${stackedInline.join(", ")}`);
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.waitForSelector("#dashboard-grid.is-packed", { timeout: 10_000 });
+    await sleep(200);
+    overlaps = await panelOverlaps(page);
+    assert.deepEqual(overlaps, [], `packed mode after reflow should not overlap: ${overlaps.join(", ")}`);
+  } finally {
+    await browser.close();
+    app.kill("SIGTERM");
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
