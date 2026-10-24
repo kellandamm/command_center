@@ -1,12 +1,18 @@
+import { createServer, request as httpRequest } from "node:http";
+import type { AddressInfo } from "node:net";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isPublicIp, assertPublicUrl } from "../src/ssrf";
+import { isPublicIp, assertPublicUrl, readResponseBody } from "../src/ssrf";
 import { dueBriefingSlot, slotInstant } from "../src/scheduler";
 import { applySettings, DEFAULT_SETTINGS, ValidationError } from "../src/settings";
 import { dayKey } from "../src/store";
 
 test("ssrf: private, loopback, metadata and mapped addresses are refused", () => {
-  for (const ip of ["127.0.0.1", "10.1.2.3", "192.168.0.9", "169.254.169.254", "172.16.0.1", "100.64.0.1", "0.0.0.0", "::1", "fd00::1", "fe80::1", "::ffff:127.0.0.1", "::ffff:7f00:1"]) {
+  for (const ip of [
+    "127.0.0.1", "10.1.2.3", "192.168.0.9", "169.254.169.254", "172.16.0.1", "100.64.0.1", "0.0.0.0",
+    "::1", "fd00::1", "fe80::1", "::ffff:127.0.0.1", "::ffff:7f00:1",
+    "64:ff9b::127.0.0.1", "64:ff9b::7f00:1", "2002:0a00:0001::", "2002:c000:0202::",
+  ]) {
     assert.equal(isPublicIp(ip), false, ip);
   }
   for (const ip of ["8.8.8.8", "1.1.1.1", "2606:4700::1111"]) assert.equal(isPublicIp(ip), true, ip);
@@ -19,6 +25,26 @@ test("ssrf: assertPublicUrl checks scheme, credentials, literals and DNS answers
     await assert.rejects(assertPublicUrl(bad, pub), bad);
   }
   await assert.rejects(assertPublicUrl("https://rebind.example/", async () => ["93.184.216.34", "10.0.0.1"]));
+});
+
+test("ssrf: readResponseBody truncates at maxBytes without hanging", async () => {
+  const server = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/plain" });
+    res.write("a".repeat(8_192));
+    res.end("b".repeat(8_192));
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as AddressInfo).port;
+  try {
+    const req = httpRequest({ host: "127.0.0.1", port, path: "/big", method: "GET" });
+    req.end();
+    const res = await readResponseBody(req, 4_096, 5_000);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.length, 4_096);
+    assert.equal(res.body.toString("utf8"), "a".repeat(4_096));
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
+  }
 });
 
 test("scheduler: slot times respect the zone; catch-up and retry", () => {

@@ -13,7 +13,10 @@ for (const [net, bits] of [
   ["172.16.0.0", 12], ["192.0.0.0", 24], ["192.0.2.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15],
   ["198.51.100.0", 24], ["203.0.113.0", 24], ["224.0.0.0", 4], ["240.0.0.0", 4],
 ] as const) blocked.addSubnet(net, bits, "ipv4");
-for (const [net, bits] of [["::", 128], ["::1", 128], ["fc00::", 7], ["fe80::", 10], ["ff00::", 8], ["2001:db8::", 32]] as const) {
+for (const [net, bits] of [
+  ["::", 128], ["::1", 128], ["fc00::", 7], ["fe80::", 10], ["ff00::", 8], ["2001:db8::", 32],
+  ["64:ff9b::", 96], ["2002::", 16],
+] as const) {
   blocked.addSubnet(net, bits, "ipv6");
 }
 
@@ -136,37 +139,52 @@ async function resolvePublicAddress(hostname: string): Promise<string> {
   return addrs[0]!;
 }
 
-function readResponseBody(
+export function readResponseBody(
   req: ReturnType<typeof httpsRequest>,
   maxBytes: number,
   timeoutMs: number,
 ): Promise<{ status: number; headers: Record<string, string>; body: Buffer }> {
   return new Promise((resolve, reject) => {
+    let settled = false;
     const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
       req.destroy();
       reject(new BlockedUrlError("request timed out"));
     }, timeoutMs);
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn();
+    };
     req.on("response", (res) => {
       const headers: Record<string, string> = {};
       for (const [k, v] of Object.entries(res.headers)) headers[k.toLowerCase()] = Array.isArray(v) ? v.join(", ") : String(v);
       const chunks: Buffer[] = [];
       let size = 0;
       res.on("data", (chunk: Buffer) => {
-        size += chunk.length;
-        if (size > maxBytes) {
-          res.destroy();
+        if (size >= maxBytes) return;
+        const remaining = maxBytes - size;
+        if (chunk.length <= remaining) {
+          size += chunk.length;
+          chunks.push(chunk);
           return;
         }
-        chunks.push(chunk);
+        chunks.push(chunk.subarray(0, remaining));
+        size = maxBytes;
+        res.destroy();
+        finish(() => resolve({ status: res.statusCode ?? 0, headers, body: Buffer.concat(chunks) }));
       });
       res.on("end", () => {
-        clearTimeout(timer);
-        resolve({ status: res.statusCode ?? 0, headers, body: Buffer.concat(chunks) });
+        finish(() => resolve({ status: res.statusCode ?? 0, headers, body: Buffer.concat(chunks) }));
+      });
+      res.on("error", (err) => {
+        finish(() => reject(err));
       });
     });
     req.on("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
+      finish(() => reject(err));
     });
   });
 }
