@@ -18,7 +18,8 @@
     "test:read-later-browser": "tsx --test test/read-later.browser.ts",
     "seed:dashboard-screenshot": "tsx scripts/seed-dashboard-screenshot.ts",
     "seed:ui-screenshots": "tsx scripts/seed-ui-screenshots.ts",
-    "capture:ui-screenshots": "tsx scripts/capture-ui-screenshots.ts"
+    "capture:ui-screenshots": "tsx scripts/capture-ui-screenshots.ts",
+    "capture:theme-screenshots": "tsx scripts/capture-theme-palette-screenshots.ts"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "0.18.1",

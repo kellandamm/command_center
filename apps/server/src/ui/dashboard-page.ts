@@ -18,7 +18,9 @@ import { page, type NavLink } from "./layout";
 
 export const dashboardPanelCss = `
 .tasks-chips{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.35rem}
-.tasks-chip[aria-pressed=true]{background:var(--accent);border-color:var(--ring)}
+.tasks-chip[aria-pressed=true]{background:var(--selected);color:var(--selected-foreground);border-color:color-mix(in srgb,var(--primary) 35%,var(--border))}
+.attention-block-warn h3{color:var(--warning)}
+.attention-reason.attention-warn{color:var(--warning);font-weight:500}
 .attention-sections{display:flex;flex-direction:column;gap:.65rem}
 .attention-block h3{margin:0 0 .25rem;font-size:.8125rem;font-weight:600}
 .attention-item{position:relative;padding-right:4.5rem}
