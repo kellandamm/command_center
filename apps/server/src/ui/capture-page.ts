@@ -22,6 +22,6 @@ var captureCanManage=true;
 async function refresh(){var r=await api("/api/capture/access");$("capture-state").textContent=r.configured?"A token is active.":"No token yet.";$("capture-revoke").disabled=!r.configured||!captureCanManage;$("capture-create").disabled=!captureCanManage;}
 $("capture-create").onclick=function(){if(!captureCanManage)return;busy(this,async function(){var r=await api("/api/capture/access","POST",{});$("capture-token").value=r.token;$("capture-token-box").hidden=false;await refresh();message("New token created. Any earlier token no longer works.");});};
 $("capture-revoke").onclick=function(){if(!captureCanManage)return;busy(this,async function(){await api("/api/capture/access","DELETE");$("capture-token-box").hidden=true;await refresh();message("Capture access revoked.");});};
-api("/api/settings").then(function(r){captureCanManage=!(r.meta&&r.meta.canManage===false);var hint=$("capture-manage-hint");if(!captureCanManage){hint.hidden=false;hint.textContent="Only an owner can create or revoke capture tokens when OWNER_EMAILS is configured.";}return refresh();}).catch(fail);`,
+api("/api/settings").then(function(r){captureCanManage=!(r.meta&&r.meta.canManage===false);var hint=$("capture-manage-hint");if(!captureCanManage){hint.hidden=false;hint.textContent="When OWNER_EMAILS is configured, capture tokens require an owner login or ADMIN_TOKEN.";}return refresh();}).catch(fail);`,
   });
 }

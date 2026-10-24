@@ -395,7 +395,7 @@ export function createApp(app: App): Server {
         });
       }
       if (req.method === "PUT" && path === "/api/dashboard-layout") {
-        if (!canManageSharedServerState(app.cfg, who.owner === true)) {
+        if (!canManageSharedServerState(app.cfg, { owner: who.owner === true, who: who.who })) {
           return json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
         }
         const layout = await app.dashboardLayout.update(await readBody(req));
@@ -407,7 +407,7 @@ export function createApp(app: App): Server {
         return json(res, 200, { layout });
       }
       if (req.method === "POST" && path === "/api/dashboard-layout/reset") {
-        if (!canManageSharedServerState(app.cfg, who.owner === true)) {
+        if (!canManageSharedServerState(app.cfg, { owner: who.owner === true, who: who.who })) {
           return json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
         }
         const layout = await app.dashboardLayout.reset();
@@ -418,7 +418,8 @@ export function createApp(app: App): Server {
         settings: app.settings.get(),
         briefingProviders: { search: Boolean(app.cfg.braveSearchApiKey), summarizer: llmConfigured(app.cfg) },
         meta: {
-          canManage: canManageSharedServerState(app.cfg, who.owner === true),
+          canManage: canManageSharedServerState(app.cfg, { owner: who.owner === true, who: who.who }),
+          ownerEmailsConfigured: app.cfg.ownerEmails.length > 0,
           features: {
             shareLinksEnabled: app.cfg.shareLinksEnabled,
             whiteboardEnabled: app.cfg.whiteboardEnabled,
@@ -426,7 +427,7 @@ export function createApp(app: App): Server {
         },
       });
       if (req.method === "PUT" && path === "/api/settings") {
-        if (!canManageSharedServerState(app.cfg, who.owner === true)) {
+        if (!canManageSharedServerState(app.cfg, { owner: who.owner === true, who: who.who })) {
           return json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
         }
         const next = await app.settings.update(await readBody(req));
@@ -436,7 +437,7 @@ export function createApp(app: App): Server {
       if (
         path === "/api/capture/access"
         && (req.method === "POST" || req.method === "DELETE")
-        && !canManageSharedServerState(app.cfg, who.owner === true)
+        && !canManageSharedServerState(app.cfg, { owner: who.owner === true, who: who.who })
       ) {
         return json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
       }
