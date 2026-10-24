@@ -26,7 +26,8 @@ export function sourcesPage(nav?: NavLink[]): string {
 <a href="/library" data-library-view="all">All saved <span id="count-all">0</span></a>
 <a href="/library?view=inbox" data-library-view="inbox">Inbox <span id="count-inbox">0</span></a>
 <a href="/library?view=summarized" data-library-view="summarized">Summarized <span id="count-summarized">0</span></a>
-<a href="/library?view=archive" data-library-view="archive">Archived <span id="count-archive">0</span></a></nav>
+<a href="/library?view=archive" data-library-view="archive">Archived <span id="count-archive">0</span></a>
+<a href="/library?view=x" data-library-view="x">From X <span id="count-x">0</span></a></nav>
 <div class="library-controls">
 <div class="library-search"><label class="sr-only" for="source-search">Search saved links</label><input id="source-search" type="search" placeholder="Search links, text, tags, summaries"></div>
 <div hidden><label for="source-space-filter">Folder</label><select id="source-space-filter"><option value="">All folders</option></select></div>
@@ -39,8 +40,8 @@ export function sourcesPage(nav?: NavLink[]): string {
 <nav class="reading-pagination" aria-label="Article pages"><button id="source-prev" type="button" class="ghost">Previous</button><span id="source-page" role="status"></span><button id="source-next" type="button" class="ghost">Next</button></nav>
 </section></div>`,
     script: `
-var sources=[],spaces=[],params=new URLSearchParams(location.search);
-var view=["all","inbox","summarized","archive"].includes(params.get("view"))?params.get("view"):"all";
+var sources=[],xBookmarks=[],spaces=[],params=new URLSearchParams(location.search);
+var view=["all","inbox","summarized","archive","x"].includes(params.get("view"))?params.get("view"):"all";
 var layout=["cards","list","compact"].includes(params.get("layout"))?params.get("layout"):"compact",cards=layout==="cards";
 var pageNumber=Math.max(1,Math.floor(Number(params.get("page"))||1)),pageSize=50;
 if(matchMedia("(max-width:750px)").matches)$("organizer-panel").open=false;
@@ -53,7 +54,39 @@ function updateUrl(){
   if(pageNumber>1)next.set("page",String(pageNumber));
   history.replaceState(null,"","/library"+(next.size?"?"+next.toString():""));
 }
+function renderXBookmarks(){
+  var q=$("source-search").value.trim().toLowerCase(),box=$("source-list");
+  box.replaceChildren();box.classList.remove("library-cards");box.classList.add("reading-compact");box.setAttribute("aria-busy","false");
+  document.querySelectorAll("[data-library-view]").forEach(function(a){if(a.dataset.libraryView===view)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current");});
+  $("count-x").textContent=xBookmarks.length;
+  var rows=xBookmarks.filter(function(item){
+    var hay=(item.text+" "+(item.articleUrl||"")+" "+(item.whyItMatters||"")+" "+(item.summaryBullets||[]).join(" ")).toLowerCase();
+    return hay.includes(q);
+  });
+  rows.sort(function(a,b){return b.importedAt.localeCompare(a.importedAt);});
+  $("source-count").textContent=rows.length+" X bookmark"+(rows.length===1?"":"s");
+  if(!rows.length){emptyState(box,xBookmarks.length?"No matches":"No X bookmarks yet",xBookmarks.length?"Try another search.":"Bookmarks imported from X will appear here with summaries.");return;}
+  rows.forEach(function(item){
+    var row=element("article",undefined,"library-item x-bookmark-item"+(item.unread?" unread":"")),text=element("div",undefined,"library-item-content");
+    var heading=element("h2");heading.append(element("span","@"+item.authorHandle+" · "+new Date(item.importedAt).toLocaleDateString()));
+    if(item.unread)heading.append(element("span"," · Unread","library-unread-label"));
+    text.append(heading);
+    if(item.status==="failed")text.append(element("p","Could not summarize: "+(item.failureReason||"unknown error"),"bad"));
+    else if(item.status==="pending")text.append(element("p","Summarizing in the background…","dim"));
+    else{
+      if(item.whyItMatters)text.append(element("p",item.whyItMatters,"library-preview"));
+      if(item.summaryBullets&&item.summaryBullets.length){var list=element("ul");item.summaryBullets.forEach(function(b){list.append(element("li",b));});text.append(list);}
+    }
+    var actions=element("div",undefined,"library-item-actions");
+    var post=safeLink(item.postUrl);if(post){var postLink=element("a","X post","ghost");postLink.href=post;postLink.target="_blank";postLink.rel="noopener noreferrer";actions.append(postLink);}
+    var article=safeLink(item.articleUrl||"");if(article){var artLink=element("a","Article","ghost");artLink.href=article;artLink.target="_blank";artLink.rel="noopener noreferrer";actions.append(artLink);}
+    if(item.unread){var readBtn=element("button","Mark read","ghost");readBtn.type="button";readBtn.onclick=function(){busy(readBtn,async function(){await api("/api/x-bookmarks/"+encodeURIComponent(item.postId)+"/read","POST",{});item.unread=false;renderXBookmarks();});};actions.append(readBtn);}
+    row.append(element("span","X","library-domain-mark"),text,actions);box.append(row);
+  });
+  updateUrl();
+}
 function renderSources(){
+  if(view==="x"){renderXBookmarks();return;}
   var q=$("source-search").value.trim().toLowerCase(),space=$("source-space-filter").value,tag=$("source-tag-filter").value,box=$("source-list");
   box.replaceChildren();box.classList.toggle("library-cards",cards);box.classList.toggle("reading-compact",layout==="compact");box.setAttribute("aria-busy","false");
   ["compact","list","card"].forEach(function(name){$("source-"+name+"-view").setAttribute("aria-pressed",String(layout===(name==="card"?"cards":name)));});
@@ -100,6 +133,7 @@ function renderSources(){
 }
 async function loadSources(){
   var r=await api("/api/knowledge");sources=r.sources;spaces=r.spaces;
+  var x=await api("/api/x-bookmarks");xBookmarks=x.items||[];
   refreshOptions();
 }
 function refreshOptions(){

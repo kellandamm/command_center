@@ -17,6 +17,8 @@ import { WinsRollupService } from "./wins/rollup-service";
 import { PanelUpdatesStore } from "./stores/panel-updates";
 import { DashboardLayoutStore } from "./dashboard-layout/storage";
 import { migrateSavedArticles } from "./read-later/service";
+import { XBookmarksStore } from "./read-later/x-bookmarks-store";
+import { XBookmarksService } from "./read-later/x-bookmarks-service";
 import { panels } from "./panels/registry";
 import { FileKV, ensureDirs } from "./store";
 import { ConnectionsStore } from "./connections";
@@ -41,6 +43,8 @@ async function main() {
   const migrated = await migrateSavedArticles(cfg.dataDir, notes);
   if (migrated) console.log(`Moved ${migrated} saved articles into Read later`);
   const bookmarks = await BookmarksStore.open(cfg.dataDir);
+  const xBookmarks = await XBookmarksStore.open(cfg.dataDir);
+  const xBookmarksService = new XBookmarksService(cfg, xBookmarks);
   const panelUpdates = await PanelUpdatesStore.open(cfg.dataDir);
   const hobieQueue = await HobieQueueStore.open(cfg.dataDir);
   const agentTaskQueue = await AgentTaskQueueStore.open(cfg.dataDir);
@@ -70,6 +74,8 @@ async function main() {
     dailyBriefing,
     notes,
     bookmarks,
+    xBookmarks,
+    xBookmarksService,
     panelUpdates,
     hobieQueue,
     agentTaskQueue,
