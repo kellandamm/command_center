@@ -1,13 +1,21 @@
 import type { NavLink } from "./layout";
+import { button, field } from "./components";
 import { workspacePage } from "./workspace";
 
 export function spacesPage(nav?: NavLink[]): string {
   return workspacePage({
-    title: "Spaces", description: "Group notes, saved pages, tasks and events around a project, then ask questions across them.",
-    active: "/spaces", nav,
-    body: `<form id="space-form" class="workspace-inline-form"><label for="space-name">New space</label>
-<input id="space-name" required maxlength="120" placeholder="Name a project or topic">
-<label for="space-instructions">Guidance for the assistant</label><textarea id="space-instructions" maxlength="2000" placeholder="Optional. For example: keep answers short and practical."></textarea>
+    title: "Spaces",
+    description: "Group notes, saved pages, tasks and events around a project, then ask questions across them.",
+    active: "/spaces",
+    nav,
+    body: `<form id="space-form" class="workspace-inline-form">
+${field({ label: "New space", id: "space-name", inputHtml: '<input id="space-name" required maxlength="120" placeholder="Name a project or topic">' })}
+${field({
+  label: "Guidance for the assistant",
+  id: "space-instructions",
+  inputHtml:
+    '<textarea id="space-instructions" maxlength="2000" placeholder="Optional. For example: keep answers short and practical."></textarea>',
+})}
 <button type="submit">Create space</button></form>
 <div id="space-list" class="workspace-list"></div>`,
     script: `
@@ -27,25 +35,29 @@ $("space-form").onsubmit=function(e){e.preventDefault();busy(e.submitter,async f
   var r=await api("/api/knowledge/spaces","POST",{name:$("space-name").value,instructions:$("space-instructions").value});
   location.href="/spaces/"+encodeURIComponent(r.space.id);
 });};
-api("/api/knowledge").then(function(d){data=d;renderSpaces();}).catch(fail);`,
+api("/api/knowledge").then(function(d){data=d;renderSpaces();}).catch(function(err){errorState($("space-list"),err.message||"Could not load spaces.");fail(err);});`,
   });
 }
 
 export function spaceDetailPage(nav?: NavLink[]): string {
   return workspacePage({
-    title: "Space", description: "Everything gathered for one project or topic.", active: "/spaces", nav,
-    actions: '<a class="btn ghost" href="/spaces">All spaces</a>',
-    body: `<main id="space-detail" hidden><div class="reading-actions"><a id="space-ask" class="btn">Ask this space</a><a id="space-new-note" class="btn ghost">New note here</a></div>
+    title: "Space",
+    description: "Everything gathered for one project or topic.",
+    active: "/spaces",
+    nav,
+    actions: button({ label: "All spaces", variant: "ghost", href: "/spaces" }),
+    body: `<main id="space-detail" hidden><div class="reading-actions"><a id="space-ask" class="btn" href="#">Ask this space</a><a id="space-new-note" class="btn ghost" href="#">New note here</a></div>
 <p id="space-guidance" class="dim"></p>
 <h2>Notes</h2><div id="space-notes" class="workspace-list"></div>
 <h2>Saved pages</h2><div id="space-sources" class="workspace-list"></div>
 <h2>Linked tasks and events</h2><div id="space-refs" class="workspace-list"></div>
 <details class="workspace-details"><summary>Link a board card or calendar event</summary><form id="ref-form" class="workspace-inline-form">
-<label for="ref-type">Type</label><select id="ref-type"><option value="board">Board card</option><option value="calendar">Calendar event</option></select>
-<label for="ref-id">Item id</label><input id="ref-id" required maxlength="200"><button type="submit">Link item</button></form></details></main>`,
+${field({ label: "Type", id: "ref-type", inputHtml: '<select id="ref-type"><option value="board">Board card</option><option value="calendar">Calendar event</option></select>' })}
+${field({ label: "Item id", id: "ref-id", inputHtml: '<input id="ref-id" required maxlength="200">' })}
+<button type="submit">Link item</button></form></details></main>`,
     script: `
 var spaceId=decodeURIComponent(location.pathname.split("/")[2]||""),data=null,space=null;
-function fill(box,rows,empty,href){box.replaceChildren();if(!rows.length){box.append(element("p",empty,"dim"));return;}
+function fill(box,rows,empty,href){box.replaceChildren();if(!rows.length){emptyState(box,empty,"");return;}
   rows.forEach(function(r){var row=element("a",undefined,"workspace-item");row.href=href(r);row.append(element("div",r.title,"workspace-item-title"));box.append(row);});}
 function renderSpace(){
   $("space-detail").hidden=false;document.querySelector(".workspace-head h1").textContent=space.name;

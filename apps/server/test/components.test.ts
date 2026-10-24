@@ -9,6 +9,7 @@ import {
   field,
   loadingState,
   table,
+  tabs,
 } from "../src/ui/components";
 
 test("components: esc escapes HTML", () => {
@@ -30,6 +31,15 @@ test("components: badge and states escape user text", () => {
   assert.match(emptyState({ title: evil }), /&lt;script&gt;/);
   assert.match(loadingState(evil), /&lt;script&gt;/);
   assert.match(errorState(evil), /&lt;script&gt;/);
+});
+
+test("components: tabs mark active route", () => {
+  const html = tabs(
+    [{ id: "/notes", label: "My notes", href: "/notes" }, { id: "/spaces", label: "Spaces", href: "/spaces" }],
+    "/notes",
+  );
+  assert.match(html, /class="ui-tabs"/);
+  assert.match(html, /href="\/notes" aria-current="page"/);
 });
 
 test("components: table and field render structure", () => {

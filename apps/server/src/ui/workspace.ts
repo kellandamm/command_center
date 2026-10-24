@@ -1,18 +1,12 @@
 import { esc, page, type NavLink } from "./layout";
-
-export const workspaceTabsCss = `
-.workspace-tabs{display:flex;flex-wrap:wrap;gap:1.25rem;border-bottom:1px solid var(--border);margin-bottom:1.5rem}
-.workspace-tabs a{padding:.75rem 0;color:var(--muted-foreground)}
-.workspace-tabs a[aria-current=page]{color:var(--primary);border-bottom:2px solid var(--primary);font-weight:600}
-`;
+import { tabs } from "./components";
 
 export const workspaceCss = `
-${workspaceTabsCss}
 .page-content{--cp-text-muted:var(--muted-foreground);--cp-border:var(--border);--cp-accent:var(--primary);--cp-danger:var(--destructive);--cp-surface-soft:var(--muted);--cp-accent-soft:var(--accent);--cp-link:var(--foreground);--cp-success:var(--ok)}
 .workspace-details.library-capture{margin:0 0 1.5rem;padding:0;border:0}
 .library-capture summary{color:var(--muted-foreground);font-weight:400}
 .library-capture a{text-decoration:underline;text-underline-offset:3px}
-.workspace-tabs.library-views{gap:1.5rem;overflow-x:auto;flex-wrap:nowrap}
+.ui-tabs.library-views{gap:1.5rem;margin-bottom:1.25rem}
 .library-views a{white-space:nowrap}
 .library-views span{font-size:.8rem;margin-left:.35rem;color:var(--muted-foreground);font-variant-numeric:tabular-nums}
 .library-controls{display:grid;grid-template-columns:minmax(14rem,1fr) repeat(3,minmax(8rem,auto));align-items:end;gap:1rem}
@@ -39,7 +33,7 @@ ${workspaceTabsCss}
 .library-cards .library-item{flex-wrap:wrap;border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem}
 .library-cards .library-item-content{flex-basis:calc(100% - 3.5rem)}
 .library-cards .library-item-actions{width:100%;padding-top:.5rem}
-.library-items .workspace-empty{grid-column:1/-1}
+.library-items .ui-empty{grid-column:1/-1}
 .reading-manager{display:grid;grid-template-columns:12rem minmax(0,1fr);gap:1.5rem}
 .reading-organizer{border-right:1px solid var(--border);padding-right:1rem;min-width:0}
 .reading-organizer>details>summary{font-weight:600;cursor:pointer;margin-bottom:1.25rem}
@@ -73,7 +67,7 @@ ${workspaceTabsCss}
 .reading-collection .library-controls .library-search{grid-column:auto}
 .reading-collection .library-controls>div:last-child{grid-column:auto}
 @media(max-width:1150px){.reading-manager{grid-template-columns:10rem minmax(0,1fr);gap:1rem}.reading-compact .library-item-actions{flex-wrap:wrap;max-width:15rem}}
-@media(max-width:750px){.reading-manager{grid-template-columns:1fr}.reading-organizer{border-right:0;border-bottom:1px solid var(--border);padding:0 0 .75rem}.reading-organizer>details:not([open])>summary{margin:0}.reading-organizer nav{max-height:12rem}.reading-compact .library-item{flex-wrap:wrap}.reading-compact .library-item-content{flex-basis:100%}.reading-compact .library-domain-mark{display:none}.reading-compact .library-item-actions{width:100%;max-width:none}.reading-compact .reading-organize[open] form{width:100%}}
+@media(max-width:768px){.reading-manager{grid-template-columns:1fr}.reading-organizer{border-right:0;border-bottom:1px solid var(--border);padding:0 0 .75rem}.reading-organizer>details:not([open])>summary{margin:0}.reading-organizer nav{max-height:12rem}.reading-compact .library-item{flex-wrap:wrap}.reading-compact .library-item-content{flex-basis:100%}.reading-compact .library-domain-mark{display:none}.reading-compact .library-item-actions{width:100%;max-width:none}.reading-compact .reading-organize[open] form{width:100%}}
 @media(max-width:950px){.library-controls{grid-template-columns:repeat(3,minmax(0,1fr))}.library-search{grid-column:1/-1}.library-item{flex-wrap:wrap}.library-item-actions{margin-left:3.5rem}}
 @media(max-width:500px){.library-controls{grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}.library-search,.library-controls>div:last-child{grid-column:1/-1}.library-item-actions{margin-left:0;width:100%}.library-domain-mark{display:none}.library-results{flex-wrap:wrap}.library-cards .library-item-content{flex-basis:100%}}
 .workspace-head{display:flex;justify-content:space-between;align-items:start;gap:1rem;margin-bottom:1.5rem}
@@ -82,8 +76,6 @@ ${workspaceTabsCss}
 .workspace-toolbar input{max-width:30rem}
 .workspace-status{min-height:1.5rem;margin:.75rem 0;color:var(--cp-text-muted)}
 .workspace-status.bad{color:var(--cp-danger)}
-.workspace-empty{padding:3rem 1.5rem;border:1px dashed var(--cp-border);border-radius:1rem;text-align:center}
-.workspace-empty p{color:var(--cp-text-muted);max-width:50ch;margin:.75rem auto}
 .workspace-list{border-top:1px solid var(--cp-border)}
 .workspace-item{display:flex;justify-content:space-between;align-items:start;gap:1rem;padding:1.1rem .25rem;border-bottom:1px solid var(--cp-border)}
 .workspace-item:hover{background:var(--cp-surface-soft)}
@@ -119,8 +111,10 @@ ${workspaceTabsCss}
 `;
 
 export function workspaceTabs(items: Array<[string, string]>, active: string): string {
-  return `<nav class="workspace-tabs" aria-label="Section">${items.map(([href, label]) =>
-    `<a href="${esc(href)}"${href === active ? ' aria-current="page"' : ""}>${esc(label)}</a>`).join("")}</nav>`;
+  return tabs(
+    items.map(([href, label]) => ({ id: href, label, href })),
+    active,
+  );
 }
 
 export const workspaceScript = `
@@ -130,7 +124,9 @@ function appLink(text,href,cls){var a=element("a",text,cls);a.href=href;return a
 function message(text,bad){var box=$("workspace-status");box.textContent=text;box.classList.toggle("bad",!!bad);}
 function fail(err){message(err.message||"Request failed. Try again.",true);}
 async function busy(button,fn){button.disabled=true;try{await fn();}catch(err){fail(err);}finally{button.disabled=false;}}
-function emptyState(box,title,detail){box.replaceChildren();var e=element("div",undefined,"workspace-empty");e.append(element("h2",title),element("p",detail));box.append(e);}
+function emptyState(box,title,detail){box.replaceChildren();var e=element("div",undefined,"ui-empty");e.setAttribute("role","status");e.append(element("p",title,"ui-empty-title"));if(detail)e.append(element("p",detail,"ui-empty-desc dim"));}
+function loadingState(box,message){box.replaceChildren();var e=element("div",undefined,"ui-loading");e.setAttribute("role","status");e.setAttribute("aria-busy","true");e.append(element("span",message||"Loading…","ui-loading-text dim"));box.append(e);}
+function errorState(box,message){box.replaceChildren();var e=element("div",undefined,"ui-error");e.setAttribute("role","alert");e.append(element("p",message,"ui-error-text bad"));box.append(e);}
 function safeLink(raw){try{var u=new URL(raw);return ["https:","http:"].includes(u.protocol)?u.href:null;}catch(_){return null;}}
 function host(raw){try{return new URL(raw).hostname;}catch(_){return "Saved text";}}
 function spaceOptions(select,spaces,label){select.replaceChildren(new Option(label||"No space",""));spaces.forEach(function(s){select.add(new Option(s.name,s.id));});}

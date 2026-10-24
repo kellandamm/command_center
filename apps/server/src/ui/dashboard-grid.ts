@@ -214,6 +214,22 @@ export function dashboardGridScript(): string {
     }
     return out;
   }
+  function compactDashboardRows(panels){
+    var out=panels.map(function(p){return Object.assign({},p)});
+    var sorted=out.slice().sort(function(a,b){return a.y-b.y||a.x-b.x});
+    sorted.forEach(function(panel){
+      var entry=out.find(function(p){return p.id===panel.id});
+      if(!entry)return;
+      var bestY=entry.y;
+      for(var y=0;y<entry.y;y++){
+        var trial=Object.assign({},entry,{y:y});
+        var blocked=out.some(function(other){return other.id!==entry.id&&overlaps(trial,other);});
+        if(!blocked){bestY=y;break;}
+      }
+      entry.y=bestY;
+    });
+    return out;
+  }
   function applyPanels(panels){
     syncGridRows(panels);
     var byId={};
@@ -232,6 +248,7 @@ export function dashboardGridScript(): string {
       var layout=readLayout();
       if(lastMovedId){
         layout.panels=packAfterMove(layout.panels,lastMovedId);
+        layout.panels=compactDashboardRows(layout.panels);
         applyPanels(layout.panels);
       }
       api("/api/dashboard-layout","PUT",layout).then(function(r){
@@ -280,7 +297,9 @@ export function dashboardGridScript(): string {
         var btn=this;
         btn.setAttribute("aria-expanded",collapsed?"false":"true");
         btn.textContent=collapsed?"+":"−";
-        syncGridRows(readLayout().panels);
+        var layout=readLayout();
+        layout.panels=compactDashboardRows(layout.panels);
+        applyPanels(layout.panels);
         lastMovedId=id;
         scheduleSave();
       });
@@ -363,16 +382,8 @@ export function dashboardGridScript(): string {
   }
 
   function applyLayout(layout){
-    syncGridRows(layout.panels||[]);
-    var byId={};
-    (layout.panels||[]).forEach(function(p){byId[p.id]=p;});
-    grid.querySelectorAll(".dashboard-item").forEach(function(el){
-      var id=el.getAttribute("data-panel-id");
-      var entry=byId[id];
-      if(!entry)return;
-      el.dataset.fullH=String(entry.h);
-      applyEntry(el,entry);
-    });
+    var panels=compactDashboardRows(layout.panels||[]);
+    applyPanels(panels);
   }
 
   window.applyDashboardLayout=applyLayout;
