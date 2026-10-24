@@ -37,6 +37,7 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 | `MCP_CF_CLIENT_MAP` | **Required** for `/mcp` and the Power Automate webhook. Non-empty JSON: MCP client id → service token id (must match verified JWT `common_name`). If unset, empty, or unknown id → **403**. Invalid JSON prevents startup. |
 | `MCP_APP_TOKENS` | JSON map of MCP client id → bearer token (≥ 24 chars). Used with `/mcp` after CF client id checks. |
 | `WEBHOOK_SECRET` | ≥ 24 chars. Webhook requires **`X-Webhook-Secret`** plus a verified **`Cf-Access-Jwt-Assertion`** (Access injects this for service tokens). `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD` must be set. |
+| `BOOKMARKS_IMPORT_SECRET` | Optional (≥ 24 chars). Enables **`POST /api/bookmarks/import`** for X bookmarks: send **`X-Bookmarks-Secret`** with the same value plus a verified **`Cf-Access-Jwt-Assertion`** (Access service token). When unset, X import returns **404**; the browser Bookmarks page JSON import is unchanged. |
 | `HOBIE_POLL_TOKEN` | Optional bearer for Hobie to `GET /api/hobie/tasks` and `POST /api/hobie/claim`. Admin or MCP tokens also work. |
 | `MCP_MAX_HOBIE_PENDING` | Max pending Hobie tasks (default 20). |
 
@@ -152,6 +153,7 @@ The search accepts JSON either as an array of hits or as `{ results | items | me
 - `capture-access.json` — SHA-256 hash of the Chrome capture token (create or revoke it at `/settings/capture`)
 - `knowledge.json` — individual Markdown notes, captured links, tags, and personal spaces
 - `bookmarks.json` — separate bookmark groups, ordered links, and launchpad layout preferences
+- `x-bookmarks.json` — X bookmarks imported through `/api/bookmarks/import` (summaries, read/unread state)
 - `calendars.json` — managed calendar metadata, native events/recurrence, versions, and hashes of opt-in sharing keys (not private feed URLs)
 - `connections.enc.json` — encrypted service overrides and private subscription URLs; restore together with the separately backed-up `CONNECTIONS_MASTER_KEY`
 - `notes.md` — legacy plain-Markdown Notes file; its contents are copied into the knowledge store on first startup and the original file is kept as a backup
@@ -191,6 +193,20 @@ Read Later (still available at `/library` for compatibility) is the single home 
 The folder/tag sidebar uses existing Spaces as folders, shared with Notes and Assistant, not a separate folder system. Create a folder there, choose a folder and tags when saving, or use Organize on any article to move it and edit tags without changing its summary. Search titles, URLs, captured text, summaries and tags. Existing `/read-later`, `/news`, and `/summaries` links redirect into Read Later; saved-link APIs and Chrome capture remain compatible.
 
 Pages are saved only when you press Save or Save & summarize in the extension (or Read Later). Summarize is also available on each unsummarized link and in its reading view, alongside folder assignment, tags, Assistant, and note/task creation. The extension sends the page URL, title, and up to 20,000 characters of selected or readable text; the capture token can only save pages and cannot read your library. Download the extension from `/settings/capture`, unzip it, and load it unpacked in Chrome.
+
+**X bookmarks import:** set `BOOKMARKS_IMPORT_SECRET` (≥ 24 characters) and route an external job through Cloudflare Access with a service token. `POST /api/bookmarks/import` with JSON `{"items":[{post_id, post_url, author_handle, text, created_at, urls:[]}]}` (up to 100 items per request, 512 KB body). Re-posting the same `post_id` is ignored. Summaries run in the background and appear under **Read Later → From X**. Example:
+
+```bash
+curl -sS -X POST "https://command.example.com/api/bookmarks/import" \
+  -H "Content-Type: application/json" \
+  -H "CF-Access-Client-Id: ${ACCESS_CLIENT_ID}" \
+  -H "CF-Access-Client-Secret: ${ACCESS_CLIENT_SECRET}" \
+  -H "Cf-Access-Jwt-Assertion: ${JWT}" \
+  -H "X-Bookmarks-Secret: ${BOOKMARKS_IMPORT_SECRET}" \
+  -d '{"items":[{"post_id":"123","post_url":"https://x.com/user/status/123","author_handle":"user","text":"Worth reading","created_at":"2026-10-20T12:00:00Z","urls":["https://example.com/article"]}]}'
+```
+
+Access injects `Cf-Access-Jwt-Assertion` for service tokens; local curls may need to pass it explicitly. Without `BOOKMARKS_IMPORT_SECRET`, X-shaped imports return **404**.
 
 Agent (`/agent`) opens Board by default. Its tabs use `?view=board|queue|wins|assistant|activity`. The Queue tab lists pending, claimed and completed Hobie tasks and can mark them done, using the existing board/wins synchronization. Legacy `/board`, `/hobie`, `/wins`, `/assistant`, and `/activity` links redirect to their Agent tab; source/space query parameters are retained for Assistant. Existing APIs are unchanged, and personalized Agent sidebar settings take precedence over legacy tab settings.
 

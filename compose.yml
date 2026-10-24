@@ -23,6 +23,7 @@ services:
       WEATHER_LAT: ${WEATHER_LAT:-}
       WEATHER_LON: ${WEATHER_LON:-}
       ICS_URLS: ${ICS_URLS:-}
+      BOOKMARKS_IMPORT_SECRET: ${BOOKMARKS_IMPORT_SECRET:-}
     ports:
       # Loopback only: put a tunnel or reverse proxy in front. Never publish this port to the internet unauthenticated.
       - "127.0.0.1:${HOST_PORT:-8088}:8080"

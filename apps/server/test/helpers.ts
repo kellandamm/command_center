@@ -11,6 +11,8 @@ import { AttentionStore } from "../src/attention/store";
 import { LaunchpadStore } from "../src/launchpad/store";
 import type { Config } from "../src/config";
 import type { Server } from "node:http";
+import { XBookmarksStore } from "../src/read-later/x-bookmarks-store";
+import { XBookmarksService } from "../src/read-later/x-bookmarks-service";
 
 export async function closeIntegrationServer(
   server: Server,
@@ -33,8 +35,14 @@ export async function openIntegrationStores(dataDir: string, cfg?: Config) {
     { llmBaseUrl: null, llmApiKey: null, llmModel: null } as Config,
     wins,
   );
+  const xBookmarks = await XBookmarksStore.open(dataDir);
+  const xBookmarksService = cfg
+    ? new XBookmarksService(cfg, xBookmarks)
+    : new XBookmarksService({ llmBaseUrl: null, llmApiKey: null, llmModel: null } as Config, xBookmarks);
   return {
     bookmarks: await BookmarksStore.open(dataDir),
+    xBookmarks,
+    xBookmarksService,
     panelUpdates,
     hobieQueue,
     board,
