@@ -121,7 +121,7 @@ export function notesPage(nav?: NavLink[]): string {
       </div>
       <fieldset id="knowledge-fields" class="notes-document" disabled>
       <details class="notes-tools"><summary>Document tools</summary>
-      <div class="row"><button id="knowledge-pin" class="ghost" type="button" disabled>Pin note</button><button id="knowledge-archive" class="ghost" type="button" disabled>Archive note</button><button id="knowledge-duplicate" class="ghost" type="button" disabled>Duplicate note</button><button id="knowledge-share" class="ghost" type="button" disabled hidden>Share read-only link</button><button id="knowledge-review" class="ghost" type="button" disabled>Review latest saved version</button></div>
+      <div class="row"><button id="knowledge-pin" class="ghost" type="button" disabled>Pin note</button><button id="knowledge-archive" class="ghost" type="button" disabled>Archive note</button><button id="knowledge-sensitive" class="ghost" type="button" disabled title="Exclude from AI, Attention, search previews, browser drafts, and exports">Sensitive</button><button id="knowledge-duplicate" class="ghost" type="button" disabled>Duplicate note</button><button id="knowledge-share" class="ghost" type="button" disabled hidden>Share read-only link</button><button id="knowledge-review" class="ghost" type="button" disabled>Review latest saved version</button></div>
       <label for="knowledge-template">Start from a template</label><select id="knowledge-template"><option value="">Choose a template</option><option value="meeting">Meeting notes</option><option value="daily">Daily plan</option><option value="research">Research brief</option></select>
       <button id="knowledge-template-use" class="ghost" type="button">Insert template</button>
       <p class="dim">Templates insert at the end of your note. Rename with the title field; move with Note properties.</p>
@@ -293,7 +293,7 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
   }
   function tagsFrom(input){return input.split(",").map(function(t){return t.trim().replace(/^#/,"").toLowerCase();}).filter(Boolean);}
   function formBody(){
-    return {title:$("knowledge-title").value.trim()||"Untitled",content:$("knowledge-body").value,tags:tagsFrom($("knowledge-tags").value),spaceId:$("knowledge-space-select").value||null,sourceUrl:$("knowledge-note-url").value||null,pinned:$("knowledge-pin").dataset.value==="true",archivedAt:$("knowledge-archive").dataset.value||null};
+    return {title:$("knowledge-title").value.trim()||"Untitled",content:$("knowledge-body").value,tags:tagsFrom($("knowledge-tags").value),spaceId:$("knowledge-space-select").value||null,sourceUrl:$("knowledge-note-url").value||null,pinned:$("knowledge-pin").dataset.value==="true",archivedAt:$("knowledge-archive").dataset.value||null,sensitive:$("knowledge-sensitive").dataset.value==="true"};
   }
   function readDrafts(){
     var drafts=[];
@@ -308,8 +308,18 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     return drafts.sort(function(a,b){return b.data.savedAt-a.data.savedAt;});
   }
   function draftError(error){$("knowledge-draft-status").textContent="Browser recovery unavailable: "+(error.message||"storage denied")+". Your editor text is unchanged; save to the server or copy it before leaving.";}
+  function clearDraftsForNote(noteId){
+    if(!noteId)return;
+    try{
+      readDrafts().forEach(function(row){if(row.data.noteId===noteId)localStorage.removeItem(row.key);});
+      if(activeDraftKey){var active=readDrafts().find(function(row){return row.key===activeDraftKey;});if(!active)activeDraftKey=null;}
+      renderDrafts();
+    }catch(error){draftError(error);}
+  }
   function persistDraft(){
     if(!draftsEnabled||!state.dirty)return;
+    if(state.current&&state.current.sensitive)return;
+    if($("knowledge-sensitive").dataset.value==="true")return;
     try{
       var key=activeDraftKey||draftPrefix+Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(byte){return byte.toString(16).padStart(2,"0");}).join("");
       var record={noteId:state.current?state.current.id:null,version:state.current?state.current.version||0:0,savedAt:Date.now(),body:formBody()};
@@ -360,6 +370,7 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
   function setFlags(note){
     $("knowledge-pin").dataset.value=String(!!note.pinned);$("knowledge-pin").textContent=note.pinned?"Unpin note":"Pin note";
     $("knowledge-archive").dataset.value=note.archivedAt||"";$("knowledge-archive").textContent=note.archivedAt?"Restore from archive":"Archive note";
+    $("knowledge-sensitive").dataset.value=String(!!note.sensitive);$("knowledge-sensitive").textContent=note.sensitive?"Mark not sensitive":"Mark sensitive";
   }
   function renderTabs(){
     var box=$("knowledge-tabs");box.replaceChildren();
@@ -427,13 +438,13 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     var view=$("knowledge-library-view").value,tag=$("knowledge-tag-filter").value;
     var tagSelect=$("knowledge-tag-filter");tagSelect.replaceChildren(new Option("All tags",""));
     Array.from(new Set(state.notes.flatMap(function(note){return note.tags||[];}))).sort().forEach(function(value){tagSelect.add(new Option("#"+value,value));});tagSelect.value=tag;tag=tagSelect.value;
-    var visibleNotes=state.notes.filter(function(note){return (view==="archived"?!!note.archivedAt:!note.archivedAt)&&(view!=="pinned"||note.pinned)&&(view!=="recent"||state.recent.includes(note.id))&&(!tag||(note.tags||[]).includes(tag))&&(!state.spaceFilter||note.spaceId===state.spaceFilter)&&matchesQuery(note.title+"\\n"+note.content+"\\n"+(note.tags||[]).join(" "));}).sort(function(a,b){return view==="recent"?state.recent.indexOf(a.id)-state.recent.indexOf(b.id):Number(!!b.pinned)-Number(!!a.pinned)||b.updatedAt.localeCompare(a.updatedAt);});
+    var visibleNotes=state.notes.filter(function(note){var haystack=note.sensitive?note.title+"\\n"+(note.tags||[]).join(" "):note.title+"\\n"+note.content+"\\n"+(note.tags||[]).join(" ");return (view==="archived"?!!note.archivedAt:!note.archivedAt)&&(view!=="pinned"||note.pinned)&&(view!=="recent"||state.recent.includes(note.id))&&(!tag||(note.tags||[]).includes(tag))&&(!state.spaceFilter||note.spaceId===state.spaceFilter)&&matchesQuery(haystack);}).sort(function(a,b){return view==="recent"?state.recent.indexOf(a.id)-state.recent.indexOf(b.id):Number(!!b.pinned)-Number(!!a.pinned)||b.updatedAt.localeCompare(a.updatedAt);});
     $("knowledge-note-count").textContent=visibleNotes.length;
     $("knowledge-all-notes").setAttribute("aria-pressed",String(!state.spaceFilter));
     visibleNotes.forEach(function(note){
       var button=node("button","notes-note");button.type="button";button.setAttribute("aria-current",String(!!state.current&&state.current.id===note.id));
       button.appendChild(node("strong","",note.title));
-      button.appendChild(node("span","",note.content.replace(/[#*_\\x60>]/g,"").trim().slice(0,90)||"Empty note"));
+      button.appendChild(node("span","",note.sensitive?"Sensitive note":(note.content.replace(/[#*_\\x60>]/g,"").trim().slice(0,90)||"Empty note")));
       button.appendChild(node("span","",(note.pinned?"Pinned · ":"")+new Date(note.updatedAt).toLocaleDateString(undefined,{month:"short",day:"numeric"})+((note.tags||[]).length?" · "+note.tags.map(function(t){return "#"+t;}).join(" "):"")));
       button.onclick=function(){selectNote(note.id).catch(showError);};noteList.appendChild(button);
     });
@@ -472,6 +483,14 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
       if(loading){
         loading=false;
         var requested=new URLSearchParams(location.search).get("note"),selected=requested?state.notes.find(function(note){return note.id===requested;}):state.notes.find(function(note){return !note.archivedAt;});
+        if(selected&&selected.sensitive){
+          return apiCall("/api/knowledge/notes/"+encodeURIComponent(selected.id)).then(function(data){
+            var full=data.note||selected;var index=state.notes.findIndex(function(item){return item.id===full.id;});
+            if(index>=0)state.notes[index]=full;
+            openNote(full);if(requested&&!selected)status.textContent="The requested note was not found. Select a note from the library.";
+            render();$("knowledge-fields").disabled=false;$("knowledge-new-note").disabled=false;$("knowledge-switch").disabled=false;$("knowledge-retry-load").hidden=true;
+          });
+        }
         openNote(selected||null);
         if(requested&&!selected)status.textContent="The requested note was not found. Select a note from the library.";
         render();$("knowledge-fields").disabled=false;$("knowledge-new-note").disabled=false;$("knowledge-switch").disabled=false;$("knowledge-retry-load").hidden=true;
@@ -485,15 +504,22 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
   }
   function selectNote(id){
     return transition(function(){return saveNote().then(function(){
-      openNote(id?state.notes.find(function(n){return n.id===id;})||null:null);
-      render();renderGraph();
+      var note=id?state.notes.find(function(n){return n.id===id;})||null:null;
+      if(note&&note.sensitive){
+        return apiCall("/api/knowledge/notes/"+encodeURIComponent(note.id)).then(function(data){
+          var full=data.note||note;var index=state.notes.findIndex(function(item){return item.id===full.id;});
+          if(index>=0)state.notes[index]=full;
+          openNote(full);render();renderGraph();
+        });
+      }
+      openNote(note);render();renderGraph();
     });});
   }
   function openNote(note){
     clearTimeout(saveTimer);state.current=note;state.dirty=false;state.revision++;activeDraftKey=null;recoveryPaused=false;
     state.latest=null;$("knowledge-conflict").hidden=true;findEnd=0;
     setFlags(note||{});
-    ["knowledge-pin","knowledge-archive","knowledge-duplicate","knowledge-review"].forEach(function(id){$(id).disabled=!note;});
+    ["knowledge-pin","knowledge-archive","knowledge-sensitive","knowledge-duplicate","knowledge-review"].forEach(function(id){$(id).disabled=!note;});
     if(note){if(!state.tabs.includes(note.id))state.tabs.push(note.id);if(state.tabs.length>10)state.tabs.shift();state.recent=[note.id].concat(state.recent.filter(function(id){return id!==note.id;})).slice(0,50);}
     $("knowledge-title").value=state.current?state.current.title:"";
     $("knowledge-body").value=state.current?state.current.content:"";
@@ -599,7 +625,7 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
       if(!state.tabs.includes(data.note.id))state.tabs.push(data.note.id);
       if(state.tabs.length>10)state.tabs.shift();
       state.recent=[data.note.id].concat(state.recent.filter(function(id){return id!==data.note.id;})).slice(0,50);
-      ["knowledge-pin","knowledge-archive","knowledge-duplicate","knowledge-review"].forEach(function(id){$(id).disabled=false;});
+      ["knowledge-pin","knowledge-archive","knowledge-sensitive","knowledge-duplicate","knowledge-review"].forEach(function(id){$(id).disabled=false;});
       state.latest=null;$("knowledge-conflict").hidden=true;
       $("knowledge-save-status").textContent=state.dirty?"Unsaved changes":"Saved to your library";
       $("knowledge-delete-note").disabled=false;status.textContent="";
@@ -665,6 +691,12 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     if(event.key==="ArrowDown"||event.key==="ArrowUp"){event.preventDefault();var next=buttons[index+(event.key==="ArrowDown"?1:-1)];if(next)next.focus();else $("knowledge-switch-query").focus();}
   };
   $("knowledge-pin").onclick=function(){this.dataset.value=String(this.dataset.value!=="true");this.textContent=this.dataset.value==="true"?"Unpin note":"Pin note";changed();};
+  $("knowledge-sensitive").onclick=function(){
+    var next=this.dataset.value!=="true";
+    this.dataset.value=String(next);this.textContent=next?"Mark not sensitive":"Mark sensitive";
+    if(next){removeActiveDraft();if(state.current)clearDraftsForNote(state.current.id);}
+    changed();
+  };
   $("knowledge-archive").onclick=function(){
     this.dataset.value=this.dataset.value?"":new Date().toISOString();this.textContent=this.dataset.value?"Restore from archive":"Archive note";changed();
   };

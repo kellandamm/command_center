@@ -18,8 +18,11 @@ export function createCommandCenterMcp(deps: IntegrationDeps, clientId: string):
     "notes_read",
     { description: "Read the dashboard notes markdown file.", inputSchema: {} },
     async () => {
-      const { content } = await actionNotesRead(deps);
-      return { content: [{ type: "text", text: content || "(empty)" }] };
+      const result = await actionNotesRead(deps);
+      if (result.redacted) {
+        return { content: [{ type: "text", text: JSON.stringify({ content: "", redacted: true }) }] };
+      }
+      return { content: [{ type: "text", text: result.content || "(empty)" }] };
     },
   );
 
@@ -30,8 +33,11 @@ export function createCommandCenterMcp(deps: IntegrationDeps, clientId: string):
       inputSchema: { text: z.string().describe("Markdown or plain text to append") },
     },
     async ({ text }) => {
-      const { content } = await actionNotesAppend(deps, clientId, text);
-      return { content: [{ type: "text", text: `Appended. Notes now ${content.length} chars.` }] };
+      const result = await actionNotesAppend(deps, clientId, text);
+      if (result.redacted) {
+        return { content: [{ type: "text", text: JSON.stringify({ content: "", redacted: true }) }] };
+      }
+      return { content: [{ type: "text", text: `Appended. Notes now ${result.content.length} chars.` }] };
     },
   );
 

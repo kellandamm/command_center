@@ -269,6 +269,12 @@ test("dashboard v1 write routes require owner", async () => {
       ["/api/attention/snooze", { id: "note:1", until: "1d" }],
       ["/api/attention/hide", { id: "note:1", hidden: true }],
       ["/api/launchpad", { label: "Docs", url: "https://example.com" }],
+      ["/api/focus/sessions", {
+        startedAt: "2026-10-24T10:00:00.000Z",
+        endedAt: "2026-10-24T10:25:00.000Z",
+        durationMs: 1_500_000,
+        taskId: "t1",
+      }],
       ["/api/dashboard-layout/import", { version: 2, cols: 12, rowHeight: 32, panels: [] }],
     ] as const) {
       const res = await fetch(`${base}${path}`, { method: "POST", headers, body: JSON.stringify(body) });

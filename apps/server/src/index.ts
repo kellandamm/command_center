@@ -25,6 +25,7 @@ import { ConnectionsStore } from "./connections";
 import { CalendarWorkspace } from "./calendar/workspace";
 import { AttentionStore } from "./attention/store";
 import { LaunchpadStore } from "./launchpad/store";
+import { FocusSessionsStore } from "./focus/store";
 import { ShareLinksStore } from "./share-links/store";
 import { WhiteboardStore } from "./whiteboard/store";
 
@@ -59,6 +60,7 @@ async function main() {
   const dashboardLayout = await DashboardLayoutStore.open(cfg.dataDir, panels.map((p) => p.id));
   const attention = await AttentionStore.open(cfg.dataDir);
   const launchpad = await LaunchpadStore.open(cfg.dataDir);
+  const focusSessions = await FocusSessionsStore.open(cfg.dataDir);
   const shareLinks = await ShareLinksStore.open(cfg.dataDir);
   const whiteboard = await WhiteboardStore.open(cfg.dataDir);
 
@@ -90,6 +92,7 @@ async function main() {
     dashboardLayout,
     attention,
     launchpad,
+    focusSessions,
     whiteboard,
     connections,
     calendar,

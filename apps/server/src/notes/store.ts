@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ValidationError } from "../settings";
 import { writeFileAtomic } from "../store";
+import { isNoteSensitive, redactNoteForCatalog } from "./sensitive";
 import { buildZipNotesFromEntries, type ZipImportReport } from "./zip-import";
 import type { ZipReadResult } from "./zip-read";
 
@@ -24,6 +25,7 @@ export interface KnowledgeNote {
   version?: number;
   pinned?: boolean;
   archivedAt?: string | null;
+  sensitive?: boolean;
 }
 
 export interface NoteRevision extends KnowledgeNote { revisionId: string }
@@ -90,6 +92,11 @@ function markdownContent(value: unknown): string {
 function pinned(value: unknown): boolean {
   if (value === undefined) return false;
   if (typeof value !== "boolean") throw new ValidationError("pinned must be boolean");
+  return value;
+}
+function sensitive(value: unknown): boolean {
+  if (value === undefined) return false;
+  if (typeof value !== "boolean") throw new ValidationError("sensitive must be boolean");
   return value;
 }
 function archivedAt(value: unknown): string | null {
@@ -206,9 +213,13 @@ export class NotesStore {
     return serialized;
   }
 
+  /** Dashboard / MCP “Main notes” legacy record (not the full knowledge library). */
+  mainLegacyNote(): KnowledgeNote | undefined {
+    return this.data.notes.find((item) => item.legacy === true || (item.title === "Main notes" && item.legacy !== false));
+  }
+
   async read(): Promise<string> {
-    const note = this.data.notes.find((item) => item.legacy === true || (item.title === "Main notes" && item.legacy !== false));
-    return note?.content ?? "";
+    return this.mainLegacyNote()?.content ?? "";
   }
 
   async write(content: string): Promise<void> {
@@ -217,7 +228,7 @@ export class NotesStore {
     if (bytes > MAX_BYTES) throw new ValidationError(`note exceeds ${MAX_BYTES} bytes`);
     await this.updateData(() => {
       const now = new Date().toISOString();
-      const note = this.data.notes.find((item) => item.legacy === true || (item.title === "Main notes" && item.legacy !== false));
+      const note = this.mainLegacyNote();
       if (note) {
         this.recordRevision(note);
         note.content = content;
@@ -283,7 +294,7 @@ export class NotesStore {
     if (!addition) throw new ValidationError("text is required");
     return this.updateData(() => {
       const now = new Date().toISOString();
-      let note = this.data.notes.find((item) => item.legacy === true || (item.title === "Main notes" && item.legacy !== false));
+      let note = this.mainLegacyNote();
       if (!note) {
         note = {
           id: randomUUID(),
@@ -306,10 +317,17 @@ export class NotesStore {
     });
   }
 
-  listNotes(query = ""): KnowledgeNote[] {
+  listNotes(query = "", forCatalog = false): KnowledgeNote[] {
     const needle = query.trim().toLowerCase();
     return this.data.notes
-      .filter((note) => !needle || `${note.title}\n${note.content}\n${note.tags.join(" ")}`.toLowerCase().includes(needle))
+      .filter((note) => {
+        if (!needle) return true;
+        if (isNoteSensitive(note)) {
+          return `${note.title}\n${note.tags.join(" ")}`.toLowerCase().includes(needle);
+        }
+        return `${note.title}\n${note.content}\n${note.tags.join(" ")}`.toLowerCase().includes(needle);
+      })
+      .map((note) => (forCatalog ? redactNoteForCatalog(note) : note))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
@@ -325,7 +343,7 @@ export class NotesStore {
       const now = new Date().toISOString();
       const note: KnowledgeNote = {
         id: randomUUID(), title, content, tags: tags(input.tags), legacy: false, version: 1,
-        pinned: pinned(input.pinned), archivedAt: archivedAt(input.archivedAt),
+        pinned: pinned(input.pinned), archivedAt: archivedAt(input.archivedAt), sensitive: sensitive(input.sensitive),
         spaceId: this.spaceId(input.spaceId), sourceUrl, createdAt: now, updatedAt: now,
       };
       this.data.notes.push(note);
@@ -348,6 +366,7 @@ export class NotesStore {
       if (input.sourceUrl !== undefined) note.sourceUrl = optionalUrl(input.sourceUrl, "sourceUrl");
       if (input.pinned !== undefined) note.pinned = pinned(input.pinned);
       if (input.archivedAt !== undefined) note.archivedAt = archivedAt(input.archivedAt);
+      if (input.sensitive !== undefined) note.sensitive = sensitive(input.sensitive);
       note.updatedAt = new Date().toISOString();
       return note;
     });
@@ -373,6 +392,7 @@ export class NotesStore {
       spaceId: revision.spaceId && this.data.spaces.some((space) => space.id === revision.spaceId) ? revision.spaceId : null,
       sourceUrl: revision.sourceUrl, expectedVersion,
       pinned: revision.pinned ?? false, archivedAt: revision.archivedAt ?? null,
+      sensitive: revision.sensitive ?? false,
     });
   }
 
@@ -556,7 +576,7 @@ export class NotesStore {
 
   search(query: string): { notes: KnowledgeNote[]; sources: KnowledgeSource[]; spaces: KnowledgeSpace[] } {
     return {
-      notes: this.listNotes(query),
+      notes: this.listNotes(query, true),
       sources: this.listSources(query),
       spaces: this.listSpaces().filter((space) => `${space.name}\n${space.description}`.toLowerCase().includes(query.trim().toLowerCase())),
     };
@@ -567,13 +587,21 @@ export class NotesStore {
     if (!space) return undefined;
     return {
       space,
-      notes: this.data.notes.filter((note) => note.spaceId === spaceId),
+      notes: this.data.notes.filter((note) => note.spaceId === spaceId && !isNoteSensitive(note)),
       sources: this.data.sources.filter((source) => source.spaceId === spaceId),
     };
   }
 
-  exportBackup(): KnowledgeData {
-    return structuredClone(this.data);
+  exportBackup(includeSensitive = false): KnowledgeData {
+    const data = structuredClone(this.data);
+    if (!includeSensitive) {
+      data.notes = data.notes.filter((note) => !isNoteSensitive(note));
+      if (data.revisions) {
+        const sensitiveIds = new Set(this.data.notes.filter(isNoteSensitive).map((note) => note.id));
+        data.revisions = data.revisions.filter((revision) => !sensitiveIds.has(revision.id));
+      }
+    }
+    return data;
   }
 
   async importBackup(input: unknown): Promise<{ notes: number; sources: number; spaces: number; skipped: number }> {
@@ -650,7 +678,7 @@ export class NotesStore {
           createdAt: typeof item.createdAt === "string" ? item.createdAt : now,
           updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : now,
           version: Number.isInteger(item.version) && item.version! >= 0 ? item.version : 0,
-          pinned: pinned(item.pinned), archivedAt: archivedAt(item.archivedAt),
+          pinned: pinned(item.pinned), archivedAt: archivedAt(item.archivedAt), sensitive: sensitive(item.sensitive),
         });
         existingNoteIds.add(id);
         addedNoteIds.add(id);
@@ -670,7 +698,7 @@ export class NotesStore {
           createdAt: text(item.createdAt, "revision createdAt", 100, true),
           updatedAt: text(item.updatedAt, "revision updatedAt", 100, true),
           version: Number.isInteger(item.version) && item.version! >= 0 ? item.version : 0,
-          pinned: pinned(item.pinned), archivedAt: archivedAt(item.archivedAt),
+          pinned: pinned(item.pinned), archivedAt: archivedAt(item.archivedAt), sensitive: sensitive(item.sensitive),
         };
         const revisions = this.data.revisions ?? [];
         revisions.push(revision);

@@ -8,7 +8,7 @@ export const heatmapPanel: PanelModule = {
   pageHref: "/agent?view=activity",
   dashboardHtml: `
 <section class="card" id="panel-heatmap">
-  <p class="dim">Last 26 weeks of board moves, wins, and note edits.</p>
+  <p class="dim">Last 26 weeks of board moves, wins, note edits, and focus sessions.</p>
   <div id="heatmap-scroll" class="heatmap-scroll panel-scroll-region">
     <div id="heatmap-grid" class="heatmap-grid" role="img" aria-label="Activity heatmap"></div>
   </div>
@@ -25,6 +25,7 @@ export const heatmapPanel: PanelModule = {
       ...ctx.board.eventTimestampsSince(since),
       ...ctx.wins.list(5_000).map((w) => w.at),
       ...ctx.notes.listNotes().map((n) => n.updatedAt),
+      ...ctx.focusSessions.endedAtSince(since),
     ];
     const counts = aggregateDailyCounts(stamps, ctx.cfg.tz, days);
     json(200, { days: buildHeatmapDays(counts, days) });

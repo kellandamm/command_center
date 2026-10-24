@@ -10,6 +10,7 @@ import { tasksPanel } from "./tasks";
 import { attentionPanel } from "./attention";
 import { heatmapPanel } from "./heatmap";
 import { launchpadPanel } from "./launchpad";
+import { focusPanel } from "./focus";
 import type { PanelModule } from "./types";
 
 /** Register panels here: one module file + one line in this array. */
@@ -18,6 +19,7 @@ export const panels: PanelModule[] = [
   attentionPanel,
   heatmapPanel,
   launchpadPanel,
+  focusPanel,
   activityPanel,
   hobiePanel,
   dailyBriefingPanel,

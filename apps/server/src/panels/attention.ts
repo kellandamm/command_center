@@ -1,4 +1,5 @@
 import { composeAttentionSections } from "../attention/sections";
+import { isNoteSensitive } from "../notes/sensitive";
 import type { TimelineEvent } from "../attention/types";
 import { snoozeUntil } from "../attention/store";
 import { dayKey } from "../store";
@@ -27,12 +28,14 @@ export const attentionPanel: PanelModule = {
     if (path === "/api/dashboard/attention" && req.method === "GET") {
       const today = dayKey(new Date(), ctx.cfg.tz);
       const nowMs = Date.now();
-      const notes = ctx.notes.listNotes();
+      const notes = ctx.notes.listNotes().filter((note) => !isNoteSensitive(note));
       const sources = ctx.notes.listSources();
       const wins = ctx.wins.list(500);
       const cardEvents = ctx.board.listCardEventActivity();
       const timeline: TimelineEvent[] = [
-        ...notes.map((n) => ({ at: n.updatedAt, kind: "note" as const, refId: n.id, title: n.title })),
+        ...ctx.notes.listNotes()
+          .filter((n) => !isNoteSensitive(n))
+          .map((n) => ({ at: n.updatedAt, kind: "note" as const, refId: n.id, title: n.title })),
         ...cardEvents.map((e) => ({ at: e.at, kind: "card" as const, refId: e.cardId, title: e.title })),
       ];
       const snap = ctx.attention.snapshot();

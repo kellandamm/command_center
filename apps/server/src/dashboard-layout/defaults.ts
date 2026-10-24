@@ -7,6 +7,7 @@ export const DEFAULT_COLLAPSED_PANEL_IDS = new Set<string>([
   "recallio",
   "host-health",
   "notes",
+  "focus",
   "activity",
   "hobie",
 ]);
@@ -17,6 +18,7 @@ export const DEFAULT_PANEL_LAYOUT: PanelLayoutEntry[] = [
   { id: "attention", x: 4, y: 0, w: 5, h: 4 },
   { id: "heatmap", x: 9, y: 0, w: 3, h: 3 },
   { id: "launchpad", x: 9, y: 3, w: 3, h: 3 },
+  { id: "focus", x: 0, y: 10, w: 4, h: 3, collapsed: true },
   { id: "daily-briefing", x: 0, y: 4, w: 6, h: 2 },
   { id: "calendar", x: 6, y: 4, w: 3, h: 2, collapsed: true },
   { id: "weather", x: 9, y: 6, w: 3, h: 2 },
