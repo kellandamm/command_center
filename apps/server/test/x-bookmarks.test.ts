@@ -13,7 +13,9 @@ import { SettingsStore } from "../src/settings";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 import { createTestCfAccessJwt, TEST_CF_AUD, TEST_CF_TEAM } from "./cf-access-jwt";
 import { setIntegrationCfAccessVerifier } from "../src/mcp/auth";
+import { extractArticleText } from "../src/read-later/article-text";
 import { XBookmarksService } from "../src/read-later/x-bookmarks-service";
+import { XBookmarksStore } from "../src/read-later/x-bookmarks-store";
 import { BlockedUrlError, assertPublicUrl } from "../src/ssrf";
 
 const TOKEN = "t".repeat(32);
@@ -78,6 +80,24 @@ const sampleItem = {
   created_at: "2026-10-20T12:00:00.000Z",
   urls: ["https://example.com/article"],
 };
+
+test("x bookmarks: article links are selected by hostname", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-xb-links-"));
+  try {
+    const store = await XBookmarksStore.open(dir);
+    await store.importItems([{ ...sampleItem, post_id: "host-check", urls: [
+      "https://x.com/user/status/124",
+      "https://news.example/x.com/story",
+    ] }]);
+    assert.equal(store.getByPostId("host-check")?.articleUrl, "https://news.example/x.com/story");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("article extraction removes script blocks with whitespace in closing tags", () => {
+  assert.equal(extractArticleText("<article>Visible<script>secret</script\t\n data> text</article>"), "Visible text");
+});
 
 test("x bookmarks: idempotent import and single summarizer call", async () => {
   let llmCalls = 0;

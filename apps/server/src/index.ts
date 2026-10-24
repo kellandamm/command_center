@@ -10,6 +10,8 @@ import { BookmarksStore } from "./bookmarks/store";
 import { BoardStore } from "./board/store";
 import { wireHobieBoardSync } from "./board/hobie-sync";
 import { HobieQueueStore } from "./stores/hobie-queue";
+import { AgentTaskQueueStore } from "./stores/agent-task-queue";
+import { AgentApprovalsStore } from "./stores/agent-approvals";
 import { WinsStore } from "./wins/store";
 import { WinsRollupService } from "./wins/rollup-service";
 import { PanelUpdatesStore } from "./stores/panel-updates";
@@ -45,6 +47,8 @@ async function main() {
   const xBookmarksService = new XBookmarksService(cfg, xBookmarks);
   const panelUpdates = await PanelUpdatesStore.open(cfg.dataDir);
   const hobieQueue = await HobieQueueStore.open(cfg.dataDir);
+  const agentTaskQueue = await AgentTaskQueueStore.open(cfg.dataDir);
+  const agentApprovals = await AgentApprovalsStore.open(cfg.dataDir);
   const board = BoardStore.open(cfg.dataDir);
   const calendar = await CalendarWorkspace.open(cfg, connections, { notes, board });
   const wins = WinsStore.open(cfg.dataDir);
@@ -74,6 +78,8 @@ async function main() {
     xBookmarksService,
     panelUpdates,
     hobieQueue,
+    agentTaskQueue,
+    agentApprovals,
     board,
     wins,
     winsRollup,

@@ -36,6 +36,11 @@ const httpUrl = z.string().max(2_048).transform((value, ctx) => {
   }
 });
 
+function isXPostUrl(value: string): boolean {
+  const hostname = new URL(value).hostname.toLowerCase();
+  return ["x.com", "twitter.com"].some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));
+}
+
 const importItemSchema = z.object({
   post_id: postId,
   post_url: httpUrl,
@@ -139,7 +144,7 @@ export class XBookmarksStore {
           continue;
         }
         const now = new Date().toISOString();
-        const articleUrl = item.urls.find((url) => !url.includes("x.com/") && !url.includes("twitter.com/")) ?? item.urls[0] ?? null;
+        const articleUrl = item.urls.find((url) => !isXPostUrl(url)) ?? item.urls[0] ?? null;
         data.items.push({
           id: randomUUID(),
           source: "x",

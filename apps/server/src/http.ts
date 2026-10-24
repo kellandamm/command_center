@@ -15,6 +15,15 @@ import { handleHobieAgentRoutes } from "./mcp/hobie-routes";
 import { handleMcpRoute } from "./mcp/handler";
 import type { IntegrationDeps } from "./mcp/actions";
 import type { HobieQueueStore } from "./stores/hobie-queue";
+import type { AgentTaskQueueStore } from "./stores/agent-task-queue";
+import type { AgentApprovalsStore } from "./stores/agent-approvals";
+import {
+  handleAgentApprovalRoutes,
+  handleAgentQueueOwnerApi,
+  handleAgentQueueRoutes,
+} from "./queue/routes";
+import { QueueNonceStore } from "./queue/nonce-store";
+import { QUEUE_HMAC_WINDOW_SEC } from "./queue/hmac";
 import type { PanelUpdatesStore } from "./stores/panel-updates";
 import { visibleNavTabs } from "./nav-tabs";
 import { panels } from "./panels/registry";
@@ -72,6 +81,8 @@ export interface App {
   xBookmarksService: XBookmarksService;
   panelUpdates: PanelUpdatesStore;
   hobieQueue: HobieQueueStore;
+  agentTaskQueue: AgentTaskQueueStore;
+  agentApprovals: AgentApprovalsStore;
   board: BoardStore;
   wins: WinsStore;
   winsRollup: WinsRollupService;
@@ -146,6 +157,7 @@ export function createApp(app: App): Server {
   const readLater = new ReadLaterService(app.cfg, app.notes);
   const captureAccess = new CaptureAccess(app.cfg.dataDir);
   const extensionZip = zip(captureExtensionFiles);
+  const queueNonces = new QueueNonceStore(QUEUE_HMAC_WINDOW_SEC * 1000);
   app.xBookmarksService.start();
 
   return createServer(async (req, res) => {
@@ -197,6 +209,19 @@ export function createApp(app: App): Server {
         const body = req.method === "POST" ? await readBody(req) : undefined;
         await handleHobieAgentRoutes(app.cfg, app.hobieQueue, req, res, path, body);
         return;
+      }
+
+      if (path.startsWith("/api/queue")) {
+        const handled = await handleAgentQueueRoutes(
+          app.cfg,
+          app.agentTaskQueue,
+          app.agentApprovals,
+          queueNonces,
+          req,
+          res,
+          path,
+        );
+        if (handled) return;
       }
 
       if (method === "POST" && path === "/api/capture") {
@@ -318,6 +343,9 @@ export function createApp(app: App): Server {
         }
         return json(res, 404, { error: "bookmark route not found" });
       }
+
+      if (handleAgentQueueOwnerApi(app.agentTaskQueue, app.agentApprovals, req, res, path, who.owner === true)) return;
+      if (await handleAgentApprovalRoutes(app.cfg, app.agentApprovals, req, res, path, who.owner === true, readBody)) return;
 
       if (get && path === "/api/state") {
         return json(res, 200, {

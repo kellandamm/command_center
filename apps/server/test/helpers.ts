@@ -4,6 +4,8 @@ import { wireHobieBoardSync } from "../src/board/hobie-sync";
 import { DashboardLayoutStore } from "../src/dashboard-layout/storage";
 import { panels } from "../src/panels/registry";
 import { HobieQueueStore } from "../src/stores/hobie-queue";
+import { AgentTaskQueueStore } from "../src/stores/agent-task-queue";
+import { AgentApprovalsStore } from "../src/stores/agent-approvals";
 import { PanelUpdatesStore } from "../src/stores/panel-updates";
 import { WinsStore } from "../src/wins/store";
 import { WinsRollupService } from "../src/wins/rollup-service";
@@ -45,6 +47,8 @@ export async function openIntegrationStores(dataDir: string, cfg?: Config) {
     xBookmarksService,
     panelUpdates,
     hobieQueue,
+    agentTaskQueue: await AgentTaskQueueStore.open(dataDir),
+    agentApprovals: await AgentApprovalsStore.open(dataDir),
     board,
     wins,
     winsRollup,
