@@ -178,15 +178,6 @@ async function main() {
   await writeBriefingFile(briefingDayPath(briefingDir, briefing.day), briefing);
 
   const layout = defaultDashboardLayout(panels.map((p) => p.id));
-  const tasksEntry = layout.panels.find((p) => p.id === "tasks");
-  const attentionEntry = layout.panels.find((p) => p.id === "attention");
-  if (tasksEntry) Object.assign(tasksEntry, { x: 0, y: 0, w: 4, h: 4 });
-  if (attentionEntry) Object.assign(attentionEntry, { x: 4, y: 0, w: 8, h: 8 });
-  for (const entry of layout.panels) {
-    if (entry.id === "heatmap") Object.assign(entry, { x: 0, y: 4, w: 4, h: 3 });
-    if (entry.id === "launchpad") Object.assign(entry, { x: 0, y: 7, w: 4, h: 3 });
-    if (entry.id === "daily-briefing") Object.assign(entry, { x: 4, y: 8, w: 8, h: 2 });
-  }
   await writeFile(join(dir, "dashboard-layout.json"), JSON.stringify(layout, null, 2));
 
   board.close();

@@ -64,6 +64,35 @@ test("dashboard v1 panels load in browser", { timeout: 120_000 }, async () => {
     assert.ok(await page.locator(".attention-block h3", { hasText: "Continue working" }).count());
     assert.ok(await page.locator(".attention-block h3", { hasText: "On this day" }).count());
     assert.ok(await page.locator(".attention-block h3", { hasText: "Rediscover" }).count());
+    const overlaps = await page.evaluate(() => {
+      const items = Array.from(document.querySelectorAll("#dashboard-grid .dashboard-item"));
+      const boxes = items.map((el) => {
+        const r = el.getBoundingClientRect();
+        return {
+          id: el.getAttribute("data-panel-id") ?? "",
+          left: r.left,
+          top: r.top,
+          right: r.right,
+          bottom: r.bottom,
+        };
+      });
+      const hits: string[] = [];
+      const gap = 0.5;
+      for (let i = 0; i < boxes.length; i++) {
+        for (let j = i + 1; j < boxes.length; j++) {
+          const a = boxes[i];
+          const b = boxes[j];
+          const overlap =
+            a.left < b.right - gap &&
+            a.right > b.left + gap &&
+            a.top < b.bottom - gap &&
+            a.bottom > b.top + gap;
+          if (overlap) hits.push(`${a.id}×${b.id}`);
+        }
+      }
+      return hits;
+    });
+    assert.deepEqual(overlaps, [], `dashboard panels overlap: ${overlaps.join(", ")}`);
     assert.match(await page.locator("h1").first().textContent() ?? "", /Dashboard/i);
     await page.setViewportSize({ width: 390, height: 844 });
     assert.ok(await page.locator("#dashboard-grid .dashboard-item").count() >= 4);

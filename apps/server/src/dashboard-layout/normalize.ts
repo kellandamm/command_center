@@ -1,6 +1,6 @@
 import { ValidationError } from "../settings";
 import { defaultEntryForPanel } from "./defaults";
-import { maxOccupiedRow } from "./pack";
+import { maxOccupiedRow, packDashboardLayout } from "./pack";
 import type { DashboardLayout, PanelLayoutEntry } from "./types";
 import { GRID_COLS, GRID_ROW_HEIGHT_PX, LAYOUT_VERSION } from "./types";
 
@@ -54,7 +54,7 @@ function mergeSavedPanels(
     byId.set(id, { ...entry, x: 0, y });
   }
 
-  const panels = panelIds.map((id) => byId.get(id)!);
+  const panels = packDashboardLayout(panelIds.map((id) => byId.get(id)!));
   return {
     version: LAYOUT_VERSION,
     cols: GRID_COLS,
