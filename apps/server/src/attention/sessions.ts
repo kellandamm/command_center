@@ -37,8 +37,31 @@ export function sessionReason(session: WorkSession, todayYmd: string, tz: string
   if (day === todayYmd) {
     return count === 1 ? "edited once today" : `edited ${count} times today`;
   }
+  const dateLabel = new Intl.DateTimeFormat("en-US", { timeZone: tz, month: "short", day: "numeric" }).format(
+    new Date(session.end),
+  );
   const when = new Date(session.end).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-  return count === 1 ? `worked on at ${when}` : `${count} edits ending ${when}`;
+  return count === 1 ? `worked on ${dateLabel}` : `${count} edits ending ${when}`;
+}
+
+function sessionSummaryLine(session: WorkSession, todayYmd: string, tz: string): string {
+  const count = session.events.length;
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date(session.end));
+  if (day === todayYmd) return count === 1 ? "1 edit earlier today" : `${count} edits earlier today`;
+  const dateLabel = new Intl.DateTimeFormat("en-US", { timeZone: tz, month: "short", day: "numeric" }).format(
+    new Date(session.end),
+  );
+  return count === 1 ? `1 edit on ${dateLabel}` : `${count} edits on ${dateLabel}`;
+}
+
+/** Merge older sessions into the reason for the most recent session on the same item. */
+export function mergedSessionReason(sessions: WorkSession[], todayYmd: string, tz: string): string {
+  const sorted = [...sessions].sort((a, b) => b.end.localeCompare(a.end));
+  const latest = sorted[0]!;
+  let reason = sessionReason(latest, todayYmd, tz);
+  if (sorted.length === 1) return reason;
+  const also = sorted.slice(1).map((s) => sessionSummaryLine(s, todayYmd, tz));
+  return `${reason}; also ${also.join(", ")}`;
 }
 
 export function sessionPrimaryItem(session: WorkSession): TimelineEvent {

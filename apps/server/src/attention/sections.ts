@@ -2,7 +2,7 @@ import { DONE, type BoardCard } from "../board/types";
 import type { KnowledgeNote, KnowledgeSource } from "../notes/store";
 import type { Win } from "../wins/types";
 import { pickRediscover, daysBetween, type StaleCandidate } from "./rediscover";
-import { buildSessions, sessionPrimaryItem, sessionReason } from "./sessions";
+import { buildSessions, mergedSessionReason, sessionPrimaryItem, type WorkSession } from "./sessions";
 import { applyPinnedFirst, takeSectionItems } from "./rank";
 import type { AttentionItem, AttentionSection, TimelineEvent } from "./types";
 
@@ -110,12 +110,25 @@ export function composeAttentionSections(input: ComposeInput): AttentionSection[
   });
 
   const sessions = buildSessions(input.timeline).sort((a, b) => b.end.localeCompare(a.end));
-  const continueItems: AttentionItem[] = [];
+  const sessionsByItem = new Map<string, WorkSession[]>();
   for (const session of sessions) {
     const primary = sessionPrimaryItem(session);
     const id = primary.kind === "note" ? `note:${primary.refId}` : `card:${primary.refId}`;
+    const list = sessionsByItem.get(id) ?? [];
+    list.push(session);
+    sessionsByItem.set(id, list);
+  }
+  const continueItems: AttentionItem[] = [];
+  const grouped = [...sessionsByItem.entries()]
+    .map(([id, itemSessions]) => ({
+      id,
+      sessions: itemSessions.sort((a, b) => b.end.localeCompare(a.end)),
+    }))
+    .sort((a, b) => b.sessions[0]!.end.localeCompare(a.sessions[0]!.end));
+  for (const { id, sessions: itemSessions } of grouped) {
     if (used.has(id)) continue;
-    const reason = sessionReason(session, input.todayYmd, input.tz);
+    const primary = sessionPrimaryItem(itemSessions[0]!);
+    const reason = mergedSessionReason(itemSessions, input.todayYmd, input.tz);
     if (primary.kind === "note") {
       const note = input.notes.find((n) => n.id === primary.refId);
       if (note) continueItems.push(noteItem(note, reason));

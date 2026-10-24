@@ -68,6 +68,36 @@ test("attention: sessions split at 45 minute boundary", () => {
   assert.equal(sessions[0]!.events.length, 2);
 });
 
+test("attention: continue working dedupes the same card across sessions", () => {
+  const cardId = "heatmap-card";
+  const timeline = [
+    ...Array.from({ length: 7 }, (_, i) => ({
+      at: `2026-10-24T10:${String(i * 5).padStart(2, "0")}:00.000Z`,
+      kind: "card" as const,
+      refId: cardId,
+      title: "Heatmap activity card",
+    })),
+    { at: "2026-10-10T14:00:00.000Z", kind: "card" as const, refId: cardId, title: "Heatmap activity card" },
+  ];
+  const sections = composeAttentionSections({
+    todayYmd: "2026-10-24",
+    tz: "UTC",
+    nowMs: Date.parse("2026-10-24T18:00:00.000Z"),
+    cards: [card({ id: cardId, title: "Heatmap activity card" })],
+    notes: [],
+    sources: [],
+    wins: [],
+    timeline,
+    pinned: [],
+    hidden: new Set(),
+    isSnoozed: () => false,
+  });
+  const continueItems = sections.find((s) => s.id === "continue")!.items;
+  assert.equal(continueItems.filter((i) => i.id === `card:${cardId}`).length, 1);
+  assert.match(continueItems[0]!.reason, /edited 7 times today/);
+  assert.match(continueItems[0]!.reason, /also 1 edit on Oct 10/);
+});
+
 test("attention: dedupes items across sections and limits to three", () => {
   const sections = composeAttentionSections({
     todayYmd: "2026-10-24",

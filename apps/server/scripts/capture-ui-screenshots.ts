@@ -20,7 +20,7 @@ async function putPackedTallAttentionLayout(baseUrl: string) {
   if (!get.ok) throw new Error(`layout GET ${get.status}`);
   const { layout } = (await get.json()) as { layout: { panels: Array<Record<string, unknown>> } };
   const attention = layout.panels.find((p) => p.id === "attention");
-  if (attention) Object.assign(attention, { x: 4, y: 0, w: 5, h: 12, collapsed: false });
+  if (attention) Object.assign(attention, { x: 4, y: 0, w: 5, h: 20, collapsed: false });
   const put = await fetch(`${baseUrl}/api/dashboard-layout`, {
     method: "PUT",
     headers: { "content-type": "application/json", "x-ah": "1" },
@@ -167,9 +167,13 @@ const DASHBOARD_V1_SHOTS: Shot[] = [
       });
       await page.locator('.dashboard-item[data-panel-id="attention"]').scrollIntoViewIfNeeded();
       for (const name of ["Due or overdue", "Continue working", "On this day", "Rediscover"]) {
-        const heading = page.getByRole("heading", { name });
-        await heading.waitFor({ state: "visible", timeout: 20_000 });
+        await page.getByRole("heading", { name }).waitFor({ state: "visible", timeout: 20_000 });
       }
+      const rediscover = page.locator(".attention-block").filter({
+        has: page.getByRole("heading", { name: "Rediscover" }),
+      });
+      await rediscover.locator(".attention-reason").first().waitFor({ state: "visible", timeout: 20_000 });
+      await rediscover.getByText(/untouched for \d+ days/).first().waitFor({ state: "visible", timeout: 20_000 });
     },
   },
   {
