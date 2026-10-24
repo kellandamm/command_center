@@ -36,7 +36,12 @@ function renderActivity(rows){
     return '<li class="todoist-item"><div class="dim">'+esc(u.panel)+' · '+esc(u.clientId)+' · '+esc(t)+'</div><div>'+esc(u.markdown)+'</div></li>';
   }).join("");
 }
-function loadActivity(){return api("/api/activity/updates").then(function(r){renderActivity(r.updates)})}
+function loadActivity(){
+  return window.viewPreferencesReady.then(function(prefs){
+    var limit=prefs&&prefs.activity&&prefs.activity.limit||200;
+    return api("/api/activity/updates?limit="+limit).then(function(r){renderActivity(r.updates)});
+  });
+}
 loadActivity();
 `;
 }

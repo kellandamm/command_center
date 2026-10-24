@@ -262,6 +262,9 @@ input.notes-title{font-size:1.9rem;letter-spacing:-.035em;font-weight:600;border
 .notes-secondary{box-shadow:none;padding:.85rem}.notes-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 body.notes-focus .sidebar,body.notes-focus .notes-library,body.notes-focus .notes-secondary{display:none}
 body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes-focus .page-content{max-width:76rem}
+#knowledge-editor.notes-font-small .notes-document,#knowledge-editor.notes-font-small .notes-source textarea{font-size:.875rem}
+#knowledge-editor.notes-font-medium .notes-document,#knowledge-editor.notes-font-medium .notes-source textarea{font-size:1rem}
+#knowledge-editor.notes-font-large .notes-document,#knowledge-editor.notes-font-large .notes-source textarea{font-size:1.125rem}
 @media(max-width:1100px){.notes-workspace{grid-template-columns:13rem minmax(0,1fr)}.notes-writing[data-mode=split]{grid-template-columns:minmax(0,1fr)}.notes-writing[data-mode=split] .notes-preview-pane{border-left:0;border-top:1px solid var(--border);padding-left:0}}
 @media(max-width:700px){.notes-header{align-items:flex-start;flex-direction:column}.notes-workspace{grid-template-columns:minmax(0,1fr)}.notes-library{border-right:0;border-bottom:1px solid var(--border)}#knowledge-note-list{max-height:12rem}.notes-main{padding:0 1rem 1rem}.notes-source textarea{min-height:20rem}input.notes-title{font-size:1.6rem}}
 </style><script src="/assets/notes-editor.js"></script>`,
@@ -910,6 +913,13 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
       });
     }).catch(showError).finally(function(){button.disabled=false;});
   };
+  function applyNotesFontSize(prefs){
+    var editor=$("knowledge-editor");if(!editor)return;
+    var size=(prefs&&prefs.notes&&prefs.notes.fontSize)||"medium";
+    editor.classList.remove("notes-font-small","notes-font-medium","notes-font-large");
+    editor.classList.add("notes-font-"+size);
+  }
+  window.viewPreferencesReady.then(applyNotesFontSize).catch(function(){});
   function initialLoad(){
     return api("/api/state").then(function(data){
       serverCaps.owner=!!data.owner;serverCaps.shareLinksEnabled=!!data.shareLinksEnabled;

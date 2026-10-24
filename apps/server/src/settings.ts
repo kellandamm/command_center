@@ -4,7 +4,6 @@ import { readJson, writeFileAtomic } from "./store";
 
 export interface ViewPreferences {
   density: "comfortable" | "compact";
-  dashboard: { hobie: boolean; calendar: boolean; briefing: boolean; activity: boolean };
   briefing: { weather: boolean; calendar: boolean; topics: boolean };
   hobie: { status: "all" | "pending" | "claimed" | "done" };
   calendar: { weekStartsOn: "monday" | "sunday" };
@@ -21,7 +20,6 @@ export interface Settings {
 
 export const DEFAULT_VIEW_PREFERENCES: ViewPreferences = {
   density: "comfortable",
-  dashboard: { hobie: true, calendar: true, briefing: true, activity: true },
   briefing: { weather: true, calendar: true, topics: true },
   hobie: { status: "all" },
   calendar: { weekStartsOn: "monday" },
@@ -58,7 +56,6 @@ function objectSetting(value: unknown): Record<string, unknown> {
 
 function normalizeViewPreferences(input: unknown, base: ViewPreferences): ViewPreferences {
   const i = objectSetting(input);
-  const dashboard = objectSetting(i.dashboard);
   const briefing = objectSetting(i.briefing);
   const hobie = objectSetting(i.hobie);
   const calendar = objectSetting(i.calendar);
@@ -66,12 +63,6 @@ function normalizeViewPreferences(input: unknown, base: ViewPreferences): ViewPr
   const notes = objectSetting(i.notes);
   return {
     density: enumSetting(i.density, ["comfortable", "compact"], base.density, "viewPreferences.density"),
-    dashboard: {
-      hobie: booleanSetting(dashboard.hobie, base.dashboard.hobie, "viewPreferences.dashboard.hobie"),
-      calendar: booleanSetting(dashboard.calendar, base.dashboard.calendar, "viewPreferences.dashboard.calendar"),
-      briefing: booleanSetting(dashboard.briefing, base.dashboard.briefing, "viewPreferences.dashboard.briefing"),
-      activity: booleanSetting(dashboard.activity, base.dashboard.activity, "viewPreferences.dashboard.activity"),
-    },
     briefing: {
       weather: booleanSetting(briefing.weather, base.briefing.weather, "viewPreferences.briefing.weather"),
       calendar: booleanSetting(briefing.calendar, base.briefing.calendar, "viewPreferences.briefing.calendar"),
