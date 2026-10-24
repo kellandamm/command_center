@@ -1,0 +1,60 @@
+x-hard: &hard
+  read_only: true
+  user: "10001:10001"
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs:
+    - /tmp:size=16m
+  pids_limit: 128
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  worker:
+    <<: *hard
+    build: ./worker
+    env_file: ./env/worker.env
+    environment:
+      HTTPS_PROXY: http://egress:3128
+      HA_URL: http://ha-proxy:8080
+      CONTAINER_STATUS_FILE: /var/lib/agent/container-status.json
+    volumes:
+      - ./data/container-status.json:/var/lib/agent/container-status.json:ro
+    networks: [agent_int]
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  ha-proxy:
+    <<: *hard
+    build: ./ha-proxy
+    env_file: ./env/ha-proxy.env
+    networks: [agent_int, egress_net]
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+
+  egress:
+    <<: *hard
+    image: ubuntu/squid:latest
+    volumes:
+      - ./egress/squid.conf:/etc/squid/squid.conf:ro
+    networks: [agent_int, egress_net]
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+
+networks:
+  agent_int:
+    internal: true
+  egress_net: {}

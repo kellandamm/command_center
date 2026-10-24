@@ -44,6 +44,10 @@ export interface Config {
   mcpCfClientMap: Record<string, string>;
   webhookSecret: string | null;
   hobiePollToken: string | null;
+  /** HMAC key for Hobie queue producer (create/read tasks). Min 32 chars when set. */
+  queueHmacKeyProducer: string | null;
+  /** HMAC key for homelab worker (claim/result/proposals). Min 32 chars when set. */
+  queueHmacKeyWorker: string | null;
   mcpMaxHobiePending: number;
   connectionsMasterKey: string | null;
   ownerEmails: string[];
@@ -171,6 +175,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     mcpCfClientMap: parseJsonRecord(env.MCP_CF_CLIENT_MAP),
     webhookSecret,
     hobiePollToken,
+    queueHmacKeyProducer: blank(env.QUEUE_HMAC_KEY_PRODUCER),
+    queueHmacKeyWorker: blank(env.QUEUE_HMAC_KEY_WORKER),
     mcpMaxHobiePending: Math.min(50, Math.max(1, Number(env.MCP_MAX_HOBIE_PENDING ?? 20) || 20)),
     connectionsMasterKey,
     ownerEmails: (env.OWNER_EMAILS ?? "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean),
