@@ -79,11 +79,20 @@ export function normalizeSidebarTabs(input: unknown): SidebarTab[] {
   return [...byId.values()].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
 }
 
-export function visibleNavTabs(tabs: SidebarTab[]): Array<{ href: string; label: string }> {
-  return tabs
+export function visibleNavTabs(
+  tabs: SidebarTab[],
+  opts?: { whiteboard?: boolean },
+): Array<{ href: string; label: string }> {
+  const rows = tabs
     .filter((t) => t.visible || t.locked)
     .sort((a, b) => a.order - b.order)
     .map((t) => ({ href: t.href, label: t.label }));
+  if (!opts?.whiteboard) return rows;
+  // shortcut: inject optional whiteboard nav entry without persisting to settings
+  const out = [...rows];
+  const settingsIdx = out.findIndex((t) => t.href === "/settings");
+  out.splice(settingsIdx >= 0 ? settingsIdx : out.length, 0, { href: "/whiteboard", label: "Whiteboard" });
+  return out;
 }
 
 export function applySidebarTabsPatch(current: SidebarTab[], patch: unknown): SidebarTab[] {

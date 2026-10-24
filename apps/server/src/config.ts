@@ -59,6 +59,8 @@ export interface Config {
   googleClientId: string | null;
   googleClientSecret: string | null;
   googleRedirectUri: string | null;
+  /** Optional Excalidraw whiteboard page (`WHITEBOARD_ENABLED`, default off). */
+  whiteboardEnabled: boolean;
 }
 
 export interface LlmConfig {
@@ -200,6 +202,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     googleClientId,
     googleClientSecret,
     googleRedirectUri,
+    whiteboardEnabled: truthy(env.WHITEBOARD_ENABLED),
   };
 }
 
