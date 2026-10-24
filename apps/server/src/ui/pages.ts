@@ -139,6 +139,7 @@ function renderDeploymentFeatures(meta){
   var ownerOn=!!(meta&&meta.ownerEmailsConfigured);
   addFeatureRow(list,"Whiteboard",!!features.whiteboardEnabled,"Set WHITEBOARD_ENABLED=true to enable the Whiteboard page and API.",null);
   addFeatureRow(list,"Share links",!!features.shareLinksEnabled,"Set SHARE_LINKS_ENABLED=true to enable note share links. Public share URLs also need the Cloudflare Access bypass in docs/share-links.md.",null);
+  addFeatureRow(list,"Encrypted API key storage",!!(meta&&meta.connectionsStorage),"Set CONNECTIONS_MASTER_KEY (64 hex chars, openssl rand -hex 32) and restart to save API keys in Service connections. Back it up: saved keys can't be decrypted without it.",null);
   addFeatureRow(list,"Owner-only shared settings",ownerOn,"OWNER_EMAILS is not set; any signed-in session including ADMIN_TOKEN can edit shared settings on this server.","OWNER_EMAILS is set; shared settings, dashboard layout writes, and capture tokens require an owner login or ADMIN_TOKEN.");
 }
 function setSettingsReadOnly(meta){

@@ -164,6 +164,26 @@ test("computeOwnerReason: matches canManageSharedServerState boundaries", () => 
   });
 });
 
+test("settings API meta: connectionsStorage reflects CONNECTIONS_MASTER_KEY without leaking it", async () => {
+  const secretKey = "cafe".repeat(16);
+  const off = await harness({});
+  try {
+    const body = await (await fetch(`${off.base}/api/settings`, { headers: writeHeaders })).json();
+    assert.equal(body.meta.connectionsStorage, false);
+    assert.ok(!JSON.stringify(body).includes(secretKey));
+  } finally {
+    await off.close();
+  }
+  const on = await harness({ CONNECTIONS_MASTER_KEY: secretKey });
+  try {
+    const body = await (await fetch(`${on.base}/api/settings`, { headers: writeHeaders })).json();
+    assert.equal(body.meta.connectionsStorage, true);
+    assert.ok(!JSON.stringify(body).includes(secretKey));
+  } finally {
+    await on.close();
+  }
+});
+
 test("settings API: meta.features and canManage reflect deployment", async () => {
   const h = await harness({ OWNER_EMAILS: "owner@example.com", SHARE_LINKS_ENABLED: "1", WHITEBOARD_ENABLED: "true" });
   try {

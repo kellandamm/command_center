@@ -404,6 +404,7 @@ export function createApp(app: App): Server {
             signedInAs: who.who,
             ownerReason: computeOwnerReason(app.cfg, principal),
             ownerEmailsConfigured: app.cfg.ownerEmails.length > 0,
+            connectionsStorage: Boolean(app.cfg.connectionsMasterKey),
             features: {
               shareLinksEnabled: app.cfg.shareLinksEnabled,
               whiteboardEnabled: app.cfg.whiteboardEnabled,
