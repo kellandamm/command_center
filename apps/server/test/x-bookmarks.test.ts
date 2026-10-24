@@ -117,7 +117,7 @@ test("x bookmarks: idempotent import and single summarizer call", async () => {
     assert.deepEqual(await first.json(), { imported: 1, duplicates: 0, rejected: [] });
     const second = await fetch(`${h.base}/api/bookmarks/import`, { method: "POST", headers, body });
     assert.deepEqual(await second.json(), { imported: 0, duplicates: 1, rejected: [] });
-    await new Promise((r) => setTimeout(r, 200));
+    await h.xBookmarksService.drain();
     assert.equal(llmCalls, 1);
     assert.equal(h.xBookmarks.list().filter((item) => item.status === "done").length, 1);
   } finally {
@@ -203,7 +203,6 @@ test("x bookmarks: client id allow-list accepts listed token; unset list allows 
       body: JSON.stringify({ items: [{ ...sampleItem, post_id: "allowed" }] }),
     });
     assert.equal(ok.status, 200);
-    await new Promise((r) => setTimeout(r, 200));
   } finally {
     await restricted.close();
   }
@@ -217,7 +216,6 @@ test("x bookmarks: client id allow-list accepts listed token; unset list allows 
       body: JSON.stringify({ items: [{ ...sampleItem, post_id: "open-ok" }] }),
     });
     assert.equal(ok.status, 200);
-    await new Promise((r) => setTimeout(r, 200));
   } finally {
     await open.close();
   }
@@ -239,7 +237,7 @@ test("x bookmarks: summarizer failure retries once then marks failed", async () 
       headers: { ...jwtHdr, "x-bookmarks-secret": IMPORT_SECRET, "content-type": "application/json" },
       body: JSON.stringify({ items: [{ ...sampleItem, post_id: "retry-me" }] }),
     });
-    await new Promise((r) => setTimeout(r, 500));
+    await h.xBookmarksService.drain();
     const item = h.xBookmarks.getByPostId("retry-me")!;
     assert.equal(item.attempts, 2);
     assert.equal(item.status, "failed");
@@ -266,7 +264,7 @@ test("x bookmarks: no-link post summarizes from text", async () => {
       headers: { ...jwtHdr, "x-bookmarks-secret": IMPORT_SECRET, "content-type": "application/json" },
       body: JSON.stringify({ items: [{ ...sampleItem, post_id: "nolink", urls: [] }] }),
     });
-    await new Promise((r) => setTimeout(r, 250));
+    await h.xBookmarksService.drain();
     assert.equal(h.xBookmarks.getByPostId("nolink")?.status, "done");
   } finally {
     await h.close();
