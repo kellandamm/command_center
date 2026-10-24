@@ -3,7 +3,12 @@ import { ValidationError } from "../settings";
 import { llmConfig } from "../config";
 import { chatCompletion } from "../llm/provider";
 import type { NotesStore } from "../notes/store";
-import { isNoteSensitive, legacyMainNoteForAgents, notesForLlmContext } from "../notes/sensitive";
+import {
+  isNoteSensitive,
+  legacyMainNoteForAgents,
+  notesForLlmContext,
+  SENSITIVE_LEGACY_NOTE_MESSAGE,
+} from "../notes/sensitive";
 import { renderNoteMarkdown } from "../notes/markdown";
 import { fetchCalendarEvents } from "../calendar/service";
 import type { PanelModule } from "./types";
@@ -72,6 +77,10 @@ export const notesPanel: PanelModule = {
         throw new ValidationError("invalid JSON");
       }
       if (typeof parsed.content !== "string") throw new ValidationError("content is required");
+      const legacy = ctx.notes.mainLegacyNote();
+      if (legacy && isNoteSensitive(legacy)) {
+        return error(409, SENSITIVE_LEGACY_NOTE_MESSAGE), true;
+      }
       try {
         await ctx.notes.write(parsed.content);
       } catch (err) {
@@ -376,14 +385,28 @@ export const notesPanel: PanelModule = {
 
 export function notesDashboardScript(): string {
   return `
+function setLegacyNotesWidget(redacted){
+  var ed=document.getElementById("notes-editor"),save=document.getElementById("notes-save"),st=document.getElementById("notes-status");
+  if(redacted){
+    if(ed){ed.value="";ed.disabled=true;}
+    if(save)save.disabled=true;
+    if(st)st.textContent="${SENSITIVE_LEGACY_NOTE_MESSAGE.replace(/"/g, '\\"')}";
+    return;
+  }
+  if(ed)ed.disabled=false;
+  if(save)save.disabled=false;
+}
 function loadNotes(){
   return api("/api/notes").then(function(r){
+    if(r.redacted){setLegacyNotesWidget(true);return;}
+    setLegacyNotesWidget(false);
     var ed=document.getElementById("notes-editor");
     if(ed)ed.value=r.content||"";
   });
 }
 var ns=document.getElementById("notes-save");
 if(ns)ns.onclick=function(){
+  if(ns.disabled)return;
   var st=document.getElementById("notes-status");
   st.textContent="Saving…";
   api("/api/notes","PUT",{content:document.getElementById("notes-editor").value})

@@ -21,6 +21,8 @@ export interface AgentLegacyNoteResult {
   redacted?: boolean;
 }
 
+export const SENSITIVE_LEGACY_NOTE_MESSAGE = "Marked sensitive. Edit it in Notes.";
+
 /** Legacy “Main notes” content for agents, webhooks, and non-owner API surfaces. */
 export function legacyMainNoteForAgents(note: KnowledgeNote | undefined, content: string): AgentLegacyNoteResult {
   if (note && isNoteSensitive(note)) return { content: "", redacted: true };

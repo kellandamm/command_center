@@ -11,10 +11,11 @@ import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
 import { actionNotesAppend, actionNotesRead } from "../src/mcp/actions";
+import { SENSITIVE_LEGACY_NOTE_MESSAGE } from "../src/notes/sensitive";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
 const TOKEN = "m".repeat(32);
-const authz = { authorization: `Bearer ${TOKEN}` };
+const authz = { authorization: `Bearer ${TOKEN}`, "content-type": "application/json", "x-ah": "1" };
 
 async function legacyHarness() {
   const dir = await mkdtemp(join(tmpdir(), "cc-mcp-legacy-"));
@@ -63,6 +64,15 @@ test("mcp legacy notes: read and append redact sensitive Main notes", async () =
     const body = await api.json();
     assert.equal(body.content, "");
     assert.equal(body.redacted, true);
+
+    const put = await fetch(`${h.base}/api/notes`, {
+      method: "PUT",
+      headers: authz,
+      body: JSON.stringify({ content: "" }),
+    });
+    assert.equal(put.status, 409);
+    assert.equal((await put.json()).error, SENSITIVE_LEGACY_NOTE_MESSAGE);
+    assert.equal(await h.notes.read(), "AGENT_SECRET_BODY");
   } finally {
     await h.close();
   }
