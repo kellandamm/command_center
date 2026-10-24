@@ -1,35 +1,19 @@
 import { DEFAULT_SIDEBAR_TABS, visibleNavTabs, type SidebarTab } from "../nav-tabs";
+import { formatThemeVars, THEME_DARK, THEME_LIGHT, THEME_META_COLORS } from "./theme-tokens";
 
 export const esc = (s: unknown) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
-/** shadcn/ui default theme tokens (studio-admin baseline), SSR — no Tailwind build. */
+/** Gray neutral + royal blue primary + orange accent (shadcn-style SSR tokens). */
 const CSS = `
 :root{
   --radius:0.625rem;
-  --background:#ffffff;--foreground:#0a0a0a;
-  --card:#ffffff;--card-foreground:#0a0a0a;
-  --primary:#171717;--primary-foreground:#fafafa;
-  --secondary:#f5f5f5;--secondary-foreground:#171717;
-  --muted:#f5f5f5;--muted-foreground:#737373;
-  --accent:#f5f5f5;--accent-foreground:#171717;
-  --destructive:#dc2626;--border:#e5e5e5;--input:#e5e5e5;--ring:#a3a3a3;
-  --sidebar:#fafafa;--sidebar-foreground:#0a0a0a;--sidebar-border:#e5e5e5;
-  --sidebar-accent:#f5f5f5;--sidebar-accent-foreground:#171717;
+  ${formatThemeVars(THEME_LIGHT)};
   --bg:var(--background);--panel:var(--card);--line:var(--border);--fg:var(--foreground);
-  --dim:var(--muted-foreground);--bad:var(--destructive);--ok:#16a34a;
+  --dim:var(--muted-foreground);--bad:var(--destructive);
 }
 html.dark{
-  --background:#0a0a0a;--foreground:#fafafa;
-  --card:#171717;--card-foreground:#fafafa;
-  --primary:#fafafa;--primary-foreground:#171717;
-  --secondary:#262626;--secondary-foreground:#fafafa;
-  --muted:#262626;--muted-foreground:#a3a3a3;
-  --accent:#262626;--accent-foreground:#fafafa;
-  --destructive:#ef4444;--border:rgba(255,255,255,.1);--input:rgba(255,255,255,.15);--ring:#737373;
-  --sidebar:#171717;--sidebar-foreground:#fafafa;--sidebar-border:rgba(255,255,255,.1);
-  --sidebar-accent:#262626;--sidebar-accent-foreground:#fafafa;
-  --ok:#4ade80;
+  ${formatThemeVars(THEME_DARK)};
 }
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;background:var(--background);color:var(--foreground);
@@ -233,7 +217,7 @@ const THEME_SCRIPT = `
   function apply(mode){
     var dark=mode==="dark";
     root.classList.toggle("dark",dark);
-    if(meta)meta.setAttribute("content",dark?"#0a0a0a":"#ffffff");
+    if(meta)meta.setAttribute("content",dark?"${THEME_META_COLORS.dark}":"${THEME_META_COLORS.light}");
     var btn=document.getElementById("theme-toggle");
     if(btn)btn.setAttribute("aria-label",dark?"Switch to light mode":"Switch to dark mode");
     if(btn)btn.textContent=dark?"Light mode":"Dark mode";
@@ -277,7 +261,7 @@ export function page(opts: { title: string; body: string; active?: string; scrip
 </div>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#ffffff"><link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="${THEME_META_COLORS.light}"><link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon-192.png"><link rel="apple-touch-icon" href="/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
