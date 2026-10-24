@@ -17,19 +17,47 @@ import { WhiteboardStore } from "../src/whiteboard/store";
 
 const TOKEN = "w".repeat(32);
 
-test("whiteboard sanitize strips remote file URLs and caps size", () => {
+test("whiteboard sanitize allowlists embedded images only", () => {
   const scene = sanitizeWhiteboardScene({
     type: "excalidraw",
     version: 2,
-    elements: [{ type: "image", fileId: "a" }, { type: "rectangle" }],
+    elements: [
+      { type: "image", fileId: "ok" },
+      { type: "image", fileId: "gone" },
+      { type: "rectangle" },
+    ],
     files: {
-      a: { dataURL: "https://evil.example/x.png", mimeType: "image/png" },
-      b: { dataURL: "data:image/png;base64,aaaa", mimeType: "image/png" },
+      https: { dataURL: "https://evil.example/x.png", mimeType: "image/png" },
+      js: { dataURL: "javascript:alert(1)", mimeType: "image/png" },
+      html: { dataURL: "data:text/html;base64,PHNjcmlwdD4=", mimeType: "text/html" },
+      proto: { dataURL: "//evil.example/x.png", mimeType: "image/png" },
+      svg: { dataURL: "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=", mimeType: "image/svg+xml" },
+      ok: { dataURL: "data:image/png;base64,aaaa", mimeType: "image/png" },
     },
   });
-  assert.equal(Object.keys(scene.files).length, 1);
-  assert.ok(scene.files.b);
-  assert.equal(scene.elements.length, 1);
+  assert.deepEqual(Object.keys(scene.files), ["ok"]);
+  assert.equal(scene.elements.length, 2);
+  assert.equal((scene.elements[0] as { fileId?: string }).fileId, "ok");
+});
+
+test("whiteboard sanitize keeps safe element links and drops unsafe ones", () => {
+  const scene = sanitizeWhiteboardScene({
+    elements: [
+      { id: "1", type: "text", link: "https://example.com/docs" },
+      { id: "2", type: "text", link: "javascript:alert(1)" },
+      { id: "3", type: "text", link: "//evil.example" },
+      { id: "4", type: "text", link: "mailto:user@example.com" },
+      { id: "5", type: "text", link: "x".repeat(3_000) },
+      { id: "6", type: "text", customData: { note: "y".repeat(3_000) } },
+    ],
+  });
+  const byId = new Map(scene.elements.map((el) => [(el as { id: string }).id, el as { link?: string; customData?: unknown }]));
+  assert.equal(byId.get("1")?.link, "https://example.com/docs");
+  assert.equal(byId.get("2")?.link, undefined);
+  assert.equal(byId.get("3")?.link, undefined);
+  assert.equal(byId.get("4")?.link, "mailto:user@example.com");
+  assert.equal(byId.get("5")?.link, undefined);
+  assert.equal(byId.get("6")?.customData, undefined);
 });
 
 test("whiteboard sanitize rejects oversized scenes", () => {
