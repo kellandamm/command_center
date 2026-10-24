@@ -49,26 +49,6 @@ export function packDashboardLayout(panels: PanelLayoutEntry[]): PanelLayoutEntr
   return out;
 }
 
-/** Move panels up to remove empty rows (e.g. after collapse frees vertical space). */
-export function compactDashboardRows(panels: PanelLayoutEntry[]): PanelLayoutEntry[] {
-  const out = panels.map((p) => ({ ...p }));
-  const sorted = [...out].sort((a, b) => a.y - b.y || a.x - b.x);
-  for (const panel of sorted) {
-    const entry = out.find((p) => p.id === panel.id)!;
-    let bestY = entry.y;
-    for (let y = 0; y < entry.y; y++) {
-      const trial = { ...entry, y };
-      const blocked = out.some((other) => other.id !== entry.id && rectanglesOverlap(trial, other));
-      if (!blocked) {
-        bestY = y;
-        break;
-      }
-    }
-    entry.y = bestY;
-  }
-  return out;
-}
-
 export function overlappingPanelPairs(panels: PanelLayoutEntry[]): Array<[string, string]> {
   const pairs: Array<[string, string]> = [];
   for (let i = 0; i < panels.length; i++) {

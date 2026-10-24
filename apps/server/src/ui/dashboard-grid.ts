@@ -1,3 +1,5 @@
+import { DASHBOARD_GRID_LAYOUT_HELPERS } from "./dashboard-grid-layout";
+
 /** Dashboard grid layout (native CSS grid + pointer drag/resize; zero extra deps). */
 
 export const dashboardGridCss = `
@@ -14,9 +16,13 @@ export const dashboardGridCss = `
 .dashboard-grid{
   flex:none;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));
   gap:var(--dash-gap,6px);position:relative;touch-action:none}
+.dashboard-grid.is-packed{display:block;gap:0}
+.dashboard-grid.is-packed .dashboard-item{
+  grid-column:unset;grid-row:unset;margin:0;min-height:0}
 .dashboard-item{
   min-width:0;min-height:0;overflow:hidden;display:flex;flex-direction:column;position:relative;
   grid-column:var(--gc-start)/span var(--gc-span);grid-row:var(--gr-start)/span var(--gr-span)}
+.dashboard-grid.is-packed .dashboard-item{position:absolute}
 .dashboard-item.is-dragging{opacity:.92;z-index:30;box-shadow:0 8px 24px rgba(0,0,0,.12)}
 .dashboard-item.is-collapsed{align-self:start;height:var(--dash-strip-h,30px)!important;max-height:var(--dash-strip-h,30px)}
 .dashboard-item.is-collapsed .dashboard-panel-body{display:none}
@@ -73,9 +79,10 @@ export const dashboardGridCss = `
 export function dashboardGridScript(): string {
   return `
 (function(){
+${DASHBOARD_GRID_LAYOUT_HELPERS}
   var grid=document.getElementById("dashboard-grid");
   if(!grid)return;
-  var COLS=12,LAYOUT_VERSION=2,GAP=6,REF_ROW=32,STRIP_H=30,saveTimer=null,lastMovedId=null;
+  var COLS=12,LAYOUT_VERSION=2,GAP=6,REF_ROW=32,STRIP_H=30,saveTimer=null,lastMovedId=null,lastPack=null;
   grid.style.setProperty("--dash-gap",GAP+"px");
   grid.style.setProperty("--dash-strip-h",STRIP_H+"px");
   grid.style.setProperty("--dash-rows","8");
@@ -100,12 +107,15 @@ export function dashboardGridScript(): string {
   function syncGridRows(panels){
     if(isStacked()){
       grid.classList.add("is-stacked");
+      grid.classList.remove("is-packed");
+      lastPack=null;
       grid.style.gridTemplateRows="";
       grid.style.height="auto";
       grid.style.maxHeight="none";
       return;
     }
     grid.classList.remove("is-stacked");
+    grid.classList.add("is-packed");
     var maxEnd=layoutMaxEnd(panels);
     grid.style.setProperty("--dash-rows",String(maxEnd));
     var page=document.querySelector(".dashboard-page");
@@ -120,13 +130,9 @@ export function dashboardGridScript(): string {
     }
     var gapTotal=GAP*(maxEnd-1);
     var rowH=flexRows?Math.max(42,Math.floor((avail-stripRows*STRIP_H-gapTotal)/flexRows)):STRIP_H;
-    var tracks=[];
-    for(var ri=0;ri<maxEnd;ri++){
-      tracks.push(rowIsStripOnly(panels,ri)?STRIP_H+"px":rowH+"px");
-    }
-    var totalH=stripRows*STRIP_H+flexRows*rowH+gapTotal;
-    grid.style.gridTemplateRows=tracks.join(" ");
-    grid.style.height=totalH+"px";
+    lastPack=columnPackLayout(panels,rowH,GAP,COLS,STRIP_H);
+    grid.style.gridTemplateRows="";
+    grid.style.height=lastPack.gridH+"px";
     grid.style.maxHeight=avail+"px";
     grid.dataset.rowPx=String(rowH);
     grid.dataset.stripPx=String(STRIP_H);
@@ -142,6 +148,17 @@ export function dashboardGridScript(): string {
   }
   function rowIndexFromY(clientY,gridTop,m){
     var y=clientY-gridTop;
+    if(!isStacked()&&lastPack){
+      var best=0,bestDist=1e9;
+      readLayout().panels.forEach(function(p){
+        var rect=lastPack.rects[p.id];
+        if(!rect)return;
+        var mid=rect.top+rect.height*0.5;
+        var dist=Math.abs(y-mid);
+        if(dist<bestDist){bestDist=dist;best=p.y;}
+      });
+      return Math.max(0,best);
+    }
     var maxEnd=parseInt(grid.dataset.maxEnd||"8",10)||8;
     for(var r=0;r<maxEnd;r++){
       var h=rowIsStripOnly(readLayout().panels,r)?m.strip:m.rowH;
@@ -157,11 +174,29 @@ export function dashboardGridScript(): string {
   }
 
   function applyEntry(el,entry){
-    el.style.setProperty("--gc-start",entry.x+1);
-    el.style.setProperty("--gc-span",entry.w);
-    el.style.setProperty("--gr-start",entry.y+1);
-    el.style.setProperty("--gr-span",entry.collapsed?1:entry.h);
+    el.dataset.logicalY=String(entry.y);
+    el.dataset.logicalH=String(entry.h);
     el.classList.toggle("is-collapsed",!!entry.collapsed);
+    if(isStacked()){
+      el.style.left=el.style.top=el.style.width=el.style.height="";
+      el.style.setProperty("--gc-start",entry.x+1);
+      el.style.setProperty("--gc-span",entry.w);
+      el.style.setProperty("--gr-start",entry.y+1);
+      el.style.setProperty("--gr-span",entry.collapsed?1:entry.h);
+    }else{
+      var m=gridMetrics();
+      var left=(m.colW+GAP)*entry.x;
+      var width=m.colW*entry.w+GAP*(entry.w-1);
+      var rect=lastPack&&lastPack.rects[entry.id];
+      el.style.setProperty("--gc-start",entry.x+1);
+      el.style.setProperty("--gc-span",entry.w);
+      el.style.left=left+"px";
+      el.style.width=width+"px";
+      if(rect){
+        el.style.top=rect.top+"px";
+        el.style.height=rect.height+"px";
+      }
+    }
     var btn=el.querySelector(".dashboard-collapse");
     if(btn){
       btn.setAttribute("aria-expanded",entry.collapsed?"false":"true");
@@ -176,23 +211,20 @@ export function dashboardGridScript(): string {
       var id=el.getAttribute("data-panel-id");
       if(!id)return;
       var collapsed=el.classList.contains("is-collapsed");
-      var span=parseInt(el.style.getPropertyValue("--gr-span"),10)||3;
-      var fullH=parseInt(el.dataset.fullH||String(span),10)||span;
+      var fullH=parseInt(el.dataset.fullH||el.dataset.logicalH||"3",10)||3;
+      var span=parseInt(el.style.getPropertyValue("--gr-span"),10)||fullH;
       panels.push({
         id:id,
         x:parseInt(el.style.getPropertyValue("--gc-start"),10)-1||0,
-        y:parseInt(el.style.getPropertyValue("--gr-start"),10)-1||0,
+        y:parseInt(el.dataset.logicalY||(parseInt(el.style.getPropertyValue("--gr-start"),10)-1||0),10),
         w:parseInt(el.style.getPropertyValue("--gc-span"),10)||3,
-        h:collapsed?fullH:span,
+        h:collapsed?fullH:(parseInt(el.dataset.logicalH||String(span),10)||span),
         collapsed:collapsed
       });
     });
     return {version:LAYOUT_VERSION,cols:COLS,rowHeight:REF_ROW,panels:panels};
   }
 
-  function overlaps(a,b){
-    return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+effH(b)&&a.y+effH(a)>b.y;
-  }
   function packAfterMove(panels,anchorId){
     var out=panels.map(function(p){return Object.assign({},p)});
     var anchor=out.find(function(p){return p.id===anchorId});
@@ -212,22 +244,6 @@ export function dashboardGridScript(): string {
         }
       });
     }
-    return out;
-  }
-  function compactDashboardRows(panels){
-    var out=panels.map(function(p){return Object.assign({},p)});
-    var sorted=out.slice().sort(function(a,b){return a.y-b.y||a.x-b.x});
-    sorted.forEach(function(panel){
-      var entry=out.find(function(p){return p.id===panel.id});
-      if(!entry)return;
-      var bestY=entry.y;
-      for(var y=0;y<entry.y;y++){
-        var trial=Object.assign({},entry,{y:y});
-        var blocked=out.some(function(other){return other.id!==entry.id&&overlaps(trial,other);});
-        if(!blocked){bestY=y;break;}
-      }
-      entry.y=bestY;
-    });
     return out;
   }
   function applyPanels(panels){
@@ -292,8 +308,10 @@ export function dashboardGridScript(): string {
       chrome.querySelector(".dashboard-collapse").addEventListener("click",function(){
         var collapsed=!item.classList.contains("is-collapsed");
         item.classList.toggle("is-collapsed",collapsed);
-        var span=collapsed?1:(parseInt(item.dataset.fullH||"3",10)||3);
-        item.style.setProperty("--gr-span",span);
+        if(isStacked()){
+          var span=collapsed?1:(parseInt(item.dataset.fullH||"3",10)||3);
+          item.style.setProperty("--gr-span",span);
+        }
         var btn=this;
         btn.setAttribute("aria-expanded",collapsed?"false":"true");
         btn.textContent=collapsed?"+":"−";

@@ -9,7 +9,6 @@ import { defaultDashboardLayout } from "../src/dashboard-layout/defaults";
 import { normalizeDashboardLayout } from "../src/dashboard-layout/normalize";
 import {
   overlappingPanelPairs,
-  compactDashboardRows,
   packAfterMove,
   packDashboardLayout,
   rectanglesOverlap,
@@ -48,17 +47,6 @@ test("dashboard layout: default and packed tall attention have no overlapping ce
   );
   assert.deepEqual(overlappingPanelPairs(imported.panels), []);
   assert.deepEqual(overlappingPanelPairs(packDashboardLayout(tall)), []);
-});
-
-test("dashboard layout: compact removes vertical gaps after collapse", () => {
-  const panels = [
-    { id: "calendar", x: 0, y: 0, w: 6, h: 5, collapsed: true },
-    { id: "notes", x: 0, y: 5, w: 6, h: 3 },
-  ];
-  const compacted = compactDashboardRows(panels);
-  const notes = compacted.find((p) => p.id === "notes")!;
-  assert.equal(notes.y, 1, "panel below should move up when row above collapses to strip height");
-  assert.deepEqual(overlappingPanelPairs(compacted), []);
 });
 
 test("dashboard layout: pack pushes overlapping panels down", () => {

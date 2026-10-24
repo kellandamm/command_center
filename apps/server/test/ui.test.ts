@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Script } from "node:vm";
+import { Script, createContext, runInContext } from "node:vm";
+import { workspaceScript } from "../src/ui/workspace";
 import { dailyBriefingPage } from "../src/ui/daily-briefing-page";
 import { sourceDetailPage, sourcesPage } from "../src/ui/sources-page";
 import { spaceDetailPage, spacesPage } from "../src/ui/spaces-page";
@@ -80,6 +81,44 @@ test("ui: Library combines saved links, Read later, and summaries", () => {
   assert.match(sourceDetailPage(), /id="source-summarize"/);
   assert.match(html, /<h1>Read Later<\/h1>/);
   assert.match(html, /pageSize=50/);
+});
+
+test("ui: workspace emptyState appends visible title text", () => {
+  const ctx = createContext({
+    document: {
+      createElement(tag: string) {
+        const el: {
+          tagName: string;
+          className: string;
+          textContent?: string;
+          childNodes: unknown[];
+          setAttribute: () => void;
+          append: (child: unknown) => void;
+        } = {
+          tagName: tag,
+          className: "",
+          childNodes: [],
+          setAttribute() {},
+          append(child: unknown) {
+            el.childNodes.push(child);
+          },
+        };
+        return el;
+      },
+    },
+  });
+  runInContext(
+    `${workspaceScript}
+var box={childNodes:[],replaceChildren:function(){this.childNodes=[]},append:function(n){this.childNodes.push(n)}};
+emptyState(box,"No spaces yet","Create one to gather related notes and saved pages in a single place.");
+var root=box.childNodes[0];
+var title=root&&root.childNodes&&root.childNodes[0];
+result={count:box.childNodes.length,text:title&&title.textContent};`,
+    ctx,
+  );
+  const result = (ctx as { result: { count: number; text: string } }).result;
+  assert.equal(result.count, 1);
+  assert.match(result.text, /No spaces yet/);
 });
 
 test("ui: spaces, assistant and capture pages render", () => {

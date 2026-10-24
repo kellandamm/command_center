@@ -124,7 +124,7 @@ function appLink(text,href,cls){var a=element("a",text,cls);a.href=href;return a
 function message(text,bad){var box=$("workspace-status");box.textContent=text;box.classList.toggle("bad",!!bad);}
 function fail(err){message(err.message||"Request failed. Try again.",true);}
 async function busy(button,fn){button.disabled=true;try{await fn();}catch(err){fail(err);}finally{button.disabled=false;}}
-function emptyState(box,title,detail){box.replaceChildren();var e=element("div",undefined,"ui-empty");e.setAttribute("role","status");e.append(element("p",title,"ui-empty-title"));if(detail)e.append(element("p",detail,"ui-empty-desc dim"));}
+function emptyState(box,title,detail){box.replaceChildren();var e=element("div",undefined,"ui-empty");e.setAttribute("role","status");e.append(element("p",title,"ui-empty-title"));if(detail)e.append(element("p",detail,"ui-empty-desc dim"));box.append(e);}
 function loadingState(box,message){box.replaceChildren();var e=element("div",undefined,"ui-loading");e.setAttribute("role","status");e.setAttribute("aria-busy","true");e.append(element("span",message||"Loading…","ui-loading-text dim"));box.append(e);}
 function errorState(box,message){box.replaceChildren();var e=element("div",undefined,"ui-error");e.setAttribute("role","alert");e.append(element("p",message,"ui-error-text bad"));box.append(e);}
 function safeLink(raw){try{var u=new URL(raw);return ["https:","http:"].includes(u.protocol)?u.href:null;}catch(_){return null;}}

@@ -93,6 +93,32 @@ test("dashboard v1 panels load in browser", { timeout: 120_000 }, async () => {
       return hits;
     });
     assert.deepEqual(overlaps, [], `dashboard panels overlap: ${overlaps.join(", ")}`);
+    const collapsedGaps = await page.evaluate(() => {
+      const grid = document.getElementById("dashboard-grid");
+      const gap = parseFloat(getComputedStyle(grid!).rowGap || "6") || 6;
+      const strip = parseFloat(grid?.style.getPropertyValue("--dash-strip-h") || "30") || 30;
+      const issues: string[] = [];
+      document.querySelectorAll("#dashboard-grid .dashboard-item.is-collapsed").forEach((el) => {
+        const id = el.getAttribute("data-panel-id") || "";
+        const r = el.getBoundingClientRect();
+        const below = Array.from(document.querySelectorAll("#dashboard-grid .dashboard-item")).filter((other) => {
+          if (other === el) return false;
+          const o = other.getBoundingClientRect();
+          const sameColumn = o.left < r.right - 2 && o.right > r.left + 2;
+          return sameColumn && o.top >= r.bottom - 1;
+        });
+        if (!below.length) return;
+        const nextTop = Math.min(...below.map((n) => n.getBoundingClientRect().top));
+        const slack = nextTop - r.bottom;
+        if (slack > gap + 2) issues.push(`${id}:${Math.round(slack)}px`);
+      });
+      return { issues, gap, strip };
+    });
+    assert.deepEqual(
+      collapsedGaps.issues,
+      [],
+      `collapsed panels have extra vertical slack (gap≈${collapsedGaps.gap}px): ${collapsedGaps.issues.join(", ")}`,
+    );
     assert.match(await page.locator("h1").first().textContent() ?? "", /Dashboard/i);
     await page.setViewportSize({ width: 390, height: 844 });
     assert.ok(await page.locator("#dashboard-grid .dashboard-item").count() >= 4);
