@@ -19,7 +19,7 @@ ${workspaceTabsCss}
 .library-controls label{font-size:.8rem;color:var(--muted-foreground)}
 .library-controls input,.library-controls select{margin:0;width:100%}
 .library-results{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin:1.25rem 0 .5rem}
-.library-results button[aria-pressed=true]{background:var(--accent);border-color:var(--ring)}
+.library-results button[aria-pressed=true]{background:var(--selected);color:var(--selected-foreground);border-color:color-mix(in srgb,var(--primary) 28%,var(--border))}
 .library-items{border-top:1px solid var(--border)}
 .library-item{display:flex;gap:1rem;padding:1.5rem 0;border-bottom:1px solid var(--border);align-items:start;min-width:0}
 .library-domain-mark{display:grid;place-items:center;flex:0 0 2.5rem;height:2.5rem;background:var(--muted);border-radius:var(--radius);color:var(--muted-foreground);font-weight:600}
@@ -48,7 +48,7 @@ ${workspaceTabsCss}
 .reading-organizer nav{max-height:22rem;overflow:auto}
 .reading-folder{display:flex;justify-content:space-between;gap:.75rem;width:100%;text-align:left;background:none;color:var(--foreground);padding:.4rem .5rem;font-size:.85rem}
 .reading-folder span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.reading-folder[aria-pressed=true]{background:var(--accent)}
+.reading-folder[aria-pressed=true]{background:var(--selected);color:var(--selected-foreground)}
 .reading-new-folder{margin-top:.75rem}
 .reading-new-folder summary{cursor:pointer;font-size:.85rem}
 .reading-new-folder input{width:100%;min-width:0}

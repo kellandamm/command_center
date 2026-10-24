@@ -21,11 +21,9 @@ export function settingsPage(nav?: NavLink[]): string {
 <p class="dim">Choose what each page shows and how it’s displayed. These preferences are saved on this server.</p>
 <div class="settings-options-grid">
 <div class="settings-option"><label for="pref-density">Page density</label><select id="pref-density" data-pref="density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select><p class="dim">Compact reduces spacing across supported pages.</p></div>
-<fieldset class="settings-option"><legend>Dashboard cards</legend>
-<label class="row choice-row"><input type="checkbox" data-pref="dashboard.hobie"/> Hobie board</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.calendar"/> Next calendar event</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.briefing"/> Daily briefing</label><label class="row choice-row"><input type="checkbox" data-pref="dashboard.activity"/> Agent activity</label></fieldset>
 <fieldset class="settings-option"><legend>Daily Briefing sections</legend>
 <label class="row choice-row"><input type="checkbox" data-pref="briefing.topics"/> Keyword digest</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.weather"/> Weather</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.calendar"/> Calendar</label></fieldset>
-<div class="settings-option"><label for="pref-hobie-status">Hobie queue filter</label><select id="pref-hobie-status" data-pref="hobie.status"><option value="all">All tasks</option><option value="pending">Pending</option><option value="claimed">Claimed</option><option value="done">Done</option></select></div>
+<div class="settings-option"><label for="pref-hobie-status">Agent queue filter</label><select id="pref-hobie-status" data-pref="hobie.status"><option value="all">All tasks</option><option value="pending">Pending</option><option value="claimed">Claimed</option><option value="done">Done</option></select><p class="dim">Default filter on Agent → Queue.</p></div>
 <div class="settings-option"><label for="pref-calendar-week">Calendar week starts on</label><select id="pref-calendar-week" data-pref="calendar.weekStartsOn"><option value="monday">Monday</option><option value="sunday">Sunday</option></select></div>
 <div class="settings-option"><label for="pref-activity-limit">Activity entries</label><select id="pref-activity-limit" data-pref="activity.limit"><option value="25">25</option><option value="50">50</option><option value="100">100</option><option value="200">200</option></select></div>
 <div class="settings-option"><label for="pref-notes-size">Notes text size</label><select id="pref-notes-size" data-pref="notes.fontSize"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></div>
@@ -36,6 +34,7 @@ export function settingsPage(nav?: NavLink[]): string {
 <h2>Briefing topics</h2>
 <p>Follow what matters to you. Your daily edition searches the web for each keyword or phrase and summarizes recent results with source links.</p>
 <p class="dim">Searches cover the past 24 hours, not RSS feeds. AI digests use search excerpts, not full articles. These topics are shared across this server.</p>
+<p id="settings-manage-hint" class="dim" role="status" hidden></p>
 <p id="topics-providers" role="status">Checking search and summarizer configuration...</p>
 <form id="f-topics">
 <label for="briefingTopics">Keywords and phrases</label>
@@ -113,6 +112,16 @@ function renderTabsEditor(){
   el.querySelectorAll(".tab-up").forEach(function(b){b.onclick=function(){swap(b.dataset.id,-1)}});
   el.querySelectorAll(".tab-down").forEach(function(b){b.onclick=function(){swap(b.dataset.id,1)}});
 }
+function setSettingsReadOnly(readOnly){
+  var hint=document.getElementById("settings-manage-hint");
+  ["views-save","tabs-save"].forEach(function(id){var el=document.getElementById(id);if(el)el.disabled=readOnly;});
+  var schedule=document.getElementById("f-schedule");if(schedule)schedule.querySelectorAll("input,button").forEach(function(node){node.disabled=readOnly;});
+  var topics=document.getElementById("f-topics");if(topics)topics.querySelectorAll("textarea,button").forEach(function(node){node.disabled=readOnly;});
+  document.querySelectorAll("#tab-views [data-pref]").forEach(function(el){el.disabled=readOnly;});
+  document.querySelectorAll("#tabs-editor .tab-vis,#tabs-editor .tab-label:not([disabled]),#tabs-editor .tab-up:not([disabled]),#tabs-editor .tab-down:not([disabled])").forEach(function(el){el.disabled=readOnly;});
+  if(readOnly){hint.hidden=false;hint.textContent="View-only: set OWNER_EMAILS and sign in as an owner to change schedules, topics, tabs, and view preferences on this server.";}
+  else hint.hidden=true;
+}
 function loadSettings(){
   return api("/api/settings").then(function(r){
     var s=r.settings;
@@ -124,7 +133,9 @@ function loadSettings(){
     document.getElementById("topics-providers").textContent=providers.search&&providers.summarizer
       ?"Brave Search and AI summarizer are ready."
       :"Connection setup needed: "+[!providers.search?"Brave Search (BRAVE_SEARCH_API_KEY)":"",!providers.summarizer?"AI summarizer (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL)":""].filter(Boolean).join("; ")+". Open service connections to configure keys, or use deployment environment variables.";
-    document.getElementById("topics-save").disabled=false;
+    var canManage=!(r.meta&&r.meta.canManage===false);
+    setSettingsReadOnly(!canManage);
+    document.getElementById("topics-save").disabled=!canManage;
     renderTabsEditor();bindViewPreferences();
   });
 }

@@ -89,7 +89,7 @@ html.dark .calendar-app{--calendar-red:#f3838b;--calendar-blue:#82b5f0;--calenda
 .calendar-toolbar{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:1rem;border-bottom:1px solid var(--border);flex-wrap:wrap}
 .calendar-navigation{gap:.3rem}.calendar-toolbar button{font-size:.75rem;min-height:2rem;padding:.3rem .6rem}
 .calendar-navigation h2{margin:0 0 0 .5rem;font-size:1rem;line-height:1.4}
-.calendar-view-switch{display:flex;gap:.2rem}.calendar-view-switch button[aria-pressed=true]{background:var(--primary);color:var(--primary-foreground)}
+.calendar-view-switch{display:flex;gap:.2rem}.calendar-view-switch button[aria-pressed=true]{background:var(--selected);color:var(--selected-foreground);border-color:color-mix(in srgb,var(--primary) 28%,var(--border))}
 .calendar-status-row{display:flex;justify-content:space-between;gap:.5rem;align-items:center;padding:.5rem 1rem;font-size:.7rem}.calendar-status-row p{margin:0}
 .calendar-view{flex:1;min-width:0;overflow:auto;max-height:75vh}
 .calendar-month{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));min-width:35rem}

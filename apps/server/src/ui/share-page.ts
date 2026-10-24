@@ -8,8 +8,8 @@ export function sharePageHtml(shareId: string, styleNonce: string): string {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Shared note</title>
 <style nonce="${esc(styleNonce)}">
-:root{color-scheme:light dark;--fg:#0a0a0a;--muted:#737373;--border:#e5e5e5;--bg:#fff}
-@media(prefers-color-scheme:dark){:root{--fg:#fafafa;--muted:#a3a3a3;--border:rgba(255,255,255,.12);--bg:#0a0a0a}}
+:root{color-scheme:light dark;--fg:#18181b;--muted:#71717a;--border:#e4e4e7;--bg:#fafafa}
+@media(prefers-color-scheme:dark){:root{--fg:#fafafa;--muted:#a1a1aa;--border:rgba(255,255,255,.1);--bg:#09090b}}
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;background:var(--bg);color:var(--fg);font:16px/1.6 ui-sans-serif,system-ui,sans-serif;padding:2rem 1.25rem}
 main{max-width:48rem;margin:0 auto}
