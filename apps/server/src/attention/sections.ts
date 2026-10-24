@@ -3,7 +3,7 @@ import type { KnowledgeNote, KnowledgeSource } from "../notes/store";
 import { isNoteSensitive } from "../notes/sensitive";
 import type { Win } from "../wins/types";
 import { pickRediscover, daysBetween, type StaleCandidate } from "./rediscover";
-import { buildSessions, mergedSessionReason, sessionPrimaryItem, type WorkSession } from "./sessions";
+import { buildSessions, mergedSessionReason, type WorkSession } from "./sessions";
 import { applyPinnedFirst, takeSectionItems } from "./rank";
 import type { AttentionItem, AttentionSection, TimelineEvent } from "./types";
 
@@ -113,11 +113,15 @@ export function composeAttentionSections(input: ComposeInput): AttentionSection[
   const sessions = buildSessions(input.timeline).sort((a, b) => b.end.localeCompare(a.end));
   const sessionsByItem = new Map<string, WorkSession[]>();
   for (const session of sessions) {
-    const primary = sessionPrimaryItem(session);
-    const id = primary.kind === "note" ? `note:${primary.refId}` : `card:${primary.refId}`;
-    const list = sessionsByItem.get(id) ?? [];
-    list.push(session);
-    sessionsByItem.set(id, list);
+    const itemIds = new Set<string>();
+    for (const ev of session.events) {
+      itemIds.add(ev.kind === "note" ? `note:${ev.refId}` : `card:${ev.refId}`);
+    }
+    for (const id of itemIds) {
+      const list = sessionsByItem.get(id) ?? [];
+      list.push(session);
+      sessionsByItem.set(id, list);
+    }
   }
   const continueItems: AttentionItem[] = [];
   const grouped = [...sessionsByItem.entries()]
@@ -128,13 +132,12 @@ export function composeAttentionSections(input: ComposeInput): AttentionSection[
     .sort((a, b) => b.sessions[0]!.end.localeCompare(a.sessions[0]!.end));
   for (const { id, sessions: itemSessions } of grouped) {
     if (used.has(id)) continue;
-    const primary = sessionPrimaryItem(itemSessions[0]!);
     const reason = mergedSessionReason(itemSessions, input.todayYmd, input.tz);
-    if (primary.kind === "note") {
-      const note = input.notes.find((n) => n.id === primary.refId);
+    if (id.startsWith("note:")) {
+      const note = input.notes.find((n) => n.id === id.slice("note:".length));
       if (note && !isNoteSensitive(note)) continueItems.push(noteItem(note, reason));
-    } else {
-      const card = input.cards.find((c) => c.id === primary.refId);
+    } else if (id.startsWith("card:")) {
+      const card = input.cards.find((c) => c.id === id.slice("card:".length));
       if (card) continueItems.push(cardItem(card, reason));
     }
   }
