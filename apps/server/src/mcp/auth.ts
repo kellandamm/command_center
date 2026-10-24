@@ -73,6 +73,29 @@ export async function authenticateMcp(cfg: Config, req: IncomingMessage): Promis
   return { ok: true, clientId: cf.clientId };
 }
 
+/** X bookmarks import: verified Access JWT plus BOOKMARKS_IMPORT_SECRET (X-Bookmarks-Secret). */
+export async function authenticateBookmarksImport(cfg: Config, req: IncomingMessage): Promise<McpAuthResult> {
+  if (!cfg.bookmarksImportSecret) return { ok: false, status: 403, reason: "Bookmarks import is not configured" };
+  if (!cfAccessConfigured(cfg)) {
+    return { ok: false, status: 403, reason: "CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD are required for bookmarks import" };
+  }
+  const token = accessJwtFromRequest(req.headers);
+  if (!token) return { ok: false, status: 403, reason: "Cf-Access-Jwt-Assertion required" };
+  const verify = resolveIntegrationVerifier(cfg);
+  if (!verify) return { ok: false, status: 403, reason: "Cloudflare Access JWT verification is not configured" };
+  try {
+    await verify(token);
+  } catch {
+    return { ok: false, status: 403, reason: "Invalid or expired Cloudflare Access JWT" };
+  }
+  const header = req.headers["x-bookmarks-secret"];
+  const presented = (Array.isArray(header) ? header[0] : header) ?? "";
+  if (!presented || !tokenEquals(presented, cfg.bookmarksImportSecret)) {
+    return { ok: false, status: 401, reason: "Invalid bookmarks import secret" };
+  }
+  return { ok: true, clientId: "bookmarks-import" };
+}
+
 export async function authenticateWebhook(cfg: Config, req: IncomingMessage): Promise<McpAuthResult> {
   const cf = await requireCfServiceClient(cfg, req);
   if (!cf.ok) return cf;

@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { DailyBriefingService } from "./daily-briefing/service";
 import { handleDailyBriefingRoutes } from "./daily-briefing/routes";
 import { llmConfigured, type Config } from "./config";
+import { accessJwtFromRequest } from "./cf-access";
 import { recallioConfigured } from "./recallio/client";
 import type { Authenticator } from "./auth";
 import { bearerToken, csrfOk } from "./auth";
@@ -41,6 +42,9 @@ import { capturePage } from "./ui/capture-page";
 import { handleReadLaterRoutes } from "./read-later/routes";
 import { ReadLaterService } from "./read-later/service";
 import { CaptureAccess } from "./read-later/capture-access";
+import { handleXBookmarkApiRoutes, handleXBookmarkImport, isXBookmarkImportPayload } from "./read-later/x-bookmarks-routes";
+import type { XBookmarksService } from "./read-later/x-bookmarks-service";
+import type { XBookmarksStore } from "./read-later/x-bookmarks-store";
 import { captureExtensionFiles } from "./read-later/extension";
 import { zip } from "./read-later/zip";
 import { dashboardPage, settingsPage } from "./ui/pages";
@@ -64,6 +68,8 @@ export interface App {
   dailyBriefing: DailyBriefingService;
   notes: NotesStore;
   bookmarks: BookmarksStore;
+  xBookmarks: XBookmarksStore;
+  xBookmarksService: XBookmarksService;
   panelUpdates: PanelUpdatesStore;
   hobieQueue: HobieQueueStore;
   board: BoardStore;
@@ -89,7 +95,7 @@ function send(res: ServerResponse, status: number, body: string | Buffer, type =
 }
 const json = (res: ServerResponse, status: number, data: unknown) => send(res, status, JSON.stringify(data), "application/json");
 
-async function readBody(req: IncomingMessage, limit = 200_000): Promise<unknown> {
+async function readRawBody(req: IncomingMessage, limit = 200_000): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const c of req) {
@@ -97,9 +103,14 @@ async function readBody(req: IncomingMessage, limit = 200_000): Promise<unknown>
     if (size > limit) throw new ValidationError("request body too large");
     chunks.push(c as Buffer);
   }
-  if (!size) return {};
+  return Buffer.concat(chunks);
+}
+
+async function readBody(req: IncomingMessage, limit = 200_000): Promise<unknown> {
+  const raw = await readRawBody(req, limit);
+  if (!raw.length) return {};
   try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    return JSON.parse(raw.toString("utf8"));
   } catch {
     throw new ValidationError("invalid JSON");
   }
@@ -135,6 +146,7 @@ export function createApp(app: App): Server {
   const readLater = new ReadLaterService(app.cfg, app.notes);
   const captureAccess = new CaptureAccess(app.cfg.dataDir);
   const extensionZip = zip(captureExtensionFiles);
+  app.xBookmarksService.start();
 
   return createServer(async (req, res) => {
     try {
@@ -160,6 +172,25 @@ export function createApp(app: App): Server {
         const body = await readBody(req);
         await handlePowerAutomateWebhook(integrationDeps(), req, res, body);
         return;
+      }
+
+      if (path === "/api/bookmarks/import" && method === "POST") {
+        const raw = await readRawBody(req, 512_000);
+        let preview: unknown;
+        try {
+          preview = raw.length ? JSON.parse(raw.toString("utf8")) : {};
+        } catch {
+          return json(res, 400, { error: "invalid JSON" });
+        }
+        if (isXBookmarkImportPayload(preview)) {
+          await handleXBookmarkImport(app.cfg, app.xBookmarks, app.xBookmarksService, req, res, raw);
+          return;
+        }
+        if (accessJwtFromRequest(req.headers)) {
+          return json(res, 400, { error: "body must include items[] for X bookmarks import" });
+        }
+        // fall through: browser bookmark file import uses session auth below
+        (req as IncomingMessage & { __bookmarkImportBody?: unknown }).__bookmarkImportBody = preview;
       }
 
       if (path === "/api/hobie/tasks" || path === "/api/hobie/claim") {
@@ -265,7 +296,8 @@ export function createApp(app: App): Server {
       }
       if (path.startsWith("/api/bookmarks/")) {
         if (!["POST", "PATCH", "DELETE", "PUT"].includes(method)) return json(res, 405, { error: "method not allowed" });
-        const body = await readBody(req, 5_000_000);
+        const stashed = (req as IncomingMessage & { __bookmarkImportBody?: unknown }).__bookmarkImportBody;
+        const body = stashed !== undefined ? stashed : await readBody(req, 5_000_000);
         if (path === "/api/bookmarks/groups") {
           if (method === "POST") return json(res, 201, { group: await app.bookmarks.createGroup(body) });
           if (method === "PATCH") { await app.bookmarks.updateGroup(body); return json(res, 200, { ok: true }); }
@@ -280,7 +312,10 @@ export function createApp(app: App): Server {
           await app.bookmarks.preferences(body);
           return json(res, 200, { ok: true });
         }
-        if (path === "/api/bookmarks/import" && method === "POST") return json(res, 200, await app.bookmarks.import(body));
+        if (path === "/api/bookmarks/import" && method === "POST") {
+          const importBody = (req as IncomingMessage & { __bookmarkImportBody?: unknown }).__bookmarkImportBody ?? body;
+          return json(res, 200, await app.bookmarks.import(importBody));
+        }
         return json(res, 404, { error: "bookmark route not found" });
       }
 
@@ -324,6 +359,9 @@ export function createApp(app: App): Server {
 
       if (path.startsWith("/api/capture") || path.startsWith("/api/read-later")) {
         if (await handleReadLaterRoutes(app.notes, readLater, captureAccess, req, res, path, readBody)) return;
+      }
+      if (path.startsWith("/api/x-bookmarks")) {
+        if (await handleXBookmarkApiRoutes(app.xBookmarks, req, res, path, readBody)) return;
       }
       if (await handleDailyBriefingRoutes(app, app.dailyBriefing, req, res, path)) return;
       if (path.startsWith("/api/board") || path.startsWith("/api/wins")) {

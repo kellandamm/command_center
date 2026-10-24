@@ -43,6 +43,8 @@ export interface Config {
   /** MCP: clientId → Cloudflare Access service-token client id. */
   mcpCfClientMap: Record<string, string>;
   webhookSecret: string | null;
+  /** Shared secret for POST /api/bookmarks/import (X bookmarks); ≥ 24 chars. */
+  bookmarksImportSecret: string | null;
   hobiePollToken: string | null;
   mcpMaxHobiePending: number;
   connectionsMasterKey: string | null;
@@ -117,6 +119,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   const webhookSecret = blank(env.WEBHOOK_SECRET);
   if (webhookSecret && webhookSecret.length < 24) throw new Error("WEBHOOK_SECRET must be at least 24 characters.");
+  const bookmarksImportSecret = blank(env.BOOKMARKS_IMPORT_SECRET);
+  if (bookmarksImportSecret && bookmarksImportSecret.length < 24) {
+    throw new Error("BOOKMARKS_IMPORT_SECRET must be at least 24 characters.");
+  }
   const hobiePollToken = blank(env.HOBIE_POLL_TOKEN);
   if (hobiePollToken && hobiePollToken.length < 24) throw new Error("HOBIE_POLL_TOKEN must be at least 24 characters.");
   const connectionsMasterKey = blank(env.CONNECTIONS_MASTER_KEY);
@@ -170,6 +176,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     mcpAppTokens,
     mcpCfClientMap: parseJsonRecord(env.MCP_CF_CLIENT_MAP),
     webhookSecret,
+    bookmarksImportSecret,
     hobiePollToken,
     mcpMaxHobiePending: Math.min(50, Math.max(1, Number(env.MCP_MAX_HOBIE_PENDING ?? 20) || 20)),
     connectionsMasterKey,

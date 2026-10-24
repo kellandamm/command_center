@@ -1,5 +1,7 @@
 import { BlockList, isIP } from "node:net";
 import { lookup } from "node:dns/promises";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 
 /**
  * The server fetches URLs a model and a settings page choose, from inside the
@@ -118,6 +120,101 @@ export async function safeFetch(
       contentType: headers["content-type"] ?? "",
       body: Buffer.concat(chunks).toString("utf8"),
       headers,
+    };
+  }
+  throw new BlockedUrlError("too many redirects");
+}
+
+async function resolvePublicAddress(hostname: string): Promise<string> {
+  const host = hostname.replace(/^\[|\]$/g, "");
+  if (isIP(host)) {
+    if (!isPublicIp(host)) throw new BlockedUrlError("address is not public");
+    return host;
+  }
+  const addrs = (await lookup(host, { all: true })).map((row) => row.address).filter(isPublicIp);
+  if (!addrs.length) throw new BlockedUrlError("host resolves to a non-public address");
+  return addrs[0]!;
+}
+
+function readResponseBody(
+  req: ReturnType<typeof httpsRequest>,
+  maxBytes: number,
+  timeoutMs: number,
+): Promise<{ status: number; headers: Record<string, string>; body: Buffer }> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      req.destroy();
+      reject(new BlockedUrlError("request timed out"));
+    }, timeoutMs);
+    req.on("response", (res) => {
+      const headers: Record<string, string> = {};
+      for (const [k, v] of Object.entries(res.headers)) headers[k.toLowerCase()] = Array.isArray(v) ? v.join(", ") : String(v);
+      const chunks: Buffer[] = [];
+      let size = 0;
+      res.on("data", (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > maxBytes) {
+          res.destroy();
+          return;
+        }
+        chunks.push(chunk);
+      });
+      res.on("end", () => {
+        clearTimeout(timer);
+        resolve({ status: res.statusCode ?? 0, headers, body: Buffer.concat(chunks) });
+      });
+    });
+    req.on("error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
+
+/** Like safeFetch but connects to the first resolved public IP to limit DNS rebinding. */
+export async function safeFetchPinned(
+  url: string,
+  opts: {
+    headers?: Record<string, string>;
+    timeoutMs?: number;
+    maxBytes?: number;
+    maxRedirects?: number;
+  } = {},
+): Promise<{ finalUrl: string; status: number; contentType: string; body: string; headers: Record<string, string> }> {
+  const maxBytes = opts.maxBytes ?? 2_000_000;
+  const timeoutMs = opts.timeoutMs ?? 10_000;
+  let current = url;
+  for (let hop = 0; hop <= (opts.maxRedirects ?? 5); hop++) {
+    const parsed = await assertPublicUrl(current);
+    const ip = await resolvePublicAddress(parsed.hostname);
+    const port = parsed.port || (parsed.protocol === "https:" ? "443" : "80");
+    const path = `${parsed.pathname}${parsed.search}`;
+    const requestFn = parsed.protocol === "https:" ? httpsRequest : httpRequest;
+    const req = requestFn({
+      host: ip,
+      port,
+      path,
+      method: "GET",
+      headers: {
+        host: parsed.host,
+        "user-agent": "ai-homepage-server/1.0 (+self-hosted)",
+        accept: "*/*",
+        ...opts.headers,
+      },
+      servername: parsed.hostname,
+    });
+    req.end();
+    const res = await readResponseBody(req, maxBytes, timeoutMs);
+    if (res.status >= 300 && res.status < 400 && res.headers.location) {
+      current = new URL(res.headers.location, current).href;
+      continue;
+    }
+    return {
+      finalUrl: current,
+      status: res.status,
+      contentType: res.headers["content-type"] ?? "",
+      body: res.body.toString("utf8"),
+      headers: res.headers,
     };
   }
   throw new BlockedUrlError("too many redirects");
