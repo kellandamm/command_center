@@ -4,8 +4,13 @@ import type { Config } from "./config";
 export const OWNER_ACTION_FORBIDDEN =
   "This action requires a verified owner login. Set OWNER_EMAILS and sign in through Cloudflare Access.";
 
-/** Shared server preferences (settings, layout, capture tokens) when OWNER_EMAILS is configured. */
-export function canManageSharedServerState(cfg: Config, owner: boolean): boolean {
+export type SharedSettingsPrincipal = { owner?: boolean; who: string };
+
+/** Shared server preferences (settings, layout, capture tokens). */
+export function canManageSharedServerState(cfg: Config, principal: SharedSettingsPrincipal): boolean {
   if (!cfg.ownerEmails.length) return true;
-  return owner;
+  if (principal.owner) return true;
+  // shortcut: ADMIN_TOKEN keeps automation/tests working when OWNER_EMAILS splits human owners from machine auth.
+  if (principal.who === "admin-token" && cfg.adminToken) return true;
+  return false;
 }

@@ -11,6 +11,11 @@ export function settingsPage(nav?: NavLink[]): string {
     body: `<header class="page-header"><h1>Settings</h1><p class="dim">Tune schedules, view behavior, and navigation.</p></header>
 <p><a href="/settings/connections">Manage service connections and keys</a></p>
 <p><a href="/settings/calendars">Manage calendars and subscriptions</a></p>
+<section class="card settings-card" id="settings-features" aria-label="Deployment features">
+<h2 style="margin:0 0 .5rem;font-size:1rem">Features</h2>
+<p class="dim" style="margin:0 0 .75rem">Read-only deployment flags (no secret values).</p>
+<dl id="settings-features-list" class="settings-features-list"></dl>
+</section>
 <div class="settings-tabs" role="tablist">
   <button type="button" class="ghost on" data-tab="views">Views</button>
   <button type="button" class="ghost" data-tab="topics">Briefing topics</button>
@@ -112,6 +117,30 @@ function renderTabsEditor(){
   el.querySelectorAll(".tab-up").forEach(function(b){b.onclick=function(){swap(b.dataset.id,-1)}});
   el.querySelectorAll(".tab-down").forEach(function(b){b.onclick=function(){swap(b.dataset.id,1)}});
 }
+function addFeatureRow(list,label,on,offHint,onHint){
+  var row=document.createElement("div");
+  row.className="settings-feature-row";
+  var dt=document.createElement("dt");
+  dt.textContent=label;
+  var dd=document.createElement("dd");
+  var strong=document.createElement("strong");
+  strong.textContent=on?"On":"Off";
+  dd.appendChild(strong);
+  var hint=on?onHint:offHint;
+  if(hint){var p=document.createElement("p");p.className="dim";p.textContent=hint;dd.appendChild(p);}
+  row.append(dt,dd);
+  list.appendChild(row);
+}
+function renderDeploymentFeatures(meta){
+  var list=document.getElementById("settings-features-list");
+  if(!list)return;
+  list.replaceChildren();
+  var features=(meta&&meta.features)||{};
+  var ownerOn=!!(meta&&meta.ownerEmailsConfigured);
+  addFeatureRow(list,"Whiteboard",!!features.whiteboardEnabled,"Set WHITEBOARD_ENABLED=true to enable the Whiteboard page and API.",null);
+  addFeatureRow(list,"Share links",!!features.shareLinksEnabled,"Set SHARE_LINKS_ENABLED=true to enable note share links. Public share URLs also need the Cloudflare Access bypass in docs/share-links.md.",null);
+  addFeatureRow(list,"Owner-only shared settings",ownerOn,"OWNER_EMAILS is not set; any signed-in session including ADMIN_TOKEN can edit shared settings on this server.","OWNER_EMAILS is set; shared settings, dashboard layout writes, and capture tokens require an owner login or ADMIN_TOKEN.");
+}
 function setSettingsReadOnly(readOnly){
   var hint=document.getElementById("settings-manage-hint");
   ["views-save","tabs-save"].forEach(function(id){var el=document.getElementById(id);if(el)el.disabled=readOnly;});
@@ -133,6 +162,7 @@ function loadSettings(){
     document.getElementById("topics-providers").textContent=providers.search&&providers.summarizer
       ?"Brave Search and AI summarizer are ready."
       :"Connection setup needed: "+[!providers.search?"Brave Search (BRAVE_SEARCH_API_KEY)":"",!providers.summarizer?"AI summarizer (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL)":""].filter(Boolean).join("; ")+". Open service connections to configure keys, or use deployment environment variables.";
+    renderDeploymentFeatures(r.meta||{});
     var canManage=!(r.meta&&r.meta.canManage===false);
     setSettingsReadOnly(!canManage);
     document.getElementById("topics-save").disabled=!canManage;

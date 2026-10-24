@@ -91,6 +91,9 @@ test("ui: settings page has schedule and tabs sections", () => {
   assert.match(html, /href="\/settings" class="on"/);
   assert.match(html, /id="tab-schedule"/);
   assert.match(html, /id="tab-views"/);
+  assert.match(html, /id="settings-features-list"/);
+  assert.match(html, /WHITEBOARD_ENABLED/);
+  assert.match(html, /SHARE_LINKS_ENABLED/);
   assert.match(html, /id="tab-tabs"/);
   assert.doesNotMatch(html, /scope-all|fetchInterval|data-pref="(?:news|summaries|aiSecurity|briefing\.news|briefing\.ai)/);
   assert.doesNotMatch(html, /data-pref="dashboard\./);
