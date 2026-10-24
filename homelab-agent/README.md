@@ -2,6 +2,14 @@
 
 Outbound-only worker that polls Command Center `/api/queue`, calls an LLM through an egress proxy, and reaches Home Assistant only through `ha-proxy`.
 
+Homelab hosts are **unprivileged Proxmox LXCs** (Docker via nesting). A typical target is an LXC such as **CT 110** (not necessarily a full VM). Enable nesting before `docker compose up`:
+
+```bash
+pct set <ct-id> --features nesting=1,keyctl=1
+```
+
+The same compose hardening applies on an LXC or a VM: `read_only` rootfs, `cap_drop: [ALL]`, `security_opt: no-new-privileges`, non-root UID 10001, tmpfs, and resource limits.
+
 ## Components
 
 | Service | Role |
@@ -18,11 +26,12 @@ See `env/*.env.example`. Command Center additionally needs `QUEUE_HMAC_KEY_PRODU
 
 1. Copy `env/*.env.example` to `env/worker.env` and `env/ha-proxy.env`; fill secrets.
 2. Edit `egress/squid.conf` with your Command Center hostname.
-3. Provide **container status JSON** on the host (read-only mount):
+3. On the **host** (LXC or VM), create the container status file (read-only mount into the worker):
 
 ```bash
-# Example cron (host VM, not in worker): write /opt/homelab-agent/container-status.json every minute
-* * * * * docker ps --format '{{json .}}' | jq -s '.' > /opt/homelab-agent/container-status.json
+mkdir -p /srv/homelab-agent/status
+# Example cron — host Docker, not the worker container:
+* * * * * docker ps --format json | jq -s '.' > /srv/homelab-agent/status/containers.json
 ```
 
 4. Ensure Home Assistant has `script.notify_kellan` for notifications.

@@ -21,9 +21,9 @@ services:
     environment:
       HTTPS_PROXY: http://egress:3128
       HA_URL: http://ha-proxy:8080
-      CONTAINER_STATUS_FILE: /var/lib/agent/container-status.json
+      CONTAINER_STATUS_FILE: /var/lib/agent/containers.json
     volumes:
-      - ./data/container-status.json:/var/lib/agent/container-status.json:ro
+      - /srv/homelab-agent/status/containers.json:/var/lib/agent/containers.json:ro
     networks: [agent_int]
     deploy:
       resources:
@@ -44,7 +44,7 @@ services:
 
   egress:
     <<: *hard
-    image: ubuntu/squid:latest
+    image: ubuntu/squid:latest@sha256:6a097f68bae708cedbabd6188d68c7e2e7a38cedd05a176e1cc0ba29e3bbe029
     volumes:
       - ./egress/squid.conf:/etc/squid/squid.conf:ro
     networks: [agent_int, egress_net]

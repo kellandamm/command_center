@@ -72,7 +72,7 @@ def host_health() -> dict[str, Any]:
 
 
 def container_status() -> dict[str, Any]:
-    path = os.environ.get("CONTAINER_STATUS_FILE", "/var/lib/agent/container-status.json")
+    path = os.environ.get("CONTAINER_STATUS_FILE", "/var/lib/agent/containers.json")
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
