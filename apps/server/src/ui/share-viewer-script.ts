@@ -1,4 +1,4 @@
-/** Public share page decryptor (WebCrypto AES-GCM). Served as /assets/share-viewer.js without auth. */
+/** Public share page decryptor (WebCrypto AES-GCM). Served as /share/viewer.js without auth. */
 export function shareViewerScript(): string {
   return `(function(){
   var status=document.getElementById("share-status");
@@ -6,12 +6,44 @@ export function shareViewerScript(): string {
   var bodyEl=document.getElementById("share-body");
   var script=document.currentScript;
   var shareId=script&&script.getAttribute("data-share-id");
+  var BLOCKED=new Set(["SCRIPT","IFRAME","OBJECT","EMBED","FORM","STYLE"]);
   function fail(msg){if(status)status.textContent=msg;}
   function b64ToBytes(b64){
     var bin=atob(b64.replace(/-/g,"+").replace(/_/g,"/"));
     var out=new Uint8Array(bin.length);
     for(var i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i);
     return out;
+  }
+  function allowedUrl(value){
+    if(!value)return true;
+    try{
+      var u=new URL(value,location.href);
+      return u.protocol==="http:"||u.protocol==="https:"||u.protocol==="mailto:";
+    }catch(_){return false;}
+  }
+  function sanitizeHtml(html){
+    var doc=new DOMParser().parseFromString(html,"text/html");
+    function walk(node){
+      var child=node.firstChild;
+      while(child){
+        var next=child.nextSibling;
+        if(child.nodeType===1){
+          if(BLOCKED.has(child.tagName))child.remove();
+          else{
+            for(var i=child.attributes.length-1;i>=0;i--){
+              var attr=child.attributes[i];
+              var name=attr.name.toLowerCase();
+              if(name.indexOf("on")===0)child.removeAttribute(attr.name);
+              else if((name==="href"||name==="src")&&!allowedUrl(attr.value))child.removeAttribute(attr.name);
+            }
+            walk(child);
+          }
+        }
+        child=next;
+      }
+    }
+    walk(doc.body);
+    return doc.body.innerHTML;
   }
   function keyFromFragment(){
     var hash=location.hash.replace(/^#/,"");
@@ -32,7 +64,7 @@ export function shareViewerScript(): string {
       var snap=JSON.parse(plain);
       if(!snap||typeof snap.title!=="string"||typeof snap.html!=="string"){fail("Decrypted content is not a valid note snapshot.");return;}
       if(titleEl){titleEl.textContent=snap.title;titleEl.hidden=false;}
-      if(bodyEl){bodyEl.innerHTML=snap.html;bodyEl.hidden=false;}
+      if(bodyEl){bodyEl.innerHTML=sanitizeHtml(snap.html);bodyEl.hidden=false;}
       if(status)status.textContent="";
       document.title=snap.title+" — shared note";
     }catch(_){fail("Could not decrypt this note. Check that you opened the full link including the # key.");}

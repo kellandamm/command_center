@@ -12,7 +12,8 @@ import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
 import { ShareLinksStore } from "../src/share-links/store";
-import { shareStoreLooksEncrypted } from "../src/share-links/routes";
+import { parseSharePublicPath, shareStoreLooksEncrypted } from "../src/share-links/routes";
+import { ShareLinkRateLimiter } from "../src/share-links/rate-limit";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
 const TOKEN = "t".repeat(32);
@@ -33,8 +34,9 @@ async function encryptSnapshot(title: string, html: string) {
   };
 }
 
-async function openServer(env: Record<string, string>) {
-  const dir = await mkdtemp(join(tmpdir(), "cc-share-"));
+async function openServer(env: Record<string, string>, dataDir?: string) {
+  const ownDir = dataDir === undefined;
+  const dir = dataDir ?? await mkdtemp(join(tmpdir(), "cc-share-"));
   const cfg = loadConfig({
     DATA_DIR: dir,
     ADMIN_TOKEN: TOKEN,
@@ -66,10 +68,15 @@ async function openServer(env: Record<string, string>) {
   const readerHeaders = { "cf-access-jwt-assertion": "reader", "x-ah": "1", "content-type": "application/json" };
   const close = async () => {
     await closeIntegrationServer(server, integration);
-    await rm(dir, { recursive: true, force: true });
+    if (ownDir) await rm(dir, { recursive: true, force: true });
   };
   return { base, dir, notes, shareLinks: integration.shareLinks, ownerHeaders, readerHeaders, close };
 }
+
+test("share public path parser ignores viewer.js", () => {
+  assert.equal(parseSharePublicPath("/share/viewer.js"), null);
+  assert.equal(parseSharePublicPath("/share/viewer.js/data"), null);
+});
 
 test("share links: disabled by default and owner APIs stay closed", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-share-off-"));
@@ -137,6 +144,8 @@ test("share links: create/list/revoke need owner; public routes need no JWT; pro
 
     const page = await fetch(`${h.base}/share/${id}`);
     assert.equal(page.status, 200);
+    assert.match(await page.text(), /\/share\/viewer\.js/);
+    assert.equal((await fetch(`${h.base}/share/viewer.js`)).status, 200);
     assert.equal(page.headers.get("referrer-policy"), "no-referrer");
     assert.equal(page.headers.get("cache-control"), "no-store");
     assert.match(page.headers.get("content-security-policy") ?? "", /script-src 'self'/);
@@ -159,11 +168,16 @@ test("share links: create/list/revoke need owner; public routes need no JWT; pro
 });
 
 test("share links: sensitive notes, invalid ids, size cap, expiry purge, and rate limit", async () => {
-  const h = await openServer({ SHARE_LINKS_MAX_ACTIVE: "1" });
+  const dir = await mkdtemp(join(tmpdir(), "cc-share-sensitive-"));
+  const seed = await NotesStore.open(dir);
+  const sensitiveNote = await seed.createNote({ title: "Nope", content: "x" });
+  const knowledge = JSON.parse(await readFile(join(dir, "knowledge.json"), "utf8")) as { notes: { id: string; sensitive?: boolean }[] };
+  knowledge.notes.find((row) => row.id === sensitiveNote.id)!.sensitive = true;
+  await writeFile(join(dir, "knowledge.json"), JSON.stringify(knowledge));
+  const h = await openServer({ SHARE_LINKS_MAX_ACTIVE: "1" }, dir);
   try {
-    const sensitive = await h.notes.createNote({ title: "Nope", content: "x", sensitive: true });
     const enc = await encryptSnapshot("Nope", "<p>x</p>");
-    assert.equal((await fetch(`${h.base}/api/knowledge/notes/${sensitive.id}/share-links`, {
+    assert.equal((await fetch(`${h.base}/api/knowledge/notes/${sensitiveNote.id}/share-links`, {
       method: "POST",
       headers: h.ownerHeaders,
       body: JSON.stringify({ ciphertext: enc.ciphertext, iv: enc.iv, expiresInSeconds: 3600 }),
@@ -203,6 +217,7 @@ test("share links: sensitive notes, invalid ids, size cap, expiry purge, and rat
 
   } finally {
     await h.close();
+    await rm(dir, { recursive: true, force: true });
   }
 });
 
@@ -210,13 +225,20 @@ test("share links: public routes rate limit per IP", async () => {
   const h = await openServer({ SHARE_LINKS_RATE_LIMIT_PER_MINUTE: "3" });
   try {
     for (let i = 0; i < 4; i++) {
-      const res = await fetch(`${h.base}/assets/share-viewer.js`);
+      const res = await fetch(`${h.base}/share/viewer.js`);
       if (i < 3) assert.equal(res.status, 200);
       else assert.equal(res.status, 429);
     }
   } finally {
     await h.close();
   }
+});
+
+test("share link rate limiter drops stale keys and fails closed when tracking cap is full", () => {
+  const limiter = new ShareLinkRateLimiter(5, 2);
+  assert.equal(limiter.allow("a"), true);
+  assert.equal(limiter.allow("b"), true);
+  assert.equal(limiter.allow("c"), false);
 });
 
 test("share link store rejects invalid expiry and damaged files", async () => {

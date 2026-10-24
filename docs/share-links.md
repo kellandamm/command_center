@@ -11,54 +11,78 @@ This feature lets the **owner** create encrypted, read-only snapshots of a singl
 | `SHARE_LINKS_ENABLED` | off (`0`) | Master switch. Leave off until Access bypass is in place. |
 | `SHARE_LINKS_MAX_ACTIVE` | `50` | Maximum concurrent non-expired shares. |
 | `SHARE_LINKS_MAX_CIPHERTEXT_BYTES` | `512000` | Encrypted payload size cap per share. |
-| `SHARE_LINKS_RATE_LIMIT_PER_MINUTE` | `60` | Per-IP limit on `/share/*` and `/assets/share-viewer.js`. |
+| `SHARE_LINKS_RATE_LIMIT_PER_MINUTE` | `60` | Per-IP limit on `/share/*` (app-enforced). |
+
+The app rate-limits using `CF-Connecting-IP` when present. **Only trust that header if the origin is reachable exclusively through Cloudflare** (no direct-to-origin IP); otherwise clients could spoof IPs.
 
 ## Cloudflare Zero Trust (Infra Ops)
 
-Command Center is normally protected by a Cloudflare Access application on the main hostname (e.g. `command.gobison.io`). Share links must be readable **without** an Access JWT on **only** these paths:
+Command Center is normally protected by a Cloudflare Access **self-hosted** application on `command.gobison.io` (apex or path empty / `/*`), with Allow policies for your identity.
+
+Share links must work **without** an Access JWT on everything under **`/share/`** only:
 
 - `GET /share/<id>` (HTML viewer)
 - `GET /share/<id>/data` (ciphertext JSON)
-- `GET /assets/share-viewer.js` (public decrypt script)
+- `GET /share/viewer.js` (public decrypt script)
 
-Everything else must **remain** behind Access unchanged.
+All other paths (`/api/*`, `/notes`, etc.) must keep using the existing Access application.
 
-### Recommended configuration
+### How overlapping applications work
 
-1. **Add a separate Access application** (or a more specific path rule) for:
-   - **Application domain:** `command.gobison.io`
-   - **Path:** `/share/*` (and ensure `/assets/share-viewer.js` is covered if your main app policy does not already allow it without JWT — typically add a second path rule or include `/assets/share-viewer.js` on the bypass app).
+Cloudflare Access does **not** use a manual “precedence” list between applications. When a request matches more than one self-hosted application on the same hostname, the **more specific path** wins and does **not** inherit the parent application’s policy. See [Application paths](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/).
 
-2. **Policy:** **Bypass** (allow everyone) for that application only.
+Use a **second** self-hosted application for the public share tree so it can use **Bypass** while the main app stays protected.
 
-3. **Precedence:** The bypass application for `/share/*` must be **evaluated before** (higher precedence than) the main “require login” application for `command.gobison.io/*`. If order is wrong, visitors will get an Access login page instead of the share viewer.
+### Dashboard steps
 
-4. **Scope check:** Confirm no other paths are included in the bypass policy (no `/*`, no `/api/*`, no `/notes`). Only the share prefix and the single public script asset.
+1. **Zero Trust** → **Access controls** → **Applications** → **Add an application** → **Self-hosted**.
+2. **Application name:** e.g. `Command Center — public share links`.
+3. **Session duration:** your choice (Bypass still applies at the edge).
+4. Under **Add public hostname** (or **Application domains**):
+   - **Subdomain:** `command` (or leave blank if the UI uses the full hostname `command.gobison.io`).
+   - **Domain:** `gobison.io` (your zone).
+   - **Path:** `/share/*`  
+     Per Cloudflare’s path rules, `/share/*` matches URLs **under** `/share/` (e.g. `/share/viewer.js`, `/share/<id>/data`). It does **not** match the apex or unrelated paths. Do **not** use an empty path or `/*` on this app.
+5. **Policies** → **Add a policy**:
+   - **Action:** **Bypass**
+   - **Rule:** **Everyone** (or equivalent include-all rule).
+6. Leave your **existing** `command.gobison.io` Access application (broader path) unchanged with its normal Allow policies.
+7. Set `SHARE_LINKS_ENABLED=1` on Command Center and redeploy/restart.
 
-5. **Enable the feature:** Set `SHARE_LINKS_ENABLED=1` on the Command Center deployment and redeploy/restart.
+### Optional: WAF rate limiting
+
+In **Security** → **WAF** → **Rate limiting rules** (or **Custom rules**), add a rule scoped to:
+
+- **Hostname:** `command.gobison.io`
+- **URI path** starts with `/share/`
+
+Example: block or challenge when requests exceed N per minute per IP. This complements the app’s `SHARE_LINKS_RATE_LIMIT_PER_MINUTE` and protects the origin if Access is misconfigured.
 
 ### Verify
 
-From a network **without** an Access session cookie or service token:
+From a network **without** an Access session:
 
 ```bash
-curl -sS -o /dev/null -w "%{http_code}\n" "https://command.gobison.io/share/INVALIDIDAAAAAAAAAAAAAA"
-# Expect 404 (not 302 to Access login)
+curl -sS -o /dev/null -w "%{http_code}\n" "https://command.gobison.io/share/viewer.js"
+# Expect 200 when SHARE_LINKS_ENABLED=1 (not an Access login redirect)
 
 curl -sS -o /dev/null -w "%{http_code}\n" "https://command.gobison.io/api/settings"
 # Expect 302/401 — still protected
+
+curl -sS -o /dev/null -w "%{http_code}\n" "https://command.gobison.io/share/INVALIDIDAAAAAAAAAAAAAA"
+# Expect 404 from the app (not Access), when the feature is enabled
 ```
 
 Create a real share from the Notes UI as owner, open the full URL (including `#`) in a private window, and confirm the note renders.
 
 ### Roll back
 
-1. Set `SHARE_LINKS_ENABLED=0` (or unset) and restart Command Center — owner UI hides share actions; public routes return 404.
-2. Remove or disable the Access **Bypass** application for `/share/*` (restore single main Access app).
-3. Optionally delete `share-links.json` in the server data directory to remove stored ciphertext.
+1. Set `SHARE_LINKS_ENABLED=0` (or unset) and restart Command Center.
+2. Delete or disable the **Bypass** Access application for `/share/*` only.
+3. Optionally delete `share-links.json` in the server data directory.
 
 ## Security notes
 
 - Anyone with the full URL (including `#`) can read the snapshot until expiry or revoke.
 - Fragments are not sent to the server on navigation, but may appear in browser history; treat links like passwords.
-- Notes marked `sensitive` (when that field exists on `KnowledgeNote`) cannot be shared.
+- Notes with `sensitive: true` on the stored record (once supported in a separate change) cannot be shared.

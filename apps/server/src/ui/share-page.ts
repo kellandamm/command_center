@@ -28,7 +28,7 @@ h1{font-size:1.75rem;line-height:1.25;margin:0 0 1.25rem;font-weight:600}
 <h1 id="share-title" hidden></h1>
 <article id="share-body" class="notes-preview" hidden></article>
 </main>
-<script src="/assets/share-viewer.js" defer data-share-id="${esc(shareId)}"></script>
+<script src="/share/viewer.js" defer data-share-id="${esc(shareId)}"></script>
 </body>
 </html>`;
 }

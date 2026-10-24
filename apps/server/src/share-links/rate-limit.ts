@@ -1,20 +1,37 @@
 const WINDOW_MS = 60_000;
+const DEFAULT_MAX_TRACKED_KEYS = 4096;
 
 export class ShareLinkRateLimiter {
   private hits = new Map<string, number[]>();
 
-  constructor(private readonly maxPerWindow: number) {}
+  constructor(
+    private readonly maxPerWindow: number,
+    private readonly maxTrackedKeys = DEFAULT_MAX_TRACKED_KEYS,
+  ) {}
 
   allow(clientKey: string): boolean {
     const now = Date.now();
-    const prev = (this.hits.get(clientKey) ?? []).filter((t) => now - t < WINDOW_MS);
-    if (prev.length >= this.maxPerWindow) {
-      this.hits.set(clientKey, prev);
+    this.prune(now);
+    const prev = this.hits.get(clientKey) ?? [];
+    const active = prev.filter((t) => now - t < WINDOW_MS);
+    if (active.length >= this.maxPerWindow) {
+      this.hits.set(clientKey, active);
       return false;
     }
-    prev.push(now);
-    this.hits.set(clientKey, prev);
+    if (!this.hits.has(clientKey) && this.hits.size >= this.maxTrackedKeys) {
+      return false;
+    }
+    active.push(now);
+    this.hits.set(clientKey, active);
     return true;
+  }
+
+  private prune(now: number): void {
+    for (const [key, times] of this.hits) {
+      const active = times.filter((t) => now - t < WINDOW_MS);
+      if (!active.length) this.hits.delete(key);
+      else this.hits.set(key, active);
+    }
   }
 }
 

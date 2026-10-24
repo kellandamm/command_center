@@ -22,8 +22,6 @@ export interface KnowledgeNote {
   version?: number;
   pinned?: boolean;
   archivedAt?: string | null;
-  /** When true, server-side flows (including share links) must refuse exposure. May be set by a parallel PR. */
-  sensitive?: boolean;
 }
 
 export interface NoteRevision extends KnowledgeNote { revisionId: string }
@@ -97,12 +95,6 @@ function archivedAt(value: unknown): string | null {
   if (typeof value !== "string" || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString() !== value) throw new ValidationError("archivedAt must be an ISO timestamp or null");
   return value;
 }
-function sensitiveFlag(value: unknown): boolean | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value !== "boolean") throw new ValidationError("sensitive must be boolean");
-  return value;
-}
-
 function tags(value: unknown): string[] {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.some((tag) => typeof tag !== "string")) throw new ValidationError("tags must be a list of text");
@@ -329,12 +321,10 @@ export class NotesStore {
     const sourceUrl = optionalUrl(input.sourceUrl, "sourceUrl");
     return this.updateData(() => {
       const now = new Date().toISOString();
-      const sensitive = sensitiveFlag(input.sensitive);
       const note: KnowledgeNote = {
         id: randomUUID(), title, content, tags: tags(input.tags), legacy: false, version: 1,
         pinned: pinned(input.pinned), archivedAt: archivedAt(input.archivedAt),
         spaceId: this.spaceId(input.spaceId), sourceUrl, createdAt: now, updatedAt: now,
-        ...(sensitive === undefined ? {} : { sensitive }),
       };
       this.data.notes.push(note);
       return note;
@@ -356,7 +346,6 @@ export class NotesStore {
       if (input.sourceUrl !== undefined) note.sourceUrl = optionalUrl(input.sourceUrl, "sourceUrl");
       if (input.pinned !== undefined) note.pinned = pinned(input.pinned);
       if (input.archivedAt !== undefined) note.archivedAt = archivedAt(input.archivedAt);
-      if (input.sensitive !== undefined) note.sensitive = sensitiveFlag(input.sensitive);
       note.updatedAt = new Date().toISOString();
       return note;
     });

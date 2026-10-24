@@ -59,7 +59,7 @@ export async function handleSharePublicRoutes(
 
   const method = req.method ?? "GET";
 
-  if (path === "/assets/share-viewer.js" && (method === "GET" || method === "HEAD")) {
+  if (path === "/share/viewer.js" && (method === "GET" || method === "HEAD")) {
     if (!rateLimiter.allow(clientIp(req.headers))) {
       json(res, 429, { error: "rate limit exceeded" });
       return true;
@@ -146,10 +146,6 @@ async function readJsonBody(req: IncomingMessage, limit: number): Promise<Record
   }
 }
 
-function noteIsSensitive(note: { sensitive?: boolean }): boolean {
-  return note.sensitive === true;
-}
-
 export async function handleShareOwnerRoutes(
   cfg: Config,
   notes: NotesStore,
@@ -195,7 +191,7 @@ export async function handleShareOwnerRoutes(
     }
     const note = notes.getNote(noteId);
     if (!note) return jsonOwner(404, { error: "note not found" }), true;
-    if (noteIsSensitive(note)) {
+    if ((note as { sensitive?: boolean }).sensitive === true) {
       return jsonOwner(403, { error: "sensitive notes cannot be shared" }), true;
     }
     const body = await readJsonBody(req, cfg.shareLinksMaxCiphertextBytes + 4096);
