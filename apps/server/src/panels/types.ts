@@ -9,6 +9,7 @@ import type { SettingsStore } from "../settings";
 import type { CalendarWorkspace } from "../calendar/workspace";
 import type { AttentionStore } from "../attention/store";
 import type { LaunchpadStore } from "../launchpad/store";
+import type { FocusSessionsStore } from "../focus/store";
 
 export interface PanelContext {
   cfg: Config;
@@ -21,6 +22,7 @@ export interface PanelContext {
   calendar?: CalendarWorkspace;
   attention: AttentionStore;
   launchpad: LaunchpadStore;
+  focusSessions: FocusSessionsStore;
   owner: boolean;
 }
 

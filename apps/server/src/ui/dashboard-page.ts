@@ -8,6 +8,7 @@ import { heatmapDashboardScript } from "../panels/heatmap";
 import { hobieDashboardScript } from "../panels/hobie";
 import { hostHealthDashboardScript } from "../panels/host-health";
 import { launchpadDashboardScript } from "../panels/launchpad";
+import { focusDashboardScript } from "../panels/focus";
 import { notesDashboardScript } from "../panels/notes";
 import { recallioDashboardScript } from "../panels/recallio";
 import { tasksDashboardScript } from "../panels/tasks";
@@ -35,6 +36,8 @@ export const dashboardPanelCss = `
 .launchpad-tile:hover{border-color:var(--ring)}
 .launchpad-form{margin-top:.35rem;flex-wrap:wrap}
 .launchpad-form input{flex:1;min-width:6rem}
+.focus-timer{font-size:1.25rem;font-weight:600;margin:.25rem 0}
+.focus-controls{gap:.75rem;flex-wrap:wrap}
 `;
 
 const PANEL_SCRIPTS = [
@@ -50,6 +53,7 @@ const PANEL_SCRIPTS = [
   attentionDashboardScript,
   heatmapDashboardScript,
   launchpadDashboardScript,
+  focusDashboardScript,
 ];
 
 function dashboardItemsHtml(): string {

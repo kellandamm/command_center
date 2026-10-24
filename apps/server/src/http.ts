@@ -59,6 +59,7 @@ import { zip } from "./read-later/zip";
 import { dashboardPage, settingsPage } from "./ui/pages";
 import type { AttentionStore } from "./attention/store";
 import type { LaunchpadStore } from "./launchpad/store";
+import type { FocusSessionsStore } from "./focus/store";
 import { OWNER_ACTION_FORBIDDEN } from "./owner-auth";
 import { connectionProvider, type ConnectionsStore } from "./connections";
 import { connectionsPage } from "./ui/connections-page";
@@ -89,6 +90,7 @@ export interface App {
   dashboardLayout: DashboardLayoutStore;
   attention: AttentionStore;
   launchpad: LaunchpadStore;
+  focusSessions: FocusSessionsStore;
   connections?: ConnectionsStore;
   calendar?: CalendarWorkspace;
 }
@@ -151,6 +153,7 @@ export function createApp(app: App): Server {
     wins: app.wins,
     attention: app.attention,
     launchpad: app.launchpad,
+    focusSessions: app.focusSessions,
     owner,
   });
 

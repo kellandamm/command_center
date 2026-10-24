@@ -3,6 +3,7 @@ import { ValidationError } from "../settings";
 import { llmConfig } from "../config";
 import { chatCompletion } from "../llm/provider";
 import type { NotesStore } from "../notes/store";
+import { isNoteSensitive, notesForLlmContext } from "../notes/sensitive";
 import { renderNoteMarkdown } from "../notes/markdown";
 import { fetchCalendarEvents } from "../calendar/service";
 import type { PanelModule } from "./types";
@@ -257,7 +258,11 @@ export const notesPanel: PanelModule = {
         context = ctx.notes.getSpaceContent(body.spaceId);
         if (!context) return error(404, "space not found"), true;
       } else {
-        context = { space: { instructions: "", references: [] }, notes: ctx.notes.listNotes(), sources: ctx.notes.listSources() };
+        context = {
+          space: { instructions: "", references: [] },
+          notes: notesForLlmContext(ctx.notes.listNotes()),
+          sources: ctx.notes.listSources(),
+        };
       }
       const cutoff = Date.now() - 60 * 60 * 1000;
       const questionTimes = knowledgeQuestionTimes.get(ctx.notes) ?? [];
@@ -305,7 +310,7 @@ export const notesPanel: PanelModule = {
     }
 
     if (path === "/api/knowledge/graph" && req.method === "GET") {
-      const notes = ctx.notes.listNotes();
+      const notes = ctx.notes.listNotes().filter((note) => !isNoteSensitive(note));
       const byTitle = new Map(notes.map((note) => [note.title.trim().toLowerCase(), note]));
       const edges: Array<{ from: string; to: string }> = [];
       for (const note of notes) {
@@ -319,7 +324,11 @@ export const notesPanel: PanelModule = {
     }
 
     if (path === "/api/knowledge/export.md" && req.method === "GET") {
-      const content = ctx.notes.listNotes().map((note) =>
+      const url = new URL(req.url ?? "/", "http://local");
+      const includeSensitive = url.searchParams.get("includeSensitive") === "true";
+      const content = ctx.notes.listNotes()
+        .filter((note) => includeSensitive || !isNoteSensitive(note))
+        .map((note) =>
         `---\ntitle: ${JSON.stringify(note.title)}\ntags: ${JSON.stringify(note.tags)}\nsourceUrl: ${JSON.stringify(note.sourceUrl)}\nspaceId: ${JSON.stringify(note.spaceId)}\n---\n\n${note.content}`,
       ).join("\n\n---\n\n");
       res.writeHead(200, {
@@ -332,12 +341,14 @@ export const notesPanel: PanelModule = {
     }
 
     if (path === "/api/knowledge/export.json" && req.method === "GET") {
+      const url = new URL(req.url ?? "/", "http://local");
+      const includeSensitive = url.searchParams.get("includeSensitive") === "true";
       res.writeHead(200, {
         "content-type": "application/json; charset=utf-8",
         "content-disposition": 'attachment; filename="command-center-knowledge.json"',
         "cache-control": "no-store",
       });
-      res.end(JSON.stringify(ctx.notes.exportBackup(), null, 2));
+      res.end(JSON.stringify(ctx.notes.exportBackup(includeSensitive), null, 2));
       return true;
     }
 

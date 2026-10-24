@@ -1,5 +1,6 @@
 import { DONE, type BoardCard } from "../board/types";
 import type { KnowledgeNote, KnowledgeSource } from "../notes/store";
+import { isNoteSensitive } from "../notes/sensitive";
 import type { Win } from "../wins/types";
 import { pickRediscover, daysBetween, type StaleCandidate } from "./rediscover";
 import { buildSessions, mergedSessionReason, sessionPrimaryItem, type WorkSession } from "./sessions";
@@ -131,7 +132,7 @@ export function composeAttentionSections(input: ComposeInput): AttentionSection[
     const reason = mergedSessionReason(itemSessions, input.todayYmd, input.tz);
     if (primary.kind === "note") {
       const note = input.notes.find((n) => n.id === primary.refId);
-      if (note) continueItems.push(noteItem(note, reason));
+      if (note && !isNoteSensitive(note)) continueItems.push(noteItem(note, reason));
     } else {
       const card = input.cards.find((c) => c.id === primary.refId);
       if (card) continueItems.push(cardItem(card, reason));
@@ -141,6 +142,7 @@ export function composeAttentionSections(input: ComposeInput): AttentionSection[
 
   const onThisDay: AttentionItem[] = [];
   for (const note of input.notes) {
+    if (isNoteSensitive(note)) continue;
     if (input.hidden.has(`note:${note.id}`)) continue;
     if (!matchesOnThisDay(note.createdAt, input.todayYmd, input.tz)) continue;
     onThisDay.push(noteItem(note, anniversaryReason(note.createdAt, input.todayYmd, input.tz)));
@@ -159,6 +161,7 @@ export function composeAttentionSections(input: ComposeInput): AttentionSection[
 
   const stale: StaleCandidate[] = [];
   for (const note of input.notes) {
+    if (isNoteSensitive(note)) continue;
     const id = `note:${note.id}`;
     if (input.hidden.has(id)) continue;
     const days = daysBetween(note.updatedAt, input.nowMs);
