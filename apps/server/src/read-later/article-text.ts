@@ -11,7 +11,7 @@ export function extractArticleText(html: string, contentType = ""): string {
     return stripTags(html).slice(0, 40_000);
   }
   const withoutNoise = html
-    .replace(/<script[\s\S]*?<\/script\s*>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script\b[^>]*>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ");
   const candidates: string[] = [];

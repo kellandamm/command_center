@@ -96,7 +96,7 @@ test("x bookmarks: article links are selected by hostname", async () => {
 });
 
 test("article extraction removes script blocks with whitespace in closing tags", () => {
-  assert.equal(extractArticleText("<article>Visible<script>secret</script   > text</article>"), "Visible text");
+  assert.equal(extractArticleText("<article>Visible<script>secret</script\t\n data> text</article>"), "Visible text");
 });
 
 test("x bookmarks: idempotent import and single summarizer call", async () => {
