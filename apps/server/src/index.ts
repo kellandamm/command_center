@@ -25,6 +25,7 @@ import { ConnectionsStore } from "./connections";
 import { CalendarWorkspace } from "./calendar/workspace";
 import { AttentionStore } from "./attention/store";
 import { LaunchpadStore } from "./launchpad/store";
+import { WhiteboardStore } from "./whiteboard/store";
 
 async function main() {
   const deployment = loadConfig();
@@ -57,6 +58,7 @@ async function main() {
   const dashboardLayout = await DashboardLayoutStore.open(cfg.dataDir, panels.map((p) => p.id));
   const attention = await AttentionStore.open(cfg.dataDir);
   const launchpad = await LaunchpadStore.open(cfg.dataDir);
+  const whiteboard = await WhiteboardStore.open(cfg.dataDir);
 
   const scheduler = new Scheduler({
     cfg,
@@ -86,6 +88,7 @@ async function main() {
     dashboardLayout,
     attention,
     launchpad,
+    whiteboard,
     connections,
     calendar,
   });

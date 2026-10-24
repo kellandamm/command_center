@@ -24,6 +24,7 @@ ENV NODE_ENV=production \
 WORKDIR /app
 COPY --from=build /src/apps/server/dist/server.mjs ./server.mjs
 COPY --from=build /src/apps/server/dist/server.mjs.map ./server.mjs.map
+COPY --from=build /src/apps/server/dist/excalidraw-assets ./excalidraw-assets
 RUN groupadd --gid 10001 app && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin app \
  && mkdir -p /data && chown -R app:app /data
 
