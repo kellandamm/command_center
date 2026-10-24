@@ -7,6 +7,8 @@ import type { WinsStore } from "../wins/store";
 import type { PanelUpdatesStore } from "../stores/panel-updates";
 import type { SettingsStore } from "../settings";
 import type { CalendarWorkspace } from "../calendar/workspace";
+import type { AttentionStore } from "../attention/store";
+import type { LaunchpadStore } from "../launchpad/store";
 
 export interface PanelContext {
   cfg: Config;
@@ -17,6 +19,9 @@ export interface PanelContext {
   board: BoardStore;
   wins: WinsStore;
   calendar?: CalendarWorkspace;
+  attention: AttentionStore;
+  launchpad: LaunchpadStore;
+  owner: boolean;
 }
 
 export type PanelHandler = (ctx: PanelContext, req: IncomingMessage, res: ServerResponse, path: string) => Promise<boolean>;

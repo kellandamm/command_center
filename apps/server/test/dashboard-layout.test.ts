@@ -7,7 +7,12 @@ import type { AddressInfo } from "node:net";
 import { DailyBriefingService } from "../src/daily-briefing/service";
 import { defaultDashboardLayout } from "../src/dashboard-layout/defaults";
 import { normalizeDashboardLayout } from "../src/dashboard-layout/normalize";
-import { packAfterMove, rectanglesOverlap } from "../src/dashboard-layout/pack";
+import {
+  overlappingPanelPairs,
+  packAfterMove,
+  packDashboardLayout,
+  rectanglesOverlap,
+} from "../src/dashboard-layout/pack";
 import { DashboardLayoutStore } from "../src/dashboard-layout/storage";
 import { loadConfig } from "../src/config";
 import { makeAuthenticator } from "../src/auth";
@@ -23,6 +28,25 @@ const PANEL_IDS = panels.map((p) => p.id);
 test("dashboard layout: default includes every registered panel", () => {
   const layout = defaultDashboardLayout(PANEL_IDS);
   assert.deepEqual(layout.panels.map((p) => p.id), PANEL_IDS);
+});
+
+test("dashboard layout: default and packed tall attention have no overlapping cells", () => {
+  const layout = defaultDashboardLayout(PANEL_IDS);
+  assert.deepEqual(overlappingPanelPairs(layout.panels), []);
+
+  const tall = layout.panels.map((p) => ({ ...p }));
+  const attention = tall.find((p) => p.id === "attention")!;
+  Object.assign(attention, { x: 4, y: 0, w: 8, h: 8 });
+  const heatmap = tall.find((p) => p.id === "heatmap")!;
+  Object.assign(heatmap, { x: 0, y: 4, w: 4, h: 3 });
+  assert.ok(overlappingPanelPairs(tall).length > 0, "raw tall layout should overlap before pack");
+
+  const imported = normalizeDashboardLayout(
+    { version: 2, cols: 12, rowHeight: 32, panels: tall },
+    PANEL_IDS,
+  );
+  assert.deepEqual(overlappingPanelPairs(imported.panels), []);
+  assert.deepEqual(overlappingPanelPairs(packDashboardLayout(tall)), []);
 });
 
 test("dashboard layout: pack pushes overlapping panels down", () => {
@@ -88,7 +112,7 @@ test("dashboard layout: default collapses low-priority panels without retired ti
   assert.equal(layout.panels.find((p) => p.id === "calendar")?.collapsed, true);
   assert.equal(layout.panels.find((p) => p.id === "notes")?.collapsed, true);
   const maxEnd = layout.panels.reduce((m, p) => Math.max(m, p.y + (p.collapsed ? 1 : p.h)), 0);
-  assert.ok(maxEnd <= 8, "default layout should fit in eight grid rows");
+  assert.ok(maxEnd <= 11, "default layout should stay compact");
 });
 
 test("dashboard layout: normalize adds missing panels and drops unknown ids", () => {

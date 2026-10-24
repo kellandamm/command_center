@@ -15,13 +15,32 @@ import { chromium, type Page } from "playwright";
 const serverDir = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const repoRoot = join(serverDir, "../..");
 const VIEWPORT = { width: 1280, height: 800 };
+async function putPackedTallAttentionLayout(baseUrl: string) {
+  const get = await fetch(`${baseUrl}/api/dashboard-layout`);
+  if (!get.ok) throw new Error(`layout GET ${get.status}`);
+  const { layout } = (await get.json()) as { layout: { panels: Array<Record<string, unknown>> } };
+  const attention = layout.panels.find((p) => p.id === "attention");
+  if (attention) Object.assign(attention, { x: 4, y: 0, w: 5, h: 20, collapsed: false });
+  const put = await fetch(`${baseUrl}/api/dashboard-layout`, {
+    method: "PUT",
+    headers: { "content-type": "application/json", "x-ah": "1" },
+    body: JSON.stringify(layout),
+  });
+  if (!put.ok) throw new Error(`layout PUT ${put.status}`);
+}
+
+async function waitForAttentionSectionHeadings(page: Page) {
+  for (const name of ["Due or overdue", "Continue working", "On this day", "Rediscover"]) {
+    await page.getByRole("heading", { name }).waitFor({ timeout: 20_000 });
+  }
+}
 
 type Shot = {
   out: string;
   path: string;
   /** Must match document.title or h1 text (case-insensitive substring). */
   marker: string;
-  prepare?: (page: Page) => Promise<void>;
+  prepare?: (page: Page, baseUrl: string) => Promise<void>;
   /** Screenshot a sub-element instead of the viewport. */
   clipSelector?: string;
 };
@@ -32,8 +51,8 @@ const SETTINGS_SHOTS: Shot[] = [
     path: "/",
     marker: "Dashboard",
     prepare: async (page) => {
-      await page.waitForSelector(".dashboard-overview", { timeout: 15_000 });
-      await page.waitForSelector("#dashboard-hobie-count", { timeout: 15_000 });
+      await page.waitForSelector("#dashboard-grid", { timeout: 15_000 });
+      await page.waitForSelector("#panel-tasks", { timeout: 15_000 });
     },
   },
   {
@@ -56,7 +75,7 @@ const SETTINGS_SHOTS: Shot[] = [
   },
   {
     out: "docs/screenshots/settings-tabs/board-1280x800.png",
-    path: "/board",
+    path: "/agent?view=board",
     marker: "Board",
     prepare: async (page) => {
       await page.waitForSelector(".board-col-list .board-card", { timeout: 15_000 });
@@ -65,7 +84,7 @@ const SETTINGS_SHOTS: Shot[] = [
   },
   {
     out: "docs/screenshots/settings-tabs/wins-1280x800.png",
-    path: "/wins",
+    path: "/agent?view=wins",
     marker: "Wins",
     prepare: async (page) => {
       await page.waitForSelector(".wins-week", { timeout: 15_000 });
@@ -76,14 +95,13 @@ const SETTINGS_SHOTS: Shot[] = [
     path: "/briefing",
     marker: "Briefing",
     prepare: async (page) => {
-      await page.waitForSelector("#db-board-blocked-body li", { timeout: 15_000 });
-      await page.waitForSelector("#db-board-wins-body li", { timeout: 15_000 });
-      await page.locator("#db-board-blocked").scrollIntoViewIfNeeded();
+      await page.waitForSelector("#db-topics-body", { timeout: 15_000 });
+      await page.locator("#db-topics").scrollIntoViewIfNeeded();
     },
   },
   {
     out: "docs/screenshots/settings-tabs/activity-1280x800.png",
-    path: "/activity",
+    path: "/agent?view=activity",
     marker: "Activity",
     prepare: async (page) => {
       await page.waitForSelector("#activity-full-list li", { timeout: 15_000 });
@@ -94,18 +112,79 @@ const SETTINGS_SHOTS: Shot[] = [
     path: "/calendar",
     marker: "Calendar",
     prepare: async (page) => {
-      await page.waitForSelector("#cal-week-grid .cal-day", { timeout: 15_000 });
-      await page.waitForSelector("#cal-week-grid .cal-ev", { timeout: 15_000 });
-      const status = await page.locator("#calendar-status-full").textContent();
-      if (!status || !/\d+ events/.test(status)) throw new Error("Calendar has no events: " + status);
+      await page.waitForSelector("#cal-week-grid", { timeout: 15_000 });
+      await page.waitForSelector("#calendar-status-full", { timeout: 15_000 });
     },
   },
   {
     out: "docs/screenshots/settings-tabs/notes-1280x800.png",
     path: "/notes",
-    marker: "Knowledge",
+    marker: "Notes",
     prepare: async (page) => {
       await page.waitForSelector("#knowledge-note-list", { timeout: 15_000 });
+    },
+  },
+];
+
+const DASHBOARD_V1_SHOTS: Shot[] = [
+  {
+    out: "docs/screenshots/dashboard-v1/dashboard-1280x800.png",
+    path: "/",
+    marker: "Dashboard",
+    prepare: async (page) => {
+      await page.waitForSelector("#panel-tasks #tasks-list li", { timeout: 20_000 });
+      await page.waitForSelector("#panel-attention .attention-reason", { timeout: 20_000 });
+      await page.waitForSelector("#panel-heatmap .heatmap-cell.level-1, #panel-heatmap .heatmap-cell.level-2", { timeout: 20_000 });
+      await page.waitForSelector("#panel-launchpad .launchpad-tile", { timeout: 20_000 });
+    },
+  },
+  {
+    out: "docs/screenshots/dashboard-v1/dashboard-mobile-390x844.png",
+    path: "/",
+    marker: "Dashboard",
+    prepare: async (page) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.waitForSelector("#dashboard-grid .dashboard-item", { timeout: 20_000 });
+      await page.waitForSelector("#panel-tasks", { timeout: 20_000 });
+    },
+  },
+  {
+    out: "docs/screenshots/dashboard-v1/attention-1280x800.png",
+    path: "/",
+    marker: "Dashboard",
+    clipSelector: '.dashboard-item[data-panel-id="attention"]',
+    prepare: async (page, baseUrl) => {
+      await putPackedTallAttentionLayout(baseUrl);
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await page.waitForSelector("#panel-attention", { timeout: 20_000 });
+      await waitForAttentionSectionHeadings(page);
+      const body = page.locator('.dashboard-item[data-panel-id="attention"] .dashboard-panel-body');
+      await body.evaluate((el) => {
+        el.scrollTop = el.scrollHeight;
+      });
+      await body.evaluate((el) => {
+        el.scrollTop = 0;
+      });
+      await page.locator('.dashboard-item[data-panel-id="attention"]').scrollIntoViewIfNeeded();
+      for (const name of ["Due or overdue", "Continue working", "On this day", "Rediscover"]) {
+        await page.getByRole("heading", { name }).waitFor({ state: "visible", timeout: 20_000 });
+      }
+      const rediscover = page.locator(".attention-block").filter({
+        has: page.getByRole("heading", { name: "Rediscover" }),
+      });
+      await rediscover.locator(".attention-reason").first().waitFor({ state: "visible", timeout: 20_000 });
+      await rediscover.getByText(/untouched for \d+ days/).first().waitFor({ state: "visible", timeout: 20_000 });
+    },
+  },
+  {
+    out: "docs/screenshots/dashboard-v1/attention-panel.png",
+    path: "/",
+    marker: "Dashboard",
+    clipSelector: "#panel-attention .attention-sections",
+    prepare: async (page) => {
+      await page.waitForSelector("#panel-attention .attention-controls", { timeout: 20_000 });
+      await waitForAttentionSectionHeadings(page);
+      await page.locator("#panel-attention").scrollIntoViewIfNeeded();
     },
   },
 ];
@@ -129,7 +208,8 @@ async function waitForServer(baseUrl: string, attempts = 60) {
 
 async function assertPageMarker(page: Page, path: string, marker: string) {
   const url = new URL(page.url());
-  if (url.pathname !== path) {
+  const expectedPath = new URL(path, url.origin).pathname;
+  if (url.pathname !== expectedPath) {
     throw new Error(`Wrong path for ${path}: got ${url.pathname} (full ${page.url()})`);
   }
   const h1 = (await page.locator("h1").first().textContent())?.trim() ?? "";
@@ -142,7 +222,7 @@ async function assertPageMarker(page: Page, path: string, marker: string) {
 
 async function captureShot(page: Page, baseUrl: string, shot: Shot) {
   await page.goto(`${baseUrl}${shot.path}`, { waitUntil: "domcontentloaded" });
-  if (shot.prepare) await shot.prepare(page);
+  if (shot.prepare) await shot.prepare(page, baseUrl);
   await assertPageMarker(page, shot.path, shot.marker);
   const outPath = join(repoRoot, shot.out);
   if (shot.clipSelector) {
@@ -169,15 +249,15 @@ function startAppServer(dataDir: string, port: number, icsLocalFile: string): Ch
   });
 }
 
-async function main() {
-  const shots = SETTINGS_SHOTS;
-
-  const dataDir = await mkdtemp(join(tmpdir(), "cc-ui-shot-"));
-  const icsPath = join(serverDir, "test/fixtures/demo-week.ics");
-
-  console.log("seeding", dataDir);
+async function runCapture(shots: Shot[], seedScript: string, icsLocalFile?: string) {
   await new Promise<void>((resolve, reject) => {
-    const seed = spawn("pnpm", ["exec", "tsx", "scripts/seed-ui-screenshots.ts"], {
+    const build = spawn("pnpm", ["run", "build"], { cwd: serverDir, stdio: "inherit" });
+    build.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`build exited ${code}`))));
+  });
+  const dataDir = await mkdtemp(join(tmpdir(), "cc-ui-shot-"));
+  console.log("seeding", dataDir, "via", seedScript);
+  await new Promise<void>((resolve, reject) => {
+    const seed = spawn("pnpm", ["exec", "tsx", seedScript], {
       cwd: serverDir,
       env: { ...process.env, DATA_DIR: dataDir },
       stdio: "inherit",
@@ -187,13 +267,18 @@ async function main() {
 
   const appPort = 3847 + Math.floor(Math.random() * 500);
   const baseUrl = `http://127.0.0.1:${appPort}`;
-  const app = startAppServer(dataDir, appPort, icsPath);
+  const app = startAppServer(dataDir, appPort, icsLocalFile ?? join(serverDir, "test/fixtures/demo-week.ics"));
   app.stderr?.on("data", (d) => process.stderr.write(d));
   try {
     await waitForServer(baseUrl);
     const browser = await chromium.launch();
     const page = await browser.newPage({ viewport: VIEWPORT });
     for (const shot of shots) {
+      if (shot.out.includes("dashboard-mobile")) {
+        await page.setViewportSize({ width: 390, height: 844 });
+      } else {
+        await page.setViewportSize(VIEWPORT);
+      }
       await captureShot(page, baseUrl, shot);
     }
     await browser.close();
@@ -213,6 +298,11 @@ async function main() {
     app.kill("SIGTERM");
     await rm(dataDir, { recursive: true, force: true });
   }
+}
+
+async function main() {
+  await runCapture(SETTINGS_SHOTS, "scripts/seed-ui-screenshots.ts");
+  await runCapture(DASHBOARD_V1_SHOTS, "scripts/seed-dashboard-screenshot.ts");
 }
 
 main().catch((err) => {

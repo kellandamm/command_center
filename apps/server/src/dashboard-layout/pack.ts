@@ -42,3 +42,19 @@ export function packAfterMove(panels: PanelLayoutEntry[], anchorId: string): Pan
 export function maxOccupiedRow(panels: PanelLayoutEntry[]): number {
   return panels.reduce((max, p) => Math.max(max, p.y + effectiveHeight(p)), 0);
 }
+
+export function packDashboardLayout(panels: PanelLayoutEntry[]): PanelLayoutEntry[] {
+  let out = panels.map((p) => ({ ...p }));
+  for (const p of out) out = packAfterMove(out, p.id);
+  return out;
+}
+
+export function overlappingPanelPairs(panels: PanelLayoutEntry[]): Array<[string, string]> {
+  const pairs: Array<[string, string]> = [];
+  for (let i = 0; i < panels.length; i++) {
+    for (let j = i + 1; j < panels.length; j++) {
+      if (rectanglesOverlap(panels[i], panels[j])) pairs.push([panels[i].id, panels[j].id]);
+    }
+  }
+  return pairs;
+}

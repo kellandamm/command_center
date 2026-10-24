@@ -19,6 +19,8 @@ import { panels } from "./panels/registry";
 import { FileKV, ensureDirs } from "./store";
 import { ConnectionsStore } from "./connections";
 import { CalendarWorkspace } from "./calendar/workspace";
+import { AttentionStore } from "./attention/store";
+import { LaunchpadStore } from "./launchpad/store";
 
 async function main() {
   const deployment = loadConfig();
@@ -45,6 +47,8 @@ async function main() {
   wireHobieBoardSync(hobieQueue, board, wins);
   const winsRollup = new WinsRollupService(cfg, wins);
   const dashboardLayout = await DashboardLayoutStore.open(cfg.dataDir, panels.map((p) => p.id));
+  const attention = await AttentionStore.open(cfg.dataDir);
+  const launchpad = await LaunchpadStore.open(cfg.dataDir);
 
   const scheduler = new Scheduler({
     cfg,
@@ -68,6 +72,8 @@ async function main() {
     wins,
     winsRollup,
     dashboardLayout,
+    attention,
+    launchpad,
     connections,
     calendar,
   });
