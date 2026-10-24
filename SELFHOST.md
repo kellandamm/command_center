@@ -8,6 +8,11 @@
 2. Copy `compose.yml` and `.env.example` (as `.env`), set Cloudflare Access and/or `ADMIN_TOKEN`.
 3. `docker compose up -d` and open the site through your tunnel.
 
+**Rollback:** Each `main` build also publishes `ghcr.io/kellandamm/command-center-web:sha-<short>` (7-character commit SHA) beside `:latest`.
+Pin `IMAGE=ghcr.io/kellandamm/command-center-web:sha-<short>` in `.env`, then `docker compose up -d`.
+If Watchtower tracks this service, disable updates for the rollback (`com.centurylinklabs.watchtower.enable=false` on the service, or stop Watchtower) so it does not pull `:latest` over your pin.
+Remove the label or restart Watchtower when you are ready to follow `:latest` again.
+
 The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOST_PORT}` by default.
 
 ## Configuration (environment)
