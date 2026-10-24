@@ -1,4 +1,5 @@
 import { DEFAULT_SIDEBAR_TABS, visibleNavTabs, type SidebarTab } from "../nav-tabs";
+import { COMPONENT_CSS } from "./component-css";
 import { formatThemeVars, THEME_DARK, THEME_LIGHT, THEME_META_COLORS } from "./theme-tokens";
 
 export const esc = (s: unknown) =>
@@ -15,6 +16,7 @@ const CSS = `
 html.dark{
   ${formatThemeVars(THEME_DARK)};
 }
+${COMPONENT_CSS}
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;background:var(--background);color:var(--foreground);
   font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
@@ -134,16 +136,6 @@ pre.briefing.bad{color:var(--destructive);background:transparent;border-color:co
 .notes-size-small{font-size:.75rem}
 .notes-size-medium{font-size:.875rem}
 .notes-size-large{font-size:1rem}
-.dashboard-overview{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));gap:1rem;align-items:stretch}
-.dashboard-overview-card{display:flex;flex-direction:column;align-items:flex-start;min-height:10rem}
-.dashboard-overview-card h2{margin-bottom:.5rem}
-.dashboard-overview-card .dashboard-summary{margin:.35rem 0 1rem;line-height:1.5}
-.dashboard-attention-card{grid-column:1/-1}
-.dashboard-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;width:100%}
-.dashboard-metric{display:flex;flex-direction:column;gap:.15rem;padding:.75rem;border:1px solid var(--border);border-radius:calc(var(--radius) - 2px)}
-.dashboard-metric:hover,.dashboard-card-link:hover{text-decoration:underline;text-underline-offset:2px}
-.dashboard-metric strong{font-size:1.5rem;line-height:1.25}
-.dashboard-card-link{margin-top:auto;color:var(--muted-foreground);font-size:.8125rem;font-weight:500}
 .page-content:has(.morning-briefing){max-width:none;padding:clamp(1rem,3vw,2.75rem);background:#f1eee5;color:#191815}
 html.dark .page-content:has(.morning-briefing){background:#171610;color:#f0ede3}
 .morning-briefing{--paper-ink:#191815;--paper-muted:#68665f;--paper-rule:#bcb8ad;--paper-accent:#a92d1c;max-width:90rem;margin:0 auto}
@@ -198,7 +190,6 @@ html.dark .morning-briefing{--paper-ink:#f0ede3;--paper-muted:#b2aea3;--paper-ru
   .theme-toggle{width:auto}
   .page-content{padding:1rem .75rem 1.5rem}
 }
-@media(max-width:480px){.dashboard-metrics{grid-template-columns:1fr}}
 @media(max-width:1000px){
   .briefing-grid{grid-template-columns:minmax(0,1fr)}
   .briefing-rail{grid-column:auto;grid-row:auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}

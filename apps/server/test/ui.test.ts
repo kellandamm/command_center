@@ -23,6 +23,10 @@ test("ui: dashboard renders draggable grid panels and v1 widgets", () => {
   assert.match(html, /id="panel-tasks"/);
   assert.match(html, /id="panel-attention"/);
   assert.match(html, /id="panel-heatmap"/);
+  assert.match(html, /id="panel-focus"/);
+  assert.match(html, /PANEL_TITLES/);
+  assert.match(html, /class="sr-only"/);
+  assert.match(html, /"activity":"\/agent\?view=activity"/);
   assert.match(html, /id="panel-launchpad"/);
   assert.match(html, /data-panel-id="tasks"/);
   assert.match(html, /\/api\/dashboard\/tasks/);

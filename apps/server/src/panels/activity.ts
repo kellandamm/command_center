@@ -1,15 +1,13 @@
+import { panelCard } from "../ui/components";
 import type { PanelModule } from "./types";
 
 export const activityPanel: PanelModule = {
   id: "activity",
   title: "Activity",
-  pageHref: "/activity",
-  dashboardHtml: `
-<section class="card" id="panel-activity">
-  <h2 style="margin:0 0 8px">Activity</h2>
-  <p class="dim">Updates from external agents (MCP / webhooks).</p>
-  <ul id="activity-list" class="todoist-list"></ul>
-</section>`,
+  pageHref: "/agent?view=activity",
+  dashboardHtml: panelCard("panel-activity", `
+  <p class="dim ui-card-desc">Updates from external agents (MCP / webhooks).</p>
+  <ul id="activity-list" class="todoist-list"></ul>`),
   async handle(ctx, req, res, path) {
     const json = (status: number, data: unknown) => {
       res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
@@ -30,7 +28,7 @@ export function activityDashboardScript(): string {
 function renderActivity(rows){
   var el=document.getElementById("activity-list");
   if(!el)return;
-  if(!rows||!rows.length){el.innerHTML='<li class="dim">No agent updates yet.</li>';return;}
+  if(!rows||!rows.length){el.innerHTML='<li><div class="ui-empty" role="status"><p class="ui-empty-title">No agent updates yet.</p></div></li>';return;}
   el.innerHTML=rows.map(function(u){
     var t=new Date(u.createdAt).toLocaleString();
     return '<li class="todoist-item"><div class="dim">'+esc(u.panel)+' · '+esc(u.clientId)+' · '+esc(t)+'</div><div>'+esc(u.markdown)+'</div></li>';

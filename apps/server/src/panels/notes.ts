@@ -15,6 +15,7 @@ import { notesZipLimitsFromEnv } from "../notes/zip-limits";
 import { readNotesZip } from "../notes/zip-read";
 import { buildNotesZipExport } from "../notes/zip-export";
 import { OWNER_ACTION_FORBIDDEN } from "../owner-auth";
+import { panelCard } from "../ui/components";
 import type { PanelModule } from "./types";
 
 const MAX_KNOWLEDGE_QUESTIONS_PER_HOUR = 10;
@@ -67,16 +68,13 @@ export const notesPanel: PanelModule = {
   id: "notes",
   title: "Notes",
   pageHref: "/notes",
-  dashboardHtml: `
-<section class="card" id="panel-notes">
-  <h2 style="margin:0 0 8px">Notes</h2>
-  <p class="dim">Markdown saved in the server’s personal knowledge store.</p>
-  <textarea id="notes-editor" spellcheck="true" style="width:100%;min-height:8rem;font-family:inherit"></textarea>
-  <div class="row" style="margin-top:8px">
+  dashboardHtml: panelCard("panel-notes", `
+  <p class="dim ui-card-desc">Markdown saved in the server’s personal knowledge store.</p>
+  <textarea id="notes-editor" spellcheck="true"></textarea>
+  <div class="row notes-panel-actions">
     <button type="button" id="notes-save">Save</button>
     <span id="notes-status" class="dim"></span>
-  </div>
-</section>`,
+  </div>`),
   async handle(ctx, req, res, path) {
     const json = (status: number, data: unknown) => {
       res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });

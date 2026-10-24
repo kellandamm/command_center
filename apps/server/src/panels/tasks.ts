@@ -2,17 +2,16 @@ import { BOARD_COLUMNS } from "../board/types";
 import { dayKey } from "../store";
 import { sortDashboardTasks, type TaskFilter } from "../tasks/sort";
 import { earliestBlockStartByCard } from "../tasks/blocks";
+import { panelCard } from "../ui/components";
 import type { PanelModule } from "./types";
 
 export const tasksPanel: PanelModule = {
   id: "tasks",
   title: "Tasks",
   pageHref: "/agent?view=board",
-  dashboardHtml: `
-<section class="card" id="panel-tasks">
+  dashboardHtml: panelCard("panel-tasks", `
   <div class="tasks-chips" id="tasks-chips" role="toolbar" aria-label="Task filters"></div>
-  <ul id="tasks-list" class="todoist-list panel-scroll-region"></ul>
-</section>`,
+  <ul id="tasks-list" class="todoist-list panel-scroll-region"></ul>`),
   async handle(ctx, req, res, path) {
     const json = (status: number, data: unknown) => {
       res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
@@ -64,7 +63,7 @@ function renderTasks(data){
   var list=document.getElementById("tasks-list");
   if(!list)return;
   var rows=data.tasks||[];
-  if(!rows.length){list.innerHTML='<li class="dim">No tasks match this filter.</li>';return;}
+  if(!rows.length){list.innerHTML='<li><div class="ui-empty" role="status"><p class="ui-empty-title">No tasks match this filter.</p></div></li>';return;}
   list.innerHTML=rows.map(function(t){
     var meta=[t.column,t.priority];
     if(t.dueDate)meta.push("due "+t.dueDate);
