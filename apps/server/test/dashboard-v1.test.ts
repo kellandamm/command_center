@@ -8,8 +8,9 @@ import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { SESSION_GAP_MS, buildSessions } from "../src/attention/sessions";
 import { pickRediscover } from "../src/attention/rediscover";
-import { composeAttentionSections } from "../src/attention/sections";
+import { composeAttentionSections, matchesOnThisDay } from "../src/attention/sections";
 import { AttentionStore, snoozeUntil } from "../src/attention/store";
+import { dayKey } from "../src/store";
 import { aggregateDailyCounts, buildHeatmapDays, heatmapDateRange } from "../src/heatmap/counts";
 import { LaunchpadStore, validateLaunchpadUrl } from "../src/launchpad/store";
 import { compareDashboardTasks, sortDashboardTasks } from "../src/tasks/sort";
@@ -91,6 +92,14 @@ test("attention: dedupes items across sections and limits to three", () => {
   for (const section of sections) assert.ok(section.items.length <= 3);
 });
 
+test("attention: on-this-day matches prior-year anniversaries in server timezone", () => {
+  const today = dayKey(new Date(), "UTC");
+  const year = Number(today.slice(0, 4)) - 1;
+  const created = `${year}-${today.slice(5)}T12:00:00.000Z`;
+  assert.equal(matchesOnThisDay(created, today, "UTC"), true);
+  assert.equal(matchesOnThisDay(new Date().toISOString(), today, "UTC"), false);
+});
+
 test("attention: rediscover pick is stable for a day", () => {
   const candidates = Array.from({ length: 10 }, (_, i) => ({
     id: `note:n${i}`,
@@ -132,6 +141,36 @@ async function seedDashboardDir(dir: string): Promise<void> {
     seed.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`seed exited ${code}`))));
   });
 }
+
+test("attention API returns four non-empty seeded sections", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-attn-api-"));
+  const cfg = loadConfig({ DATA_DIR: dir, ADMIN_TOKEN: TOKEN, ALLOW_INSECURE_NO_AUTH: "1", TZ: "UTC" });
+  await seedDashboardDir(dir);
+  const settings = new SettingsStore(dir);
+  await settings.load();
+  const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
+  const notes = await NotesStore.open(dir);
+  const integration = await openIntegrationStores(dir, cfg);
+  const server = createApp({ cfg, auth: makeAuthenticator(cfg), settings, dailyBriefing, notes, ...integration });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    const res = await fetch(`${base}/api/dashboard/attention`, { headers: { authorization: `Bearer ${TOKEN}` } });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { sections: Array<{ id: string; items: Array<{ pinned?: boolean }> }> };
+    const ids = ["due", "continue", "on-this-day", "rediscover"];
+    for (const id of ids) {
+      const section = body.sections.find((s) => s.id === id);
+      assert.ok(section, id);
+      assert.ok(section!.items.length > 0, `${id} should have items`);
+    }
+    const due = body.sections.find((s) => s.id === "due")!;
+    assert.equal(due.items[0]?.pinned, true);
+  } finally {
+    await closeIntegrationServer(server, integration);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test("heatmap API returns non-zero seeded counts and intensity levels", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-heatmap-api-"));

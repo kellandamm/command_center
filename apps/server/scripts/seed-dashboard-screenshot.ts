@@ -54,6 +54,7 @@ async function main() {
   const yearAgoToday = new Date(now);
   yearAgoToday.setUTCFullYear(yearAgoToday.getUTCFullYear() - 1);
   const staleUpdated = new Date(now.getTime() - 120 * 86_400_000);
+  const noonUtc = (d: Date) => `${d.toISOString().slice(0, 10)}T12:00:00.000Z`;
 
   const settings = new SettingsStore(dir);
   await settings.load();
@@ -88,15 +89,15 @@ async function main() {
   });
 
   await patchKnowledgeNoteTimes(dir, [
-    { title: "Launch retrospective", createdAt: yearAgoToday.toISOString(), updatedAt: yearAgoToday.toISOString() },
-    { title: "Old research draft", updatedAt: staleUpdated.toISOString() },
+    { title: "Launch retrospective", createdAt: noonUtc(yearAgoToday), updatedAt: noonUtc(yearAgoToday) },
+    { title: "Old research draft", updatedAt: noonUtc(staleUpdated) },
   ]);
   const knowledge = JSON.parse(await readFile(join(dir, "knowledge.json"), "utf8")) as {
     notes: Array<{ title: string; updatedAt: string }>;
     sources: Array<{ title: string; updatedAt: string }>;
   };
   const source = knowledge.sources.find((s) => s.title === "Agent security primer");
-  if (source) source.updatedAt = staleUpdated.toISOString();
+  if (source) source.updatedAt = noonUtc(staleUpdated);
   for (let week = 1; week < 6; week++) {
     const edited = new Date(now.getTime() - week * 7 * 86_400_000);
     const note = knowledge.notes.find((n) => n.title === "API integration draft");
@@ -177,6 +178,15 @@ async function main() {
   await writeBriefingFile(briefingDayPath(briefingDir, briefing.day), briefing);
 
   const layout = defaultDashboardLayout(panels.map((p) => p.id));
+  const tasksEntry = layout.panels.find((p) => p.id === "tasks");
+  const attentionEntry = layout.panels.find((p) => p.id === "attention");
+  if (tasksEntry) Object.assign(tasksEntry, { x: 0, y: 0, w: 4, h: 4 });
+  if (attentionEntry) Object.assign(attentionEntry, { x: 4, y: 0, w: 8, h: 8 });
+  for (const entry of layout.panels) {
+    if (entry.id === "heatmap") Object.assign(entry, { x: 0, y: 4, w: 4, h: 3 });
+    if (entry.id === "launchpad") Object.assign(entry, { x: 0, y: 7, w: 4, h: 3 });
+    if (entry.id === "daily-briefing") Object.assign(entry, { x: 4, y: 8, w: 8, h: 2 });
+  }
   await writeFile(join(dir, "dashboard-layout.json"), JSON.stringify(layout, null, 2));
 
   board.close();

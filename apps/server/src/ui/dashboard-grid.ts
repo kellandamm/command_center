@@ -40,8 +40,11 @@ export const dashboardGridCss = `
 .dashboard-collapse{
   border:0;background:transparent;color:var(--muted-foreground);min-width:2rem;min-height:2rem;
   padding:.25rem;border-radius:calc(var(--radius) - 4px);font-size:1rem;line-height:1;cursor:pointer}
-.dashboard-panel-body{flex:1;min-height:0;overflow:auto;padding:.5rem .65rem .65rem;display:flex;flex-direction:column;gap:.35rem}
-.dashboard-panel-body .panel-scroll-region{flex:1;min-height:0;overflow:auto}
+.dashboard-panel-body{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto;padding:.5rem .65rem .65rem;display:flex;flex-direction:column;gap:.35rem;overscroll-behavior:contain}
+.dashboard-panel-body .panel-scroll-region{flex:0 0 auto;min-height:0;overflow:visible}
+@media(min-width:901px){
+  .dashboard-item:not(.is-collapsed) .dashboard-panel-body{max-height:100%}
+}
 .dashboard-panel-body>.row:first-child{display:none}
 .dashboard-panel-body>h2:first-child{display:none}
 .dashboard-resize{

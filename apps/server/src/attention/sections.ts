@@ -38,34 +38,40 @@ function dueReason(card: BoardCard, todayYmd: string): string {
 }
 
 function anniversaryReason(createdAt: string, todayYmd: string, tz: string): string {
-  const created = new Date(createdAt);
-  const today = new Date(`${todayYmd}T12:00:00Z`);
-  const years = today.getUTCFullYear() - created.getUTCFullYear();
+  const years = Number(todayYmd.slice(0, 4)) - yearInTz(createdAt, tz);
   if (years >= 1) return years === 1 ? "created 1 year ago today" : `created ${years} years ago today`;
+  const created = new Date(createdAt);
   const label = new Intl.DateTimeFormat("en-US", { timeZone: tz, month: "short", day: "numeric" }).format(created);
   return `from ${label}`;
 }
 
-function matchesOnThisDay(createdAt: string, todayYmd: string, tz: string): boolean {
-  const fmt = new Intl.DateTimeFormat("en-US", { timeZone: tz, month: "numeric", day: "numeric", year: "numeric" });
-  const parts = (d: Date) => {
-    const p = fmt.formatToParts(d);
-    const get = (t: string) => p.find((x) => x.type === t)?.value ?? "";
-    return { month: get("month"), day: get("day"), year: get("year") };
-  };
-  const today = parts(new Date(`${todayYmd}T12:00:00Z`));
-  const created = parts(new Date(createdAt));
-  if (created.month === today.month && created.day === today.day && created.year !== today.year) return true;
+function yearInTz(iso: string, tz: string): number {
+  return Number(
+    new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric" }).format(new Date(iso)),
+  );
+}
+
+function monthDayInTz(iso: string, tz: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })
+    .format(new Date(iso))
+    .slice(5);
+}
+
+export function matchesOnThisDay(createdAt: string, todayYmd: string, tz: string): boolean {
+  const todayMd = todayYmd.slice(5);
+  const createdMd = monthDayInTz(createdAt, tz);
+  if (createdMd === todayMd) {
+    const createdYear = yearInTz(createdAt, tz);
+    const todayYear = Number(todayYmd.slice(0, 4));
+    if (createdYear < todayYear) return true;
+    return false;
+  }
   const weekAgo = new Date(`${todayYmd}T12:00:00Z`);
   weekAgo.setUTCDate(weekAgo.getUTCDate() - 7);
   const monthAgo = new Date(`${todayYmd}T12:00:00Z`);
   monthAgo.setUTCMonth(monthAgo.getUTCMonth() - 1);
-  const sameDay = (a: Date, b: Date) => {
-    const pa = parts(a);
-    const pb = parts(b);
-    return pa.month === pb.month && pa.day === pb.day;
-  };
-  return sameDay(new Date(createdAt), weekAgo) || sameDay(new Date(createdAt), monthAgo);
+  const sameMd = (a: Date, b: Date) => monthDayInTz(a.toISOString(), tz) === monthDayInTz(b.toISOString(), tz);
+  return sameMd(new Date(createdAt), weekAgo) || sameMd(new Date(createdAt), monthAgo);
 }
 
 export interface ComposeInput {

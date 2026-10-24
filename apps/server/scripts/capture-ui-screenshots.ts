@@ -123,17 +123,19 @@ const DASHBOARD_V1_SHOTS: Shot[] = [
     out: "docs/screenshots/dashboard-v1/attention-1280x800.png",
     path: "/",
     marker: "Dashboard",
+    clipSelector: '.dashboard-item[data-panel-id="attention"]',
     prepare: async (page) => {
-      await page.waitForSelector(".attention-block h3", { timeout: 20_000 });
-      await page.waitForFunction(() => document.querySelectorAll(".attention-block").length >= 4);
-      await page.locator("#panel-attention").scrollIntoViewIfNeeded();
+      await page.waitForFunction(() => document.querySelectorAll(".attention-block h3").length >= 4);
+      await page.getByRole("heading", { name: "On this day" }).waitFor({ timeout: 20_000 });
+      await page.getByRole("heading", { name: "Rediscover" }).waitFor({ timeout: 20_000 });
+      await page.locator('.dashboard-item[data-panel-id="attention"]').scrollIntoViewIfNeeded();
     },
   },
   {
     out: "docs/screenshots/dashboard-v1/attention-panel.png",
     path: "/",
     marker: "Dashboard",
-    clipSelector: "#panel-attention",
+    clipSelector: "#panel-attention .attention-sections",
     prepare: async (page) => {
       await page.waitForSelector("#panel-attention .attention-controls", { timeout: 20_000 });
       await page.locator("#panel-attention").scrollIntoViewIfNeeded();
