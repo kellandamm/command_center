@@ -3,7 +3,9 @@ export const COMPONENT_CSS = `
 .sr-only,.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .btn-secondary{background:var(--secondary);color:var(--secondary-foreground);border-color:transparent}
 .btn-outline{background:transparent;color:var(--foreground);border-color:var(--border)}
-.btn-outline:hover{background:var(--accent)}
+.btn-outline:hover{background:var(--selected);color:var(--selected-foreground)}
+button[aria-pressed=true]:not(.ghost),.btn[aria-pressed=true]:not(.ghost){
+  background:var(--selected);color:var(--selected-foreground);border-color:color-mix(in srgb,var(--primary) 28%,var(--border))}
 .btn-destructive{background:var(--destructive);color:var(--primary-foreground);border-color:transparent}
 .btn-link{background:transparent;color:var(--foreground);border-color:transparent;padding:0;min-height:auto;text-decoration:underline;text-underline-offset:3px}
 .btn-link:hover{opacity:1;text-decoration-thickness:2px}
@@ -19,10 +21,10 @@ export const COMPONENT_CSS = `
 .ui-badge-secondary{background:var(--muted);color:var(--muted-foreground)}
 .ui-badge-outline{background:transparent;color:var(--foreground)}
 .ui-badge-destructive{background:color-mix(in srgb,var(--destructive) 12%,transparent);color:var(--destructive);border-color:color-mix(in srgb,var(--destructive) 35%,var(--border))}
-.ui-badge-warning{background:color-mix(in srgb,var(--warning, #ca8a04) 15%,transparent);color:var(--warning, #ca8a04);border-color:color-mix(in srgb,var(--warning, #ca8a04) 35%,var(--border))}
+.ui-badge-warning{background:color-mix(in srgb,var(--warning) 15%,transparent);color:var(--warning);border-color:color-mix(in srgb,var(--warning) 35%,var(--border))}
 .ui-tabs{display:flex;gap:1.25rem;border-bottom:1px solid var(--border);margin-bottom:1rem;overflow:auto}
 .ui-tabs a{padding:.65rem 0;white-space:nowrap;color:var(--muted-foreground);font-size:.875rem;font-weight:500}
-.ui-tabs a[aria-current=page]{color:var(--foreground);border-bottom:2px solid var(--foreground);font-weight:600}
+.ui-tabs a[aria-current=page]{color:var(--selected-foreground);border-bottom:2px solid var(--selected-foreground);font-weight:600}
 .ui-table{width:100%;border-collapse:collapse;font-size:.875rem}
 .ui-table th,.ui-table td{text-align:left;padding:.4rem .35rem;border-top:1px solid var(--border);vertical-align:top}
 .ui-table thead th{border-top:0;color:var(--muted-foreground);font-weight:500;font-size:.8125rem}
@@ -61,7 +63,7 @@ export const COMPONENT_CSS = `
 .focus-actions{margin:.35rem 0}
 .focus-timer{font-size:1.1rem;font-weight:600;margin:.35rem 0 0}
 .host-metric-bar{background:var(--border);border-radius:6px;height:8px;flex:1;min-width:80px}
-.host-metric-bar>span{display:block;height:100%;background:var(--accent);border-radius:6px}
+.host-metric-bar>span{display:block;height:100%;background:var(--primary);border-radius:6px}
 .weather-temp{font-size:1.6rem;margin:.2em 0}
 .weather-meta{margin:0}
 #panel-notes textarea{width:100%;min-height:8rem;font-family:inherit}
