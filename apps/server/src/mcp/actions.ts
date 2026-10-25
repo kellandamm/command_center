@@ -9,6 +9,7 @@ import { BOARD_COLUMNS, type BoardColumn } from "../board/types";
 import type { HobieQueueStore } from "../stores/hobie-queue";
 import type { PanelUpdatesStore } from "../stores/panel-updates";
 import type { WinsStore } from "../wins/store";
+import { importMeetingTranscript, type MeetingImportResult } from "../meetings/import-service";
 
 const stripHtml = (s: string) => sanitizeHtml(s, { allowedTags: [], allowedAttributes: {} }).trim();
 
@@ -93,6 +94,13 @@ export async function actionHobieQueueTask(
     deps.cfg.mcpMaxHobiePending,
   );
   return { id: task.id, urgent: task.urgent, createdAt: task.createdAt };
+}
+
+export async function actionMeetingImport(
+  deps: IntegrationDeps,
+  body: Record<string, unknown>,
+): Promise<MeetingImportResult> {
+  return importMeetingTranscript(deps.cfg, deps.notes, body);
 }
 
 export type WebhookAction =

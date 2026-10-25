@@ -51,6 +51,7 @@ import { capturePage } from "./ui/capture-page";
 import { handleReadLaterRoutes } from "./read-later/routes";
 import { ReadLaterService } from "./read-later/service";
 import { CaptureAccess } from "./read-later/capture-access";
+import { handleMeetingImportRoute } from "./meetings/routes";
 import { handleXBookmarkApiRoutes, handleXBookmarkImport, isXBookmarkImportPayload } from "./read-later/x-bookmarks-routes";
 import type { XBookmarksService } from "./read-later/x-bookmarks-service";
 import type { XBookmarksStore } from "./read-later/x-bookmarks-store";
@@ -229,6 +230,11 @@ export function createApp(app: App): Server {
           await handleReadLaterRoutes(app.notes, readLater, captureAccess, req, res, path, (r) => readBody(r, 300_000));
           return;
         }
+      }
+
+      if (method === "POST" && path === "/api/meetings/import") {
+        await handleMeetingImportRoute(app.cfg, app.notes, req, res);
+        return;
       }
 
       if (await handleSharePublicRoutes(app.cfg, app.shareLinks, shareLinkRateLimiter, req, res, path)) return;

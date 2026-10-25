@@ -188,6 +188,7 @@ export function notesPage(nav?: NavLink[]): string {
       <p class="dim">Questions use only notes and captured sources assigned to the selected space. Content is sent to the configured LLM only when you ask, with a limit of 10 questions per hour.</p>
       <label for="knowledge-ask-space">Space</label><select id="knowledge-ask-space"><option value="">Choose a space</option></select>
       <label for="knowledge-question">Question</label><textarea id="knowledge-question" style="min-height:5rem" placeholder="What do my sources say about…"></textarea>
+      <label id="knowledge-ask-meetings-wrap" class="row" style="margin-top:.5rem;display:none"><input id="knowledge-ask-meetings" type="checkbox"> Include sensitive meeting transcripts (owner only)</label>
       <button id="knowledge-ask" type="button" style="margin-top:.75rem">Ask with sources</button>
       <div id="knowledge-answer" style="white-space:pre-wrap;margin-top:1rem"></div>
       <div id="knowledge-citations" class="row"></div>
@@ -878,11 +879,14 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     var spaceId=$("knowledge-ask-space").value,question=$("knowledge-question").value.trim();
     if(!spaceId||!question){$("knowledge-answer").textContent="Choose a space and enter a question.";return;}
     $("knowledge-answer").textContent="Working…";$("knowledge-citations").replaceChildren();
-    apiCall("/api/knowledge/ask","POST",{spaceId:spaceId,question:question}).then(function(data){
+    var askBody={spaceId:spaceId,question:question};
+    if(serverCaps.owner&&$("knowledge-ask-meetings").checked)askBody.includeSensitiveMeetings=true;
+    apiCall("/api/knowledge/ask","POST",askBody).then(function(data){
       $("knowledge-answer").textContent=data.answer;
       (data.citations||[]).forEach(function(citation){
         var link=node("a","btn ghost","["+citation.number+"] "+citation.title);
-        var href=safeUrl(citation.url)||(["/board","/calendar"].indexOf(citation.url)>=0?citation.url:null);
+        var noteHref=citation.url&&citation.url.indexOf("/notes?note=")===0?citation.url:null;
+        var href=noteHref||safeUrl(citation.url)||(["/board","/calendar"].indexOf(citation.url)>=0?citation.url:null);
         link.href=href||"#";
         if(safeUrl(citation.url)){link.target="_blank";link.rel="noopener noreferrer";}
         $("knowledge-citations").appendChild(link);
@@ -941,6 +945,7 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
   function initialLoad(){
     return api("/api/state").then(function(data){
       serverCaps.owner=!!data.owner;serverCaps.shareLinksEnabled=!!data.shareLinksEnabled;
+      $("knowledge-ask-meetings-wrap").style.display=serverCaps.owner?"flex":"none";
     }).catch(function(){}).then(function(){
       return load().then(renderGraph);
     }).catch(function(error){showError(error);status.appendChild(document.createTextNode(" Retry loading your notes. Your saved content has not been changed."));$("knowledge-retry-load").hidden=false;});

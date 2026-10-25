@@ -5,6 +5,7 @@ import {
   actionBoardList,
   actionBoardMove,
   actionHobieQueueTask,
+  actionMeetingImport,
   actionNotesAppend,
   actionNotesRead,
   actionPanelPostUpdate,
@@ -98,6 +99,45 @@ export function createCommandCenterMcp(deps: IntegrationDeps, clientId: string):
     async ({ id, column, position }) => {
       const { card } = await actionBoardMove(deps, clientId, id, column, position);
       return { content: [{ type: "text", text: `Moved to ${card.column} (${card.id})` }] };
+    },
+  );
+
+  server.registerTool(
+    "meeting_import",
+    {
+      description: "Import a meeting transcript as a sensitive note in the Meetings space (idempotent by Plaud sourceId).",
+      inputSchema: {
+        sourceId: z.string().describe("Plaud file id for idempotency"),
+        title: z.string(),
+        recordedAt: z.string().describe("ISO-8601 timestamp"),
+        durationSec: z.number().optional(),
+        participants: z.array(z.string()).optional(),
+        transcript: z.union([
+          z.string(),
+          z.array(
+            z.object({
+              speaker: z.string().optional(),
+              startSec: z.number().optional(),
+              text: z.string(),
+            }),
+          ),
+        ]),
+      },
+    },
+    async (input) => {
+      const result = await actionMeetingImport(deps, input as Record<string, unknown>);
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              noteId: result.note.id,
+              created: result.created,
+              summaryStatus: result.summaryStatus,
+            }),
+          },
+        ],
+      };
     },
   );
 
