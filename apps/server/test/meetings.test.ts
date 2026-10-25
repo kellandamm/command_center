@@ -18,7 +18,7 @@ import { setIntegrationCfAccessVerifier } from "../src/mcp/auth";
 import { finalizeMeetingNoteContent } from "../src/meetings/content";
 import { MEETING_IMPORT_MAX_BYTES, MEETING_TAG, NOTE_BODY_MAX_BYTES, SUMMARY_PENDING } from "../src/meetings/constants";
 import { findMeetingNoteBySourceId } from "../src/meetings/import-service";
-import { meetingSummaryStateTag, parseMeetingSummaryState } from "../src/meetings/constants";
+import { parseMeetingSummaryState } from "../src/meetings/constants";
 import { getMeetingSummaryQueue, resetMeetingSummaryQueueForTests } from "../src/meetings/summary-queue";
 import { CHUNK_CHARS, mergeMeetingPartials, summarizeMeetingTranscript } from "../src/meetings/summarize";
 
@@ -455,9 +455,14 @@ test("meetings summarize: does not clear edit guard after local edit", async () 
 test("meetings import: concurrent imports for same sourceId succeed once", async () => {
   const h = await harness();
   try {
+    let unblock: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
     const originalFetch = globalThis.fetch;
     withMockLlmFetch(async (input, init) => {
       if (String(input).includes("api.example")) {
+        await gate;
         return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), {
           status: 200,
           headers: { "content-type": "application/json" },
@@ -475,6 +480,8 @@ test("meetings import: concurrent imports for same sourceId succeed once", async
       assert.ok([200, 201].includes(res.status), `status ${res.status}`);
     }
     assert.equal(findMeetingNoteBySourceId(h.notes, "plaud-race")?.id, (await results[0]!.json()).noteId);
+    unblock();
+    await waitForMeetingSummaryIdle();
   } finally {
     await h.close();
   }
@@ -709,6 +716,7 @@ test("meetings import: background summary does not overwrite a concurrent edit",
     await waitForMeetingSummaryIdle();
     assert.match(h.notes.getNote(noteId)!.content, /User async edit/);
     assert.doesNotMatch(h.notes.getNote(noteId)!.content, /Should not win/);
+    assert.equal(parseMeetingSummaryState(h.notes.getNote(noteId)!.tags), null);
   } finally {
     await h.close();
   }
@@ -860,6 +868,162 @@ test("meetings summary queue: shutdown does not hang on blocked job", async () =
     await getMeetingSummaryQueue().shutdown(300);
     assert.ok(Date.now() - started < 2_000);
     unblock();
+  } finally {
+    await h.close();
+  }
+});
+
+test("meetings summary: resumePending skips edited notes and clears pending tag", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-meetings-resume-edit-"));
+  let unblock: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    unblock = resolve;
+  });
+  const originalFetch = globalThis.fetch;
+  withMockLlmFetch(async (input, init) => {
+    if (String(input).includes("api.example")) {
+      await gate;
+      return new Response(JSON.stringify({ choices: [{ message: { content: "Must not apply" } }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return originalFetch(input, init);
+  });
+  const h1 = await harness({}, false, dir, { keepData: true });
+  let noteId = "";
+  try {
+    const res = await fetch(`${h1.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-resume-edit", transcript: "resume edit case" }),
+    });
+    noteId = (await res.json()).noteId;
+    const note = h1.notes.getNote(noteId)!;
+    await h1.notes.updateNote(noteId, {
+      content: `${note.content}\n\nUser edit before restart.`,
+      expectedVersion: note.version ?? 0,
+    });
+    unblock();
+    await waitForMeetingSummaryIdle();
+  } finally {
+    await h1.close();
+  }
+  const h2 = await harness({}, false, dir, { keepData: true });
+  try {
+    await waitForMeetingSummaryIdle();
+    const note = h2.notes.getNote(noteId)!;
+    assert.match(note.content, /User edit before restart/);
+    assert.doesNotMatch(note.content, /Must not apply/);
+    assert.equal(parseMeetingSummaryState(note.tags), null);
+  } finally {
+    await h2.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("meetings import: failed summary still allows re-import of same recording", async () => {
+  const h = await harness();
+  try {
+    const originalFetch = globalThis.fetch;
+    withMockLlmFetch(async (input, init) => {
+      if (String(input).includes("api.example")) {
+        return new Response("err", { status: 500 });
+      }
+      return originalFetch(input, init);
+    });
+    const first = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-fail-reimport", transcript: "first pass" }),
+    });
+    const { noteId } = await first.json();
+    await waitForNoteSummary(noteId, h.notes, true);
+    assert.equal(parseMeetingSummaryState(h.notes.getNote(noteId)!.tags), "failed");
+
+    withMockLlmFetch(async (input, init) => {
+      if (String(input).includes("api.example")) {
+        return new Response(JSON.stringify({ choices: [{ message: { content: "Recovery summary" } }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return originalFetch(input, init);
+    });
+    const second = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-fail-reimport", transcript: "second pass" }),
+    });
+    assert.equal(second.status, 200);
+    await waitForNoteSummary(noteId, h.notes);
+    assert.match(h.notes.getNote(noteId)!.content, /Recovery summary/);
+  } finally {
+    await h.close();
+  }
+});
+
+test("meetings import: manual summarize after failure keeps import guard in sync", async () => {
+  const h = await harness({}, true);
+  try {
+    const originalFetch = globalThis.fetch;
+    withMockLlmFetch(async (input, init) => {
+      if (String(input).includes("api.example")) {
+        return new Response("err", { status: 500 });
+      }
+      return originalFetch(input, init);
+    });
+    const imported = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-fail-manual", transcript: "fail then manual" }),
+    });
+    const { noteId } = await imported.json();
+    await waitForNoteSummary(noteId, h.notes, true);
+
+    withMockLlmFetch(async (input, init) => {
+      if (String(input).includes("api.example")) {
+        return new Response(JSON.stringify({ choices: [{ message: { content: "Manual recovery" } }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return originalFetch(input, init);
+    });
+    const summarized = await fetch(`${h.base}/api/meetings/${encodeURIComponent(noteId)}/summarize`, {
+      method: "POST",
+      headers: sessionAuthz,
+    });
+    assert.equal(summarized.status, 200);
+
+    const reimport = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-fail-manual", transcript: "after manual sync" }),
+    });
+    assert.equal(reimport.status, 200);
+  } finally {
+    await h.close();
+  }
+});
+
+test("meetings import: without LLM does not leave pending summary job tag", async () => {
+  const h = await harness({
+    LLM_BASE_URL: "",
+    LLM_API_KEY: "",
+    LLM_MODEL: "",
+  });
+  try {
+    const res = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-no-llm", transcript: "no llm configured" }),
+    });
+    assert.equal(res.status, 201);
+    const body = await res.json();
+    assert.equal(body.summaryStatus, "pending");
+    const note = h.notes.getNote(body.noteId)!;
+    assert.equal(parseMeetingSummaryState(note.tags), null);
   } finally {
     await h.close();
   }

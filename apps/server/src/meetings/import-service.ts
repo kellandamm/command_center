@@ -12,6 +12,7 @@ import {
   meetingImportLockKey,
   meetingImportVersionTag,
   NOTE_BODY_MAX_BYTES,
+  noteEditedSinceImport,
   parseMeetingImportVersion,
   plaudSourceIdFromTags,
   plaudSourceTag,
@@ -108,11 +109,7 @@ async function ensureMeetingsSpaceId(notes: NotesStore): Promise<string> {
   return space.id;
 }
 
-function noteEditedSinceImport(note: Pick<KnowledgeNote, "version" | "tags">): boolean {
-  const importedVersion = parseMeetingImportVersion(note.tags);
-  if (importedVersion === null) return false;
-  return (note.version ?? 0) > importedVersion;
-}
+export { noteEditedSinceImport } from "./constants";
 
 function snapshotNote(note: KnowledgeNote): NoteBaseline {
   return { id: note.id, version: note.version ?? 0, tags: [...note.tags] };
@@ -153,7 +150,13 @@ async function persistImport(
     importBaseline = snapshotNote(existing);
   }
 
-  if (importBaseline) assertNoteBaselineUnchanged(notes, importBaseline);
+  if (importBaseline) {
+    const live = notes.getNote(importBaseline.id);
+    if (live) {
+      if (noteEditedSinceImport(live)) throw new MeetingEditedLocallyError();
+      importBaseline = snapshotNote(live);
+    }
+  }
 
   const content = finalizeMeetingNoteContent(SUMMARY_PENDING, transcriptBlock);
   const llm = llmConfig(cfg);
@@ -163,6 +166,11 @@ async function persistImport(
 
   if (existing && importBaseline) {
     for (let attempt = 0; attempt < 4; attempt++) {
+      const refreshed = notes.getNote(importBaseline.id);
+      if (refreshed) {
+        if (noteEditedSinceImport(refreshed)) throw new MeetingEditedLocallyError();
+        if ((refreshed.version ?? 0) !== importBaseline.version) importBaseline = snapshotNote(refreshed);
+      }
       assertNoteBaselineUnchanged(notes, importBaseline);
       const importVersion = importBaseline.version + 1;
       try {
@@ -178,7 +186,7 @@ async function persistImport(
         });
         if (!note) throw new ValidationError("note not found");
         if (scheduleBackgroundSummary) {
-          getMeetingSummaryQueue().schedule(note.id, transcriptBlock, note.version ?? 0);
+          getMeetingSummaryQueue().schedule(note.id, note.version ?? 0);
         }
         const summaryStatus = resolveImportSummaryStatus(note, scheduleBackgroundSummary);
         return { note, created: false, summaryStatus };
@@ -214,7 +222,7 @@ async function persistImport(
   });
   const saved = stamped ?? note;
   if (scheduleBackgroundSummary) {
-    getMeetingSummaryQueue().schedule(saved.id, transcriptBlock, saved.version ?? 0);
+    getMeetingSummaryQueue().schedule(saved.id, saved.version ?? 0);
   }
   const summaryStatus = resolveImportSummaryStatus(saved, scheduleBackgroundSummary);
   return { note: saved, created: true, summaryStatus };
@@ -224,9 +232,9 @@ function resolveImportSummaryStatus(
   note: KnowledgeNote,
   scheduled: boolean,
 ): MeetingImportSummaryStatus {
-  if (!scheduled) return "pending";
   const state = parseMeetingSummaryState(note.tags);
   if (state === "failed") return "failed";
+  if (scheduled) return "pending";
   return "pending";
 }
 

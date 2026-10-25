@@ -52,6 +52,12 @@ export function stripMeetingSummaryStateTags(tags: string[]): string[] {
   return tags.filter((item) => !item.startsWith(MEETING_SUMMARY_STATE_TAG_PREFIX));
 }
 
+export function noteEditedSinceImport(note: { version?: number; tags: string[] }): boolean {
+  const importedVersion = parseMeetingImportVersion(note.tags);
+  if (importedVersion === null) return false;
+  return (note.version ?? 0) > importedVersion;
+}
+
 export function buildMeetingTags(sourceId: string, existing: string[] = [], importVersion?: number): string[] {
   const base = stripMeetingSummaryStateTags(
     existing.filter((tag) => !tag.startsWith(MEETING_IMPORT_VERSION_TAG_PREFIX)),
