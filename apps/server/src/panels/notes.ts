@@ -15,7 +15,7 @@ import { notesZipLimitsFromEnv } from "../notes/zip-limits";
 import { readNotesZip } from "../notes/zip-read";
 import { buildNotesZipExport } from "../notes/zip-export";
 import { OWNER_ACTION_FORBIDDEN } from "../owner-auth";
-import { panelCard } from "../ui/components";
+import { button, panelCard } from "../ui/components";
 import type { PanelModule } from "./types";
 
 const MAX_KNOWLEDGE_QUESTIONS_PER_HOUR = 10;
@@ -72,7 +72,7 @@ export const notesPanel: PanelModule = {
   <p class="dim ui-card-desc">Markdown saved in the server’s personal knowledge store.</p>
   <textarea id="notes-editor" spellcheck="true"></textarea>
   <div class="row notes-panel-actions">
-    <button type="button" id="notes-save">Save</button>
+    ${button({ label: "Save", attrs: { id: "notes-save", type: "button" } })}
     <span id="notes-status" class="dim"></span>
   </div>`),
   async handle(ctx, req, res, path) {

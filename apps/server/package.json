@@ -9,7 +9,7 @@
     "build": "node scripts/build.mjs",
     "start": "node dist/server.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test --test-force-exit test/*.test.ts",
+    "test": "tsx --test test/*.test.ts",
     "test:notes-browser": "node scripts/build.mjs && tsx --test --test-concurrency=1 test/notes.browser.ts test/notes-productivity.browser.ts",
     "test:bookmarks-browser": "tsx --test test/bookmarks.browser.ts",
     "test:calendar-browser": "tsx --test --test-concurrency=1 test/calendar.browser.ts test/calendar-managed.browser.ts test/calendar-planning.browser.ts",

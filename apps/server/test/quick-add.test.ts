@@ -1,9 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { AddressInfo } from "node:net";
+import { fileURLToPath } from "node:url";
 import { CalendarWorkspace } from "../src/calendar/workspace";
 import { loadConfig } from "../src/config";
 import { makeAuthenticator } from "../src/auth";
@@ -11,9 +13,18 @@ import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
 import { DailyBriefingService } from "../src/daily-briefing/service";
+import { appendMarkerAfterLine } from "../src/notes/note-line-link";
 import { OWNER_ACTION_FORBIDDEN } from "../src/owner-auth";
+import { QUICK_ADD_COMMIT_OWNER_REQUIRED } from "../src/quick-add/errors";
 import { parseQuickAddText } from "../src/quick-add/parse";
-import { extractJsonObject, normalizeQuickAddItem, parseQuickAddPayload } from "../src/quick-add/normalize";
+import {
+  eventPayloadFromItem,
+  extractJsonObject,
+  localMinuteToIso,
+  normalizeQuickAddItem,
+  parseQuickAddPayload,
+  taskDueForTodoist,
+} from "../src/quick-add/normalize";
 import { commitQuickAddItems } from "../src/quick-add/commit";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
@@ -71,6 +82,16 @@ test("quick-add normalize: accepts tasks and events with Chicago-local times", (
   });
   assert.equal(event.durationMinutes, 30);
   assert.ok(event.end);
+});
+
+test("quick-add normalize: zone-less wall times map to Chicago under process TZ=UTC", () => {
+  const cwd = join(fileURLToPath(new URL(".", import.meta.url)), "..");
+  const run = spawnSync("pnpm", ["exec", "tsx", "test/quick-add-tz-utc.child.ts"], {
+    cwd,
+    env: { ...process.env, TZ: "UTC" },
+    encoding: "utf8",
+  });
+  assert.equal(run.status, 0, run.stderr || run.stdout);
 });
 
 test("quick-add normalize: rejects malformed payloads", () => {
@@ -135,31 +156,66 @@ test("quick-add parse route never writes to Todoist or calendar", async () => {
 
 test("quick-add commit: writes tasks and native events via stubs", async () => {
   const h = await openHarness();
-  const calendar = await h.calendar.create({ kind: "native", name: "Personal" });
-  let todoistBody = "";
-  const fetchFn: typeof fetch = async (input, init) => {
-    const url = String(input);
-    if (url.includes("api.todoist.com/rest/v2/tasks")) {
-      todoistBody = String(init?.body ?? "");
-      return new Response(JSON.stringify({
-        id: "td-1",
-        content: "Call mom",
-        description: "",
-        priority: 1,
-        due: null,
-        url: "https://todoist.com/showTask?id=td-1",
-      }), { status: 200 });
-    }
-    throw new Error(`unexpected fetch ${url}`);
-  };
-  const results = await commitQuickAddItems(h.cfg, h.calendar, [
-    { kind: "task", title: "Call mom", due: "2026-10-26T20:00:00.000Z" },
-    { kind: "event", title: "Lunch", start: "2026-10-26T12:00", end: "2026-10-26T13:00", calendarId: calendar.id },
-  ], { fetchFn });
-  assert.equal(results.length, 2);
-  assert.match(results[0]!.url, /todoist/);
-  assert.match(todoistBody, /due_datetime/);
-  assert.equal(h.calendar.store.events().length, 1);
+  try {
+    const calendar = await h.calendar.create({ kind: "native", name: "Personal" });
+    let todoistBody = "";
+    const fetchFn: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.includes("api.todoist.com/rest/v2/tasks")) {
+        todoistBody = String(init?.body ?? "");
+        return new Response(JSON.stringify({
+          id: "td-1",
+          content: "Call mom",
+          description: "",
+          priority: 1,
+          due: null,
+          url: "https://todoist.com/showTask?id=td-1",
+        }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    };
+    const { results } = await commitQuickAddItems(h.cfg, h.calendar, [
+      { kind: "task", title: "Call mom", due: "2026-10-26T15:00" },
+      { kind: "event", title: "Lunch", start: "2026-10-26T12:00", end: "2026-10-26T13:00", calendarId: calendar.id },
+    ], { fetchFn });
+    assert.equal(results.length, 2);
+    assert.match(results[0]!.url, /todoist/);
+    assert.match(todoistBody, /due_datetime/);
+    assert.equal(h.calendar.store.events().length, 1);
+    const payload = eventPayloadFromItem(
+      normalizeQuickAddItem({ kind: "event", title: "Lunch", start: "2026-10-26T12:00", end: "2026-10-26T13:00" }),
+      calendar.id,
+      "America/Chicago",
+    );
+    assert.equal(payload.localStart, "2026-10-26T12:00");
+  } finally {
+    await h.close();
+  }
+});
+
+test("quick-add commit: partial success returns failures without duplicating successes", async () => {
+  const h = await openHarness();
+  try {
+    let calls = 0;
+    const fetchFn: typeof fetch = async () => {
+      calls++;
+      if (calls === 1) {
+        return new Response(JSON.stringify({
+          id: "td-1", content: "One", description: "", priority: 1, due: null, url: "https://todoist.com/showTask?id=td-1",
+        }), { status: 200 });
+      }
+      return new Response("fail", { status: 500 });
+    };
+    const { results, failures } = await commitQuickAddItems(h.cfg, h.calendar, [
+      { kind: "task", title: "One" },
+      { kind: "task", title: "Two" },
+    ], { fetchFn });
+    assert.equal(results.length, 1);
+    assert.equal(failures.length, 1);
+    assert.equal(failures[0]!.index, 1);
+  } finally {
+    await h.close();
+  }
 });
 
 test("quick-add API: owner guard and configuration errors", async () => {
@@ -180,6 +236,21 @@ test("quick-add API: owner guard and configuration errors", async () => {
     await locked.close();
   }
 
+  const adminOnly = await openHarness({ OWNER_EMAILS: "owner@example.com" });
+  try {
+    const native = await adminOnly.calendar.create({ kind: "native", name: "Work" });
+    const deniedCommit = await fetch(`${adminOnly.base}/api/quick-add/commit`, {
+      method: "POST",
+      headers: adminOnly.headers,
+      body: JSON.stringify({ items: [{ kind: "event", title: "Blocked", start: "2026-10-26T12:00", end: "2026-10-26T13:00", calendarId: native.id }] }),
+    });
+    const commitBody = await deniedCommit.json() as { error: string };
+    assert.equal(deniedCommit.status, 403);
+    assert.equal(commitBody.error, QUICK_ADD_COMMIT_OWNER_REQUIRED);
+  } finally {
+    await adminOnly.close();
+  }
+
   const noLlm = await openHarness({
     LLM_BASE_URL: "",
     LLM_API_KEY: "",
@@ -196,7 +267,10 @@ test("quick-add API: owner guard and configuration errors", async () => {
     await noLlm.close();
   }
 
-  const noTodoist = await openHarness({ TODOIST_API_TOKEN: "" });
+  const noTodoist = await openHarness(
+    { TODOIST_API_TOKEN: "" },
+    async () => ({ ok: true, who: "owner@example.com", owner: true }),
+  );
   try {
     const res = await fetch(`${noTodoist.base}/api/quick-add/commit`, {
       method: "POST",
@@ -209,16 +283,9 @@ test("quick-add API: owner guard and configuration errors", async () => {
   }
 });
 
-test("quick-add note back-link: appends marker without changing other lines", () => {
+test("quick-add note back-link: appendMarkerAfterLine leaves other lines unchanged", () => {
   const original = "Keep this line\nCall mom tomorrow\nFooter stays";
-  const selectionStart = original.indexOf("Call");
-  const lineStart = original.lastIndexOf("\n", selectionStart - 1) + 1;
-  const lineEnd = original.indexOf("\n", selectionStart);
   const marker = "[task](https://todoist.com/showTask?id=1)";
-  const line = original.slice(lineStart, lineEnd);
-  const next = `${line.replace(/\s*$/, "")} ${marker}`;
-  const updated = `${original.slice(0, lineStart)}${next}${original.slice(lineEnd)}`;
+  const updated = appendMarkerAfterLine(original, "Call mom tomorrow", marker);
   assert.equal(updated, "Keep this line\nCall mom tomorrow [task](https://todoist.com/showTask?id=1)\nFooter stays");
-  assert.ok(updated.includes("Keep this line"));
-  assert.ok(updated.includes("Footer stays"));
 });

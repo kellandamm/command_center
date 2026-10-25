@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Script } from "node:vm";
+import { Script, createContext, runInContext } from "node:vm";
+import { workspaceScript } from "../src/ui/workspace";
 import { dailyBriefingPage } from "../src/ui/daily-briefing-page";
 import { sourceDetailPage, sourcesPage } from "../src/ui/sources-page";
 import { spaceDetailPage, spacesPage } from "../src/ui/spaces-page";
@@ -61,10 +62,14 @@ test("ui: daily briefing page has source sections and nav link", () => {
 test("ui: Library combines saved links, Read later, and summaries", () => {
   const html = sourcesPage();
   assert.match(html, /href="\/library" class="on"/);
+  assert.match(html, /class="ui-tabs library-views"/);
+  assert.match(html, /class="sr-only" for="source-search"/);
+  assert.match(html, /class="ui-field"/);
   assert.match(html, /id="capture-form"/);
   assert.match(html, /Save &amp; summarize/);
   assert.match(html, /set up Chrome capture/);
   assert.doesNotMatch(html, /OPML|feed tree|RSS reader/i);
+  assert.doesNotMatch(html, /workspace-tabs/);
   for (const view of ["all", "inbox", "summarized", "archive"]) {
     assert.match(html, new RegExp(`data-library-view="${view}"`));
   }
@@ -78,8 +83,47 @@ test("ui: Library combines saved links, Read later, and summaries", () => {
   assert.match(html, /pageSize=50/);
 });
 
+test("ui: workspace emptyState appends visible title text", () => {
+  const ctx = createContext({
+    document: {
+      createElement(tag: string) {
+        const el: {
+          tagName: string;
+          className: string;
+          textContent?: string;
+          childNodes: unknown[];
+          setAttribute: () => void;
+          append: (child: unknown) => void;
+        } = {
+          tagName: tag,
+          className: "",
+          childNodes: [],
+          setAttribute() {},
+          append(child: unknown) {
+            el.childNodes.push(child);
+          },
+        };
+        return el;
+      },
+    },
+  });
+  runInContext(
+    `${workspaceScript}
+var box={childNodes:[],replaceChildren:function(){this.childNodes=[]},append:function(n){this.childNodes.push(n)}};
+emptyState(box,"No spaces yet","Create one to gather related notes and saved pages in a single place.");
+var root=box.childNodes[0];
+var title=root&&root.childNodes&&root.childNodes[0];
+result={count:box.childNodes.length,text:title&&title.textContent};`,
+    ctx,
+  );
+  const result = (ctx as { result: { count: number; text: string } }).result;
+  assert.equal(result.count, 1);
+  assert.match(result.text, /No spaces yet/);
+});
+
 test("ui: spaces, assistant and capture pages render", () => {
   assert.match(spacesPage(), /id="space-form"/);
+  assert.match(spacesPage(), /class="ui-field"/);
   assert.match(spaceDetailPage(), /id="space-ask"/);
   assert.match(assistantPage(), /id="ask-scope"/);
   assert.match(capturePage(), /\/capture-extension\.zip/);
@@ -127,6 +171,10 @@ test("ui: full sidebar pages render", () => {
 test("ui: Notes centers writing with preview, formatting, focus, and collapsed properties", () => {
   const html = notesPage();
   assert.match(html, /<h1>Notes<\/h1>/);
+  assert.match(html, /class="ui-tabs"/);
+  assert.match(html, /class="ui-dialog" id="knowledge-share-dialog"/);
+  assert.match(html, /class="ui-dialog" id="knowledge-switcher"/);
+  assert.doesNotMatch(html, /notes-sr-only/);
   for (const id of ["knowledge-preview", "knowledge-formatting", "knowledge-focus", "knowledge-word-count"]) {
     assert.ok(html.includes(`id="${id}"`));
   }

@@ -251,6 +251,7 @@ export function createApp(app: App): Server {
         app.cfg,
         app.calendar,
         canManageSharedServerState(app.cfg, { owner: who.owner === true, who: who.who }),
+        who.owner === true,
         req,
         res,
         path,

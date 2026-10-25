@@ -1,50 +1,94 @@
 import type { NavLink } from "./layout";
+import { button, field, esc } from "./components";
 import { workspacePage } from "./workspace";
 
+function libraryViewTabs(): string {
+  const views = [
+    ["all", "/library", "All saved", "count-all"],
+    ["inbox", "/library?view=inbox", "Inbox", "count-inbox"],
+    ["summarized", "/library?view=summarized", "Summarized", "count-summarized"],
+    ["archive", "/library?view=archive", "Archived", "count-archive"],
+    ["x", "/library?view=x", "From X", "count-x"],
+  ] as const;
+  const links = views
+    .map(
+      ([view, href, label, countId]) =>
+        `<a href="${esc(href)}" data-library-view="${esc(view)}">${esc(label)} <span id="${esc(countId)}">0</span></a>`,
+    )
+    .join("");
+  return `<nav class="ui-tabs library-views" role="tablist" aria-label="Read Later filters">${links}</nav>`;
+}
+
 export function sourcesPage(nav?: NavLink[]): string {
+  const captureUrl = field({
+    label: "Page URL",
+    id: "capture-url",
+    inputHtml: '<input id="capture-url" type="url" required placeholder="https://">',
+  });
+  const captureTitle = field({
+    label: "Title",
+    id: "capture-title",
+    inputHtml: '<input id="capture-title" maxlength="240" placeholder="Optional">',
+  });
+  const captureText = field({
+    label: "Page text",
+    id: "capture-text",
+    inputHtml:
+      '<textarea id="capture-text" maxlength="20000" placeholder="Paste text to read or summarize. Chrome capture can do this for you."></textarea>',
+  });
+  const captureSpace = field({
+    label: "Folder (Space)",
+    id: "capture-space",
+    inputHtml: '<select id="capture-space"></select>',
+  });
+  const captureTags = field({
+    label: "Tags",
+    id: "capture-tags",
+    inputHtml: '<input id="capture-tags" placeholder="design, research">',
+  });
+  const sortField = field({
+    label: "Sort",
+    id: "source-sort",
+    inputHtml:
+      '<select id="source-sort"><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="title">Title A-Z</option></select>',
+  });
+
   return workspacePage({
     title: "Read Later",
     description: "Save, organize, and summarize the things worth keeping.",
-    active: "/library", nav,
-    actions: '<button id="source-add" type="button">Save a link</button>',
+    active: "/library",
+    nav,
+    actions: button({ label: "Save a link", attrs: { id: "source-add" } }),
     body: `<details id="capture-panel" class="workspace-details library-capture"><summary>Save a link without the extension</summary>
 <p class="dim">For one-click saving, <a href="/settings/capture">set up Chrome capture</a>.</p>
-<form id="capture-form" class="workspace-inline-form"><label for="capture-url">Page URL</label><input id="capture-url" type="url" required placeholder="https://">
-<label for="capture-title">Title</label><input id="capture-title" maxlength="240" placeholder="Optional">
-<label for="capture-text">Page text</label><textarea id="capture-text" maxlength="20000" placeholder="Paste text to read or summarize. Chrome capture can do this for you."></textarea>
-<label for="capture-space">Folder (Space)</label><select id="capture-space"></select>
-<label for="capture-tags">Tags</label><input id="capture-tags" placeholder="design, research">
+<form id="capture-form" class="workspace-inline-form">${captureUrl}${captureTitle}${captureText}${captureSpace}${captureTags}
 <div class="row"><button type="submit" value="save">Save</button><button type="submit" value="summarize" class="ghost">Save &amp; summarize</button></div></form></details>
 <div class="reading-manager"><aside class="reading-organizer" aria-label="Folders and tags">
 <details id="organizer-panel" open><summary>Folders &amp; tags</summary>
 <h2>Folders</h2><p class="dim">Folders are shared Spaces.</p><nav id="folder-list" aria-label="Folders"></nav>
 <details class="reading-new-folder"><summary>New folder</summary><form id="folder-form">
-<label for="folder-name">Folder name</label><input id="folder-name" required maxlength="120"><button type="submit" class="ghost">Create folder</button></form></details>
+${field({ label: "Folder name", id: "folder-name", inputHtml: '<input id="folder-name" required maxlength="120">' })}
+${button({ label: "Create folder", variant: "ghost", attrs: { type: "submit" } })}</form></details>
 <h2>Tags</h2><nav id="tag-list" aria-label="Tags"></nav></details></aside>
 <section class="reading-collection" aria-label="Saved articles">
-<nav class="workspace-tabs library-views" aria-label="Read Later filters">
-<a href="/library" data-library-view="all">All saved <span id="count-all">0</span></a>
-<a href="/library?view=inbox" data-library-view="inbox">Inbox <span id="count-inbox">0</span></a>
-<a href="/library?view=summarized" data-library-view="summarized">Summarized <span id="count-summarized">0</span></a>
-<a href="/library?view=archive" data-library-view="archive">Archived <span id="count-archive">0</span></a>
-<a href="/library?view=x" data-library-view="x">From X <span id="count-x">0</span></a></nav>
+${libraryViewTabs()}
 <div class="library-controls">
 <div class="library-search"><label class="sr-only" for="source-search">Search saved links</label><input id="source-search" type="search" placeholder="Search links, text, tags, summaries"></div>
-<div hidden><label for="source-space-filter">Folder</label><select id="source-space-filter"><option value="">All folders</option></select></div>
-<div hidden><label for="source-tag-filter">Tag</label><select id="source-tag-filter"><option value="">All tags</option></select></div>
-<div><label for="source-sort">Sort</label><select id="source-sort"><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="title">Title A-Z</option></select></div>
+<div hidden>${field({ label: "Folder", id: "source-space-filter", inputHtml: '<select id="source-space-filter"><option value="">All folders</option></select>' })}</div>
+<div hidden>${field({ label: "Tag", id: "source-tag-filter", inputHtml: '<select id="source-tag-filter"><option value="">All tags</option></select>' })}</div>
+<div>${sortField}</div>
 </div>
 <div class="library-results"><p id="source-count" class="dim" role="status">Loading saved links...</p>
-<div class="row" role="group" aria-label="Link layout"><button id="source-compact-view" class="ghost" type="button" aria-pressed="true">Compact</button><button id="source-list-view" class="ghost" type="button" aria-pressed="false">List</button><button id="source-card-view" class="ghost" type="button" aria-pressed="false">Cards</button></div></div>
+<div class="row" role="group" aria-label="Link layout">${button({ label: "Compact", variant: "ghost", className: "", attrs: { id: "source-compact-view", type: "button", "aria-pressed": "true" } })}${button({ label: "List", variant: "ghost", attrs: { id: "source-list-view", type: "button", "aria-pressed": "false" } })}${button({ label: "Cards", variant: "ghost", attrs: { id: "source-card-view", type: "button", "aria-pressed": "false" } })}</div></div>
 <div id="source-list" class="library-items" aria-busy="true"></div>
-<nav class="reading-pagination" aria-label="Article pages"><button id="source-prev" type="button" class="ghost">Previous</button><span id="source-page" role="status"></span><button id="source-next" type="button" class="ghost">Next</button></nav>
+<nav class="reading-pagination" aria-label="Article pages">${button({ label: "Previous", variant: "ghost", attrs: { id: "source-prev", type: "button" } })}<span id="source-page" role="status"></span>${button({ label: "Next", variant: "ghost", attrs: { id: "source-next", type: "button" } })}</nav>
 </section></div>`,
     script: `
 var sources=[],xBookmarks=[],spaces=[],params=new URLSearchParams(location.search);
 var view=["all","inbox","summarized","archive","x"].includes(params.get("view"))?params.get("view"):"all";
 var layout=["cards","list","compact"].includes(params.get("layout"))?params.get("layout"):"compact",cards=layout==="cards";
 var pageNumber=Math.max(1,Math.floor(Number(params.get("page"))||1)),pageSize=50;
-if(matchMedia("(max-width:750px)").matches)$("organizer-panel").open=false;
+if(matchMedia("(max-width:768px)").matches)$("organizer-panel").open=false;
 function updateUrl(){
   var next=new URLSearchParams();
   if(view!=="all")next.set("view",view);
@@ -177,25 +221,27 @@ form.onsubmit=function(e){e.preventDefault();var button=e.submitter||form.queryS
 loadSources().then(function(){
   $("source-search").value=params.get("q")||"";$("source-space-filter").value=params.get("space")||"";$("source-tag-filter").value=params.get("tag")||"";
   $("source-sort").value=["newest","oldest","title"].includes(params.get("sort"))?params.get("sort"):"newest";renderSources();
-}).catch(function(err){$("source-count").textContent="Could not load saved links.";$("source-list").setAttribute("aria-busy","false");fail(err);});`,
+}).catch(function(err){$("source-count").textContent="Could not load saved links.";$("source-list").setAttribute("aria-busy","false");errorState($("source-list"),err.message||"Could not load saved links.");fail(err);});`,
   });
 }
 
 export function sourceDetailPage(nav?: NavLink[]): string {
   return workspacePage({
     title: "Saved page", description: "Read, understand, and put a useful idea to work.", active: "/library", nav,
-    actions: '<a class="btn ghost" href="/library">Back to Read Later</a>',
+    actions: button({ label: "Back to Read Later", variant: "ghost", href: "/library" }),
     body: `<main class="reading-column" id="source-detail" hidden><p id="source-origin" class="dim"></p><h1 id="source-title"></h1>
-<div class="reading-actions"><a id="source-original" class="btn ghost" target="_blank" rel="noopener noreferrer">Open original</a><button id="source-summarize" type="button">Summarize</button><button id="source-archive" class="ghost" type="button">Archive</button></div>
+<div class="reading-actions"><a id="source-original" class="btn ghost" target="_blank" rel="noopener noreferrer">Open original</a>${button({ label: "Summarize", attrs: { id: "source-summarize" } })}${button({ label: "Archive", variant: "ghost", attrs: { id: "source-archive", type: "button" } })}</div>
 <section class="reading-summary"><h2>Summary</h2><p id="source-summary" class="reading-text"></p></section>
 <details id="source-text-details" class="workspace-details"><summary>Captured article text</summary><p id="source-text" class="reading-text"></p></details>
-<section class="workspace-details"><h2>Put it to work</h2><div class="row"><button id="source-note" class="ghost" type="button">Create a note</button><button id="source-task-toggle" class="ghost" type="button">Create a board task</button><a id="source-ask" class="btn ghost" href="/agent?view=assistant">Ask the Assistant</a></div>
-<form id="source-task-form" hidden><label for="source-task-title">Task title</label><input id="source-task-title" maxlength="200" required><button type="submit">Add to board</button></form>
-<label for="source-space">Folder (Space)</label><select id="source-space"></select><button id="source-space-save" class="ghost" type="button">Save folder</button>
+<section class="workspace-details"><h2>Put it to work</h2><div class="row">${button({ label: "Create a note", variant: "ghost", attrs: { id: "source-note", type: "button" } })}${button({ label: "Create a board task", variant: "ghost", attrs: { id: "source-task-toggle", type: "button" } })}<a id="source-ask" class="btn ghost" href="/agent?view=assistant">Ask the Assistant</a></div>
+<form id="source-task-form" hidden>${field({ label: "Task title", id: "source-task-title", inputHtml: '<input id="source-task-title" maxlength="200" required>' })}${button({ label: "Add to board", attrs: { type: "submit" } })}</form>
+${field({ label: "Folder (Space)", id: "source-space", inputHtml: '<select id="source-space"></select>' })}${button({ label: "Save folder", variant: "ghost", attrs: { id: "source-space-save", type: "button" } })}
 <p id="source-result" class="workspace-result" role="status"></p></section>
 <details class="workspace-details"><summary>Edit captured material</summary><form id="source-edit-form">
-<label for="source-edit-title">Title</label><input id="source-edit-title" required maxlength="240"><label for="source-edit-text">Article text</label><textarea id="source-edit-text" maxlength="20000"></textarea>
-<label for="source-tags">Tags</label><input id="source-tags" placeholder="Comma-separated"><p class="dim">Changing article text clears its old summary so you can summarize the updated material.</p><button type="submit">Save changes</button></form></details></main>`,
+${field({ label: "Title", id: "source-edit-title", inputHtml: '<input id="source-edit-title" required maxlength="240">' })}
+${field({ label: "Article text", id: "source-edit-text", inputHtml: '<textarea id="source-edit-text" maxlength="20000"></textarea>' })}
+${field({ label: "Tags", id: "source-tags", hint: "Changing article text clears its old summary so you can summarize the updated material.", inputHtml: '<input id="source-tags" placeholder="Comma-separated">' })}
+${button({ label: "Save changes", attrs: { type: "submit" } })}</form></details></main>`,
     script: `
 var id=decodeURIComponent(location.pathname.split("/").pop()),source=null,spaces=[];
 function renderSource(){

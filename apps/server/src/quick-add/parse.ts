@@ -2,9 +2,8 @@ import type { Config } from "../config";
 import { llmConfig, llmConfigured } from "../config";
 import { chatCompletion, type FetchLike } from "../llm/provider";
 import { ValidationError } from "../settings";
-import { QUICK_ADD_TZ } from "./constants";
-import { extractJsonObject, parseQuickAddPayload, previewFieldsForItem } from "./normalize";
-import type { QuickAddItem } from "./types";
+import { QUICK_ADD_LLM_NOT_CONFIGURED } from "./errors";
+import { QUICK_ADD_TZ, extractJsonObject, parseQuickAddPayload, previewFieldsForItem, type QuickAddItem } from "./normalize";
 
 export type QuickAddCompletion = (
   cfg: NonNullable<ReturnType<typeof llmConfig>>,
@@ -29,7 +28,7 @@ export async function parseQuickAddText(
   text: string,
   deps: { complete?: QuickAddCompletion; fetchFn?: FetchLike; now?: Date } = {},
 ): Promise<QuickAddItem[]> {
-  if (!llmConfigured(cfg)) throw new ValidationError("LLM is not configured on the server");
+  if (!llmConfigured(cfg)) throw new ValidationError(QUICK_ADD_LLM_NOT_CONFIGURED);
   const trimmed = text.trim();
   if (!trimmed) throw new ValidationError("text is required");
   if (trimmed.length > 4_000) throw new ValidationError("text is too long");
@@ -47,18 +46,4 @@ export async function parseQuickAddText(
   ], deps.fetchFn);
   const parsed = parseQuickAddPayload(extractJsonObject(raw));
   return parsed.map(previewFieldsForItem);
-}
-
-export function formatChicagoPreview(dueOrStart: string | undefined): string | null {
-  if (!dueOrStart) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dueOrStart)) return `${dueOrStart} (all day, ${QUICK_ADD_TZ})`;
-  const instant = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(dueOrStart)
-    ? new Date(`${dueOrStart.slice(0, 10)}T${dueOrStart.slice(11)}:00Z`)
-    : new Date(dueOrStart);
-  if (!Number.isFinite(instant.getTime())) return null;
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: QUICK_ADD_TZ,
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(instant);
 }

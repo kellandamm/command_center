@@ -1,7 +1,9 @@
 import type { NavLink } from "./layout";
 import { page } from "./layout";
+import { button, dialog } from "./components";
 import { quickAddCss, quickAddScript } from "./quick-add";
-import { workspacePage, workspaceTabs, workspaceTabsCss } from "./workspace";
+import { appendMarkerAfterLineScript } from "../notes/note-line-link";
+import { workspacePage, workspaceTabs } from "./workspace";
 
 const tabs = (active: string) => workspaceTabs([
   ["/notes", "My notes"], ["/notes/connections", "Connections"], ["/notes/transfer", "Import & export"],
@@ -43,14 +45,14 @@ $("transfer-import").onclick=function(){busy(this,async function(){
 export function notesPage(nav?: NavLink[]): string {
   return page({
     title: "Notes — Command center",
-    extraCss: workspaceTabsCss + quickAddCss,
+    extraCss: quickAddCss,
     active: "/notes",
     nav,
     body: `<header class="page-header notes-header"><div><h1>Notes</h1><p class="dim">A quiet place to think, write, and connect ideas.</p></div>
 <div class="row">
-  <button id="knowledge-new-note" type="button" disabled>New note</button>
-  <button id="knowledge-switch" class="ghost" type="button" disabled title="Switch note (Ctrl/Cmd + K)">Switch note</button>
-  <button id="knowledge-focus" class="ghost" type="button" aria-pressed="false" title="Focus mode (Ctrl/Cmd + Shift + F)">Focus mode</button>
+  ${button({ label: "New note", attrs: { id: "knowledge-new-note", disabled: true } })}
+  ${button({ label: "Switch note", variant: "ghost", attrs: { id: "knowledge-switch", disabled: true, title: "Switch note (Ctrl/Cmd + K)" } })}
+  ${button({ label: "Focus mode", variant: "ghost", attrs: { id: "knowledge-focus", "aria-pressed": "false", title: "Focus mode (Ctrl/Cmd + Shift + F)" } })}
 </div>
 </header>${tabs("/notes")}
 <div class="notes-workspace">
@@ -138,7 +140,7 @@ export function notesPage(nav?: NavLink[]): string {
       <p id="knowledge-latest-properties"></p><label for="knowledge-latest-content">Latest saved Markdown (read-only)</label><textarea id="knowledge-latest-content" readonly rows="8"></textarea>
       <div class="row"><button id="knowledge-merge-save" type="button">Save reviewed draft</button><button id="knowledge-use-latest" type="button" class="ghost">Discard draft and use latest</button><button id="knowledge-review-close" type="button" class="ghost">Close comparison</button></div>
       </section>
-      <label class="notes-sr-only" for="knowledge-title">Title</label><input id="knowledge-title" class="notes-title" maxlength="240" placeholder="Untitled note">
+      <label class="sr-only" for="knowledge-title">Title</label><input id="knowledge-title" class="notes-title" maxlength="240" placeholder="Untitled note">
       <details class="notes-properties">
       <summary>Note properties <span class="dim">Tags, space, source</span></summary>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(12rem,1fr));gap:.75rem">
@@ -165,7 +167,7 @@ export function notesPage(nav?: NavLink[]): string {
       <p id="knowledge-editor-warning" class="dim" role="status"></p>
       <div id="knowledge-writing" class="notes-writing" data-mode="write">
         <div id="knowledge-rich" class="notes-preview notes-rich"></div>
-        <div class="notes-source"><label class="notes-sr-only" for="knowledge-body">Markdown</label><textarea id="knowledge-body" spellcheck="true" placeholder="Write something worth keeping…&#10;&#10;Markdown supported. Select text to format it."></textarea></div>
+        <div class="notes-source"><label class="sr-only" for="knowledge-body">Markdown</label><textarea id="knowledge-body" spellcheck="true" placeholder="Write something worth keeping…&#10;&#10;Markdown supported. Select text to format it."></textarea></div>
         <div class="notes-preview-pane"><div class="notes-pane-label dim">Live preview</div><div id="knowledge-preview" class="notes-preview" role="region" aria-label="Markdown preview"></div><p id="knowledge-preview-status" class="dim" role="status"></p></div>
       </div>
       <div class="notes-editor-footer">
@@ -204,16 +206,23 @@ export function notesPage(nav?: NavLink[]): string {
     <div id="knowledge-status" class="dim" aria-live="polite" style="margin-top:.75rem"></div>
   </div>
 </div>
-<dialog id="knowledge-share-dialog" aria-labelledby="knowledge-share-title"><h2 id="knowledge-share-title">Share read-only link</h2>
-<p class="dim">Creates an encrypted snapshot. The decryption key stays in your browser and is only in the link fragment (#…); the server stores ciphertext only.</p>
+${dialog({
+  id: "knowledge-share-dialog",
+  title: "Share read-only link",
+  body: `<p class="dim">Creates an encrypted snapshot. The decryption key stays in your browser and is only in the link fragment (#…); the server stores ciphertext only.</p>
 <label for="knowledge-share-expiry">Link expires after</label>
 <select id="knowledge-share-expiry"><option value="3600">1 hour</option><option value="86400" selected>24 hours</option><option value="604800">7 days</option></select>
-<div class="row" style="margin-top:.75rem"><button id="knowledge-share-create" type="button">Create link</button><button id="knowledge-share-close" type="button" class="ghost">Close</button></div>
 <p id="knowledge-share-status" class="dim" role="status"></p>
 <label for="knowledge-share-url" hidden>Share URL</label><input id="knowledge-share-url" type="url" readonly hidden style="width:100%;margin-top:.5rem">
-<button id="knowledge-share-copy" type="button" class="ghost" hidden>Copy link</button></dialog>
-<dialog id="knowledge-switcher" aria-labelledby="knowledge-switch-title"><h2 id="knowledge-switch-title">Switch note</h2>
-<label for="knowledge-switch-query">Find by title</label><input id="knowledge-switch-query" type="search" autocomplete="off"><div id="knowledge-switch-results"></div><button id="knowledge-switch-close" type="button" class="ghost">Close</button></dialog>
+<button id="knowledge-share-copy" type="button" class="ghost" hidden>Copy link</button>`,
+  footer: `${button({ label: "Create link", attrs: { id: "knowledge-share-create", type: "button" } })}${button({ label: "Close", variant: "ghost", attrs: { id: "knowledge-share-close", type: "button" } })}`,
+})}
+${dialog({
+  id: "knowledge-switcher",
+  title: "Switch note",
+  body: `<label for="knowledge-switch-query">Find by title</label><input id="knowledge-switch-query" type="search" autocomplete="off"><div id="knowledge-switch-results"></div>`,
+  footer: button({ label: "Close", variant: "ghost", attrs: { id: "knowledge-switch-close", type: "button" } }),
+})}
 <style>
 .notes-workspace [hidden]{display:none!important}
 .notes-document-tabs{display:flex;gap:.35rem;overflow:auto;padding:.5rem 0;border-bottom:1px solid var(--border)}
@@ -221,7 +230,7 @@ export function notesPage(nav?: NavLink[]): string {
 .notes-document-tab button:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:14rem}.notes-document-tab [aria-pressed=true]{background:var(--selected);color:var(--selected-foreground)}
 .notes-recovery{padding:.75rem 0;border-bottom:1px solid var(--border);font-size:.8rem}.notes-recovery summary{cursor:pointer}
 .notes-recovery pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:16rem;overflow:auto}
-#knowledge-switcher{width:min(34rem,calc(100vw - 2rem));max-height:80vh}#knowledge-switch-results{max-height:50vh;overflow:auto}
+#knowledge-switcher{max-width:min(34rem,calc(100vw - 2rem));max-height:80vh}#knowledge-switch-results{max-height:50vh;overflow:auto}
 #knowledge-conflict textarea{width:100%;resize:vertical}#knowledge-latest-properties{white-space:pre-wrap;overflow-wrap:anywhere}
 .notes-tools{padding:.65rem 0;font-size:.8rem}.notes-tools summary{cursor:pointer}.notes-tools .row{margin:.75rem 0}
 .notes-insert-menu{display:flex;flex-wrap:wrap;gap:.35rem;padding:.75rem 0;border-bottom:1px solid var(--border)}
@@ -267,14 +276,14 @@ input.notes-title{font-size:1.9rem;letter-spacing:-.035em;font-weight:600;border
 .notes-writing[data-mode=preview] .notes-preview-pane{border:0;padding-left:0}
 .notes-editor-footer{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:.75rem;font-size:.75rem}
 #knowledge-word-count{margin-left:auto}.notes-editor-footer button{font-size:.75rem;min-height:1.8rem;padding:.25rem .6rem}
-.notes-secondary{box-shadow:none;padding:.85rem}.notes-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.notes-secondary{box-shadow:none;padding:.85rem}
 body.notes-focus .sidebar,body.notes-focus .notes-library,body.notes-focus .notes-secondary{display:none}
 body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes-focus .page-content{max-width:76rem}
 #knowledge-editor.notes-font-small .notes-document,#knowledge-editor.notes-font-small .notes-source textarea{font-size:.875rem}
 #knowledge-editor.notes-font-medium .notes-document,#knowledge-editor.notes-font-medium .notes-source textarea{font-size:1rem}
 #knowledge-editor.notes-font-large .notes-document,#knowledge-editor.notes-font-large .notes-source textarea{font-size:1.125rem}
 @media(max-width:1100px){.notes-workspace{grid-template-columns:13rem minmax(0,1fr)}.notes-writing[data-mode=split]{grid-template-columns:minmax(0,1fr)}.notes-writing[data-mode=split] .notes-preview-pane{border-left:0;border-top:1px solid var(--border);padding-left:0}}
-@media(max-width:700px){.notes-header{align-items:flex-start;flex-direction:column}.notes-workspace{grid-template-columns:minmax(0,1fr)}.notes-library{border-right:0;border-bottom:1px solid var(--border)}#knowledge-note-list{max-height:12rem}.notes-main{padding:0 1rem 1rem}.notes-source textarea{min-height:20rem}input.notes-title{font-size:1.6rem}}
+@media(max-width:768px){.notes-header{align-items:flex-start;flex-direction:column}.notes-workspace{grid-template-columns:minmax(0,1fr)}.notes-library{border-right:0;border-bottom:1px solid var(--border)}#knowledge-note-list{max-height:12rem}.notes-main{padding:0 1rem 1rem}.notes-source textarea{min-height:20rem}input.notes-title{font-size:1.6rem}}
 </style><script src="/assets/notes-editor.js"></script>`,
     script: `
 (function(){
@@ -938,32 +947,37 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
   }
   $("knowledge-retry-load").querySelector("button").onclick=initialLoad;
   initialLoad();
+  ${appendMarkerAfterLineScript}
   ${quickAddScript}
-  var notesQuickAddMount=mountQuickAdd("notes-quick-add",{onCommitted:function(results,ctx){
-    if(!results.length||!ctx||typeof ctx.selectionStart!=="number")return;
-    var body=$("knowledge-body"),text=body.value,start=ctx.selectionStart;
-    var lineStart=text.lastIndexOf("\\n",start-1)+1,lineEnd=text.indexOf("\\n",start);if(lineEnd<0)lineEnd=text.length;
-    var line=text.slice(lineStart,lineEnd),marker="["+(results[0].kind==="task"?"task":"event")+"]("+results[0].url+")";
-    if(line.indexOf(marker)>=0)return;
-    var next=line.replace(/\\s*$/,"")+" "+marker;
-    body.value=text.slice(0,lineStart)+next+text.slice(lineEnd);
-    setMode("source");changed();saveNote().catch(showError);
-    $("notes-quick-add").hidden=true;
-  }});
+  var notesQuickAddMount=mountQuickAdd("notes-quick-add",{
+    lockEditor:function(open){$("knowledge-fields").disabled=!!open;},
+    onCommitted:function(results,ctx){
+      if(!results.length||!ctx||!ctx.lineText)return;
+      var body=$("knowledge-body"),marker="["+(results[0].kind==="task"?"task":"event")+"]("+results[0].url+")";
+      body.value=appendMarkerAfterLine(body.value,ctx.lineText,marker);
+      setMode("source");changed();saveNote().catch(showError);
+      $("notes-quick-add").hidden=true;
+    }
+  });
+  function noteMarkedSensitive(){
+    if(state.current&&state.current.sensitive)return true;
+    if($("knowledge-sensitive").dataset.value==="true")return true;
+    return false;
+  }
   function refreshLineQuickAdd(){
-    var btn=$("knowledge-line-quick-add"),note=state.current;
-    var disabled=!note||note.sensitive||!$("knowledge-body").value.slice($("knowledge-body").selectionStart,$("knowledge-body").selectionEnd).trim();
+    var btn=$("knowledge-line-quick-add");
+    var disabled=noteMarkedSensitive()||!$("knowledge-body").value.slice($("knowledge-body").selectionStart,$("knowledge-body").selectionEnd).trim();
     btn.disabled=disabled;
-    btn.title=note&&note.sensitive?"Sensitive notes cannot be sent to the parser.":"Parse the selected line into a task or event";
+    btn.title=noteMarkedSensitive()?"Sensitive notes cannot be sent to the parser.":"Parse the selected line into a task or event";
   }
   $("knowledge-body").addEventListener("select",refreshLineQuickAdd);
   $("knowledge-body").addEventListener("keyup",refreshLineQuickAdd);
   $("knowledge-line-quick-add").onclick=function(){
-    var note=state.current;if(!note||note.sensitive)return;
+    if(noteMarkedSensitive())return;
     var editor=$("knowledge-body"),selected=editor.value.slice(editor.selectionStart,editor.selectionEnd).trim();
     if(!selected){status.textContent="Select text on a line first.";return;}
     $("notes-quick-add").hidden=false;
-    notesQuickAddMount.parseSelection(selected,{selectionStart:editor.selectionStart});
+    notesQuickAddMount.parseSelection(selected,{lineText:selected});
   };
 })();`,
   });

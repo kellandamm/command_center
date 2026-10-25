@@ -18,7 +18,6 @@ import { page, type NavLink } from "./layout";
 import { quickAddCss, quickAddScript } from "./quick-add";
 
 export const dashboardPanelCss = `
-.dashboard-page>.page-header{display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-start;justify-content:space-between}
 .tasks-chips{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.35rem}
 .tasks-chip[aria-pressed=true]{background:var(--selected);color:var(--selected-foreground);border-color:color-mix(in srgb,var(--primary) 35%,var(--border))}
 .attention-block-warn h3{color:var(--warning)}
@@ -86,12 +85,14 @@ export function dashboardPage(nav?: NavLink[]): string {
     nav,
     extraCss: dashboardGridCss + dashboardPanelCss + quickAddCss,
     body: `<div class="dashboard-page">
-<header class="page-header"><div><h1>Dashboard</h1><p class="dim">Drag panels, pin what matters, and jump in quickly.</p></div>
+<header class="page-header"><h1>Dashboard</h1><p class="dim">Drag panels, pin what matters, and jump in quickly.</p></header>
+<div class="dashboard-quick-add-bar quick-add-bar">
 <div id="dashboard-quick-add" class="quick-add-wrap" aria-label="Quick add">
   <div class="quick-add-row"><input class="quick-add-input" type="text" placeholder="Quick add — e.g. call mom tomorrow 3pm" autocomplete="off" /><button type="button" class="ghost quick-add-parse">Preview</button></div>
   <p class="quick-add-status dim" role="status"></p>
-  <div class="quick-add-preview" hidden></div>
-</div></header>
+  <div class="quick-add-preview quick-add-dropdown" hidden></div>
+</div>
+</div>
 <div class="dashboard-toolbar row">
   <button type="button" class="ghost" id="dashboard-reset-layout">Reset layout</button>
   <a class="ghost" id="dashboard-export-layout" href="/api/dashboard-layout/export.json">Export layout</a>
