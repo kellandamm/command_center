@@ -163,9 +163,18 @@ test("shutdown: aggregates stubbed Todoist, board done moves, and blocked cards"
       now,
       listCompleted: async () => completed,
       fetchFn: async (input) => {
-        if (String(input).includes("/tasks") && !String(input).includes("completed")) {
+        if (String(input).includes("/api/v1/tasks") && !String(input).includes("completed")) {
           listCalls++;
-          return new Response(JSON.stringify(open), { headers: { "content-type": "application/json" } });
+          const results = open.map((t) => ({
+            id: t.id,
+            content: t.content,
+            description: t.description,
+            priority: t.priority,
+            due: t.due ? { date: t.due.date, string: t.due.string, datetime: t.due.datetime } : null,
+          }));
+          return new Response(JSON.stringify({ results, next_cursor: null }), {
+            headers: { "content-type": "application/json" },
+          });
         }
         return new Response("{}", { status: 404 });
       },
@@ -197,10 +206,15 @@ test("shutdown: Todoist completed failure does not block open tasks", async () =
         throw new Error("fail");
       },
       fetchFn: async (input) => {
-        if (String(input).includes("/rest/v2/tasks")) {
-          return new Response(JSON.stringify([task("t1", "Still open", "2026-10-14")]), {
-            headers: { "content-type": "application/json" },
-          });
+        if (String(input).includes("/api/v1/tasks") && !String(input).includes("completed")) {
+          const t = task("t1", "Still open", "2026-10-14");
+          return new Response(
+            JSON.stringify({
+              results: [{ id: t.id, content: t.content, priority: t.priority, due: { date: t.due!.date, string: t.due!.string } }],
+              next_cursor: null,
+            }),
+            { headers: { "content-type": "application/json" } },
+          );
         }
         return new Response("", { status: 500 });
       },
@@ -225,7 +239,9 @@ test("shutdown: Todoist open failure still returns completed tasks", async () =>
       now: new Date("2026-10-14T12:00:00Z"),
       listCompleted: async () => [{ id: "c1", content: "Done", completedAt: "2026-10-14T12:00:00Z" }],
       fetchFn: async (input) => {
-        if (String(input).includes("/rest/v2/tasks")) return new Response("", { status: 500 });
+        if (String(input).includes("/api/v1/tasks") && !String(input).includes("completed")) {
+          return new Response("", { status: 500 });
+        }
         return new Response("{}", { status: 404 });
       },
     });
