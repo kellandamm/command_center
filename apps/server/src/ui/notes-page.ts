@@ -605,7 +605,12 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
       apiCall("/api/knowledge/preview","POST",{content:content}).then(function(data){
         if(revision!==previewRevision)return;
         $("knowledge-preview").innerHTML=data.html;
-        $("knowledge-preview-status").textContent="";
+        var meetingStatus="";
+        if(state.current&&state.current.tags&&state.current.tags.indexOf("meeting")>=0){
+          if(state.current.tags.some(function(t){return t==="meeting-summary-state:failed";}))meetingStatus="Summary failed — use Summarize to retry.";
+          else if(state.current.tags.some(function(t){return t==="meeting-summary-state:pending";})||/_Summary pending\\._/.test(content))meetingStatus="Meeting summary pending…";
+        }
+        $("knowledge-preview-status").textContent=meetingStatus;
       }).catch(function(e){
         if(revision!==previewRevision)return;
         $("knowledge-preview").replaceChildren();

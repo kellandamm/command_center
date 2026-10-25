@@ -13,10 +13,13 @@ import { SettingsStore } from "../src/settings";
 import { CaptureAccess } from "../src/read-later/capture-access";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 import { createTestCfAccessJwt, TEST_CF_AUD, TEST_CF_TEAM } from "./cf-access-jwt";
+import { actionMeetingImport } from "../src/mcp/actions";
 import { setIntegrationCfAccessVerifier } from "../src/mcp/auth";
 import { finalizeMeetingNoteContent } from "../src/meetings/content";
 import { MEETING_IMPORT_MAX_BYTES, MEETING_TAG, NOTE_BODY_MAX_BYTES, SUMMARY_PENDING } from "../src/meetings/constants";
 import { findMeetingNoteBySourceId } from "../src/meetings/import-service";
+import { meetingSummaryStateTag, parseMeetingSummaryState } from "../src/meetings/constants";
+import { getMeetingSummaryQueue, resetMeetingSummaryQueueForTests } from "../src/meetings/summary-queue";
 import { CHUNK_CHARS, mergeMeetingPartials, summarizeMeetingTranscript } from "../src/meetings/summarize";
 
 const llmStub = { baseUrl: "https://api.example/v1", apiKey: "k", model: "m" };
@@ -59,6 +62,22 @@ afterEach(() => {
   fetchRestore = undefined;
 });
 
+async function waitForMeetingSummaryIdle(): Promise<void> {
+  await getMeetingSummaryQueue().waitUntilIdle();
+}
+
+async function waitForNoteSummary(noteId: string, notes: NotesStore, expectFailed = false): Promise<void> {
+  for (let attempt = 0; attempt < 300; attempt++) {
+    await waitForMeetingSummaryIdle();
+    const note = notes.getNote(noteId);
+    const state = note ? parseMeetingSummaryState(note.tags) : null;
+    if (expectFailed && state === "failed") return;
+    if (!expectFailed && note && state !== "pending" && !note.content.includes(SUMMARY_PENDING)) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 15));
+  }
+  throw new Error("timed out waiting for meeting summary");
+}
+
 function withMockLlmFetch(mock: typeof fetch): void {
   const original = globalThis.fetch;
   globalThis.fetch = mock as typeof fetch;
@@ -67,8 +86,14 @@ function withMockLlmFetch(mock: typeof fetch): void {
   };
 }
 
-async function harness(env: Record<string, string> = {}, owner = false) {
-  const dir = await mkdtemp(join(tmpdir(), "cc-meetings-"));
+async function harness(
+  env: Record<string, string> = {},
+  owner = false,
+  dataDir?: string,
+  options?: { keepData?: boolean },
+) {
+  resetMeetingSummaryQueueForTests();
+  const dir = dataDir ?? (await mkdtemp(join(tmpdir(), "cc-meetings-")));
   const cfg = loadConfig({
     DATA_DIR: dir,
     ADMIN_TOKEN,
@@ -100,10 +125,11 @@ async function harness(env: Record<string, string> = {}, owner = false) {
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const close = async () => {
+    await getMeetingSummaryQueue().shutdown(200);
     await closeIntegrationServer(server, integration);
-    await rm(dir, { recursive: true, force: true });
+    if (!options?.keepData) await rm(dir, { recursive: true, force: true });
   };
-  return { base, notes, close, cfg };
+  return { base, notes, close, cfg, integration };
 }
 
 const samplePayload = {
@@ -159,8 +185,9 @@ test("meetings import: validation, import token auth, sensitive flag, idempotenc
     });
     assert.equal(created.status, 201);
     const createdBody = await created.json();
-    assert.equal(createdBody.summaryStatus, "ok");
+    assert.equal(createdBody.summaryStatus, "pending");
     assert.ok(createdBody.noteId);
+    await waitForNoteSummary(createdBody.noteId, h.notes);
 
     const note = h.notes.getNote(createdBody.noteId);
     assert.ok(note?.sensitive);
@@ -230,8 +257,11 @@ test("meetings import: LLM failure stores summary pending", async () => {
       body: JSON.stringify({ ...samplePayload, sourceId: "plaud-fail-1", transcript: "SECRET_TRANSCRIPT_PHRASE_XYZ" }),
     });
     assert.equal(res.status, 201);
-    const { noteId } = await res.json();
+    const { noteId, summaryStatus } = await res.json();
+    assert.equal(summaryStatus, "pending");
+    await waitForNoteSummary(noteId, h.notes, true);
     assert.match(h.notes.getNote(noteId)!.content, new RegExp(SUMMARY_PENDING));
+    assert.equal(parseMeetingSummaryState(h.notes.getNote(noteId)!.tags), "failed");
   } finally {
     await h.close();
   }
@@ -308,6 +338,7 @@ test("meetings summarize: refresh import version so re-import is allowed", async
       body: JSON.stringify({ ...samplePayload, sourceId: "plaud-summarize-tag", transcript: "body" }),
     });
     const { noteId } = await imported.json();
+    await waitForNoteSummary(noteId, h.notes);
     const summarized = await fetch(`${h.base}/api/meetings/${encodeURIComponent(noteId)}/summarize`, {
       method: "POST",
       headers: sessionAuthz,
@@ -340,16 +371,9 @@ test("meetings summarize: returns 409 when edited during LLM", async () => {
     const llmBlocked = new Promise<void>((resolve) => {
       unblock = resolve;
     });
-    let importLlmDone = false;
     let summarizeLlmStarted = false;
     withMockLlmFetch(async (input, init) => {
       if (String(input).includes("api.example")) {
-        if (!importLlmDone) {
-          return new Response(JSON.stringify({ choices: [{ message: { content: "import summary" } }] }), {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          });
-        }
         summarizeLlmStarted = true;
         await llmBlocked;
         return new Response(JSON.stringify({ choices: [{ message: { content: "Late summary text" } }] }), {
@@ -365,7 +389,6 @@ test("meetings summarize: returns 409 when edited during LLM", async () => {
       body: JSON.stringify({ ...samplePayload, sourceId: "plaud-race-summarize", transcript: "body for summarize race" }),
     });
     const { noteId } = await imported.json();
-    importLlmDone = true;
     const summarizePromise = fetch(`${h.base}/api/meetings/${encodeURIComponent(noteId)}/summarize`, {
       method: "POST",
       headers: sessionAuthz,
@@ -612,6 +635,232 @@ test("meetings import: does not log transcript content to console", async () => 
     console.error = original.error;
     console.warn = original.warn;
     console.info = original.info;
+    await h.close();
+  }
+});
+
+test("meetings import: HTTP returns before LLM finishes and updates note afterward", async () => {
+  const h = await harness();
+  try {
+    let unblock: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
+    const originalFetch = globalThis.fetch;
+    withMockLlmFetch(async (input, init) => {
+      if (String(input).includes("api.example")) {
+        await gate;
+        return new Response(JSON.stringify({ choices: [{ message: { content: "Async summary body" } }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return originalFetch(input, init);
+    });
+    const started = Date.now();
+    const res = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-async-fast", transcript: "lines for async import" }),
+    });
+    assert.ok(Date.now() - started < 2_000);
+    assert.equal(res.status, 201);
+    const body = await res.json();
+    assert.equal(body.summaryStatus, "pending");
+    assert.match(h.notes.getNote(body.noteId)!.content, new RegExp(SUMMARY_PENDING));
+    unblock();
+    await waitForNoteSummary(body.noteId, h.notes);
+    assert.match(h.notes.getNote(body.noteId)!.content, /Async summary body/);
+  } finally {
+    await h.close();
+  }
+});
+
+test("meetings import: background summary does not overwrite a concurrent edit", async () => {
+  const h = await harness();
+  try {
+    let unblock: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
+    const originalFetch = globalThis.fetch;
+    withMockLlmFetch(async (input, init) => {
+      if (String(input).includes("api.example")) {
+        await gate;
+        return new Response(JSON.stringify({ choices: [{ message: { content: "Should not win" } }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return originalFetch(input, init);
+    });
+    const res = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-async-edit", transcript: "original async" }),
+    });
+    const { noteId } = await res.json();
+    const note = h.notes.getNote(noteId)!;
+    await h.notes.updateNote(noteId, {
+      content: `${note.content}\n\nUser async edit.`,
+      expectedVersion: note.version ?? 0,
+    });
+    unblock();
+    await waitForMeetingSummaryIdle();
+    assert.match(h.notes.getNote(noteId)!.content, /User async edit/);
+    assert.doesNotMatch(h.notes.getNote(noteId)!.content, /Should not win/);
+  } finally {
+    await h.close();
+  }
+});
+
+test("meetings import: re-import while summary pending does not start a second LLM job", async () => {
+  const h = await harness();
+  try {
+    let llmCalls = 0;
+    let unblock: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
+    const originalFetch = globalThis.fetch;
+    withMockLlmFetch(async (input, init) => {
+      if (String(input).includes("api.example")) {
+        llmCalls += 1;
+        await gate;
+        return new Response(JSON.stringify({ choices: [{ message: { content: "Single summary" } }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return originalFetch(input, init);
+    });
+    const sharedTranscript = "same pending transcript text";
+    const first = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-dedupe-pending", title: "First title", transcript: sharedTranscript }),
+    });
+    const firstBody = await first.json();
+    assert.equal(firstBody.summaryStatus, "pending");
+    const second = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-dedupe-pending", title: "Second title", transcript: sharedTranscript }),
+    });
+    assert.equal(second.status, 200);
+    assert.equal(llmCalls, 1);
+    unblock();
+    await waitForNoteSummary(firstBody.noteId, h.notes);
+    assert.equal(llmCalls, 1);
+  } finally {
+    await h.close();
+  }
+});
+
+test("meetings import: pending summaries resume after restart", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-meetings-restart-"));
+  let unblock: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    unblock = resolve;
+  });
+  const originalFetch = globalThis.fetch;
+  withMockLlmFetch(async (input, init) => {
+    if (String(input).includes("api.example")) {
+      await gate;
+      return new Response(JSON.stringify({ choices: [{ message: { content: "Resumed summary" } }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return originalFetch(input, init);
+  });
+  const h1 = await harness({}, false, dir, { keepData: true });
+  try {
+    const res = await fetch(`${h1.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-restart", transcript: "resume me" }),
+    });
+    assert.equal(res.status, 201);
+  } finally {
+    await h1.close();
+  }
+  const h2 = await harness({}, false, dir, { keepData: true });
+  try {
+    const note = findMeetingNoteBySourceId(h2.notes, "plaud-restart");
+    assert.ok(note);
+    const noteId = note!.id;
+    assert.equal(parseMeetingSummaryState(note!.tags), "pending");
+    unblock();
+    await waitForNoteSummary(noteId, h2.notes);
+    assert.match(h2.notes.getNote(noteId)!.content, /Resumed summary/);
+  } finally {
+    await h2.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("meetings import: MCP action returns pending immediately", async () => {
+  const h = await harness();
+  try {
+    let unblock: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
+    const originalFetch = globalThis.fetch;
+    withMockLlmFetch(async (input, init) => {
+      if (String(input).includes("api.example")) {
+        await gate;
+        return new Response(JSON.stringify({ choices: [{ message: { content: "MCP async summary" } }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return originalFetch(input, init);
+    });
+    const started = Date.now();
+    const result = await actionMeetingImport(
+      { cfg: h.cfg, notes: h.notes, ...h.integration },
+      { ...samplePayload, sourceId: "plaud-mcp-async", transcript: "mcp lines" },
+    );
+    assert.ok(Date.now() - started < 2_000);
+    assert.equal(result.summaryStatus, "pending");
+    unblock();
+    await waitForNoteSummary(result.note.id, h.notes);
+    assert.match(h.notes.getNote(result.note.id)!.content, /MCP async summary/);
+  } finally {
+    await h.close();
+  }
+});
+
+test("meetings summary queue: shutdown does not hang on blocked job", async () => {
+  const h = await harness();
+  try {
+    let unblock: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
+    const originalFetch = globalThis.fetch;
+    withMockLlmFetch(async (input, init) => {
+      if (String(input).includes("api.example")) {
+        await gate;
+        return new Response(JSON.stringify({ choices: [{ message: { content: "late" } }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return originalFetch(input, init);
+    });
+    await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-shutdown", transcript: "block" }),
+    });
+    const started = Date.now();
+    await getMeetingSummaryQueue().shutdown(300);
+    assert.ok(Date.now() - started < 2_000);
+    unblock();
+  } finally {
     await h.close();
   }
 });

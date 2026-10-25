@@ -15,10 +15,15 @@ import {
   parseMeetingImportVersion,
   plaudSourceIdFromTags,
   plaudSourceTag,
+  buildMeetingTags,
+  meetingSummaryStateTag,
+  parseMeetingSummaryState,
+  stripMeetingSummaryStateTags,
   SUMMARY_PENDING,
   TRANSCRIPT_SECTION,
 } from "./constants";
 import { withMeetingImportLock } from "./import-lock";
+import { getMeetingSummaryQueue } from "./summary-queue";
 import { summarizeMeetingTranscript } from "./summarize";
 import { formatTranscriptBody, parseTranscriptInput } from "./transcript";
 
@@ -31,10 +36,12 @@ export interface MeetingImportPayload {
   transcript: string | Array<{ speaker?: string; startSec?: number; text: string }>;
 }
 
+export type MeetingImportSummaryStatus = "pending" | "done" | "failed";
+
 export interface MeetingImportResult {
   note: KnowledgeNote;
   created: boolean;
-  summaryStatus: "ok" | "pending";
+  summaryStatus: MeetingImportSummaryStatus;
 }
 
 export class MeetingEditedLocallyError extends Error {
@@ -101,13 +108,6 @@ async function ensureMeetingsSpaceId(notes: NotesStore): Promise<string> {
   return space.id;
 }
 
-function meetingTags(sourceId: string, existing: string[] = [], importVersion?: number): string[] {
-  const base = existing.filter((tag) => !tag.startsWith("meeting-import-ver:"));
-  const tags = [...new Set([MEETING_TAG, plaudSourceTag(sourceId), ...base])];
-  if (importVersion !== undefined) tags.push(meetingImportVersionTag(importVersion));
-  return tags;
-}
-
 function noteEditedSinceImport(note: Pick<KnowledgeNote, "version" | "tags">): boolean {
   const importedVersion = parseMeetingImportVersion(note.tags);
   if (importedVersion === null) return false;
@@ -153,23 +153,11 @@ async function persistImport(
     importBaseline = snapshotNote(existing);
   }
 
-  let summary = SUMMARY_PENDING;
-  let summaryStatus: "ok" | "pending" = "pending";
-  const llm = llmConfig(cfg);
-  if (!options.skipSummary && llm) {
-    try {
-      summary = await summarizeMeetingTranscript(llm, parsed.text, options.fetchFn);
-      summaryStatus = "ok";
-    } catch (err) {
-      if (err instanceof ValidationError) throw err;
-      summary = SUMMARY_PENDING;
-      summaryStatus = "pending";
-    }
-  }
-
   if (importBaseline) assertNoteBaselineUnchanged(notes, importBaseline);
 
-  const content = finalizeMeetingNoteContent(summary, transcriptBlock);
+  const content = finalizeMeetingNoteContent(SUMMARY_PENDING, transcriptBlock);
+  const llm = llmConfig(cfg);
+  const scheduleBackgroundSummary = !options.skipSummary && Boolean(llm);
 
   const spaceId = await ensureMeetingsSpaceId(notes);
 
@@ -178,15 +166,21 @@ async function persistImport(
       assertNoteBaselineUnchanged(notes, importBaseline);
       const importVersion = importBaseline.version + 1;
       try {
+        const tags = buildMeetingTags(payload.sourceId, importBaseline.tags, importVersion);
+        if (scheduleBackgroundSummary) tags.push(meetingSummaryStateTag("pending"));
         const note = await notes.updateNote(importBaseline.id, {
           title: payload.title,
           content,
-          tags: meetingTags(payload.sourceId, importBaseline.tags, importVersion),
+          tags,
           spaceId,
           sensitive: true,
           expectedVersion: importBaseline.version,
         });
         if (!note) throw new ValidationError("note not found");
+        if (scheduleBackgroundSummary) {
+          getMeetingSummaryQueue().schedule(note.id, transcriptBlock, note.version ?? 0);
+        }
+        const summaryStatus = resolveImportSummaryStatus(note, scheduleBackgroundSummary);
         return { note, created: false, summaryStatus };
       } catch (err) {
         if (err instanceof NoteConflictError && attempt < 3) {
@@ -202,19 +196,38 @@ async function persistImport(
     throw new ValidationError("import failed");
   }
 
+  const createTags = buildMeetingTags(payload.sourceId);
+  if (scheduleBackgroundSummary) createTags.push(meetingSummaryStateTag("pending"));
   const note = await notes.createNote({
     title: payload.title,
     content,
-    tags: meetingTags(payload.sourceId),
+    tags: createTags,
     spaceId,
     sensitive: true,
   });
   const importVersion = (note.version ?? 0) + 1;
+  const stampTags = buildMeetingTags(payload.sourceId, note.tags, importVersion);
+  if (scheduleBackgroundSummary) stampTags.push(meetingSummaryStateTag("pending"));
   const stamped = await notes.updateNote(note.id, {
-    tags: meetingTags(payload.sourceId, note.tags, importVersion),
+    tags: stampTags,
     expectedVersion: note.version ?? 0,
   });
-  return { note: stamped ?? note, created: true, summaryStatus };
+  const saved = stamped ?? note;
+  if (scheduleBackgroundSummary) {
+    getMeetingSummaryQueue().schedule(saved.id, transcriptBlock, saved.version ?? 0);
+  }
+  const summaryStatus = resolveImportSummaryStatus(saved, scheduleBackgroundSummary);
+  return { note: saved, created: true, summaryStatus };
+}
+
+function resolveImportSummaryStatus(
+  note: KnowledgeNote,
+  scheduled: boolean,
+): MeetingImportSummaryStatus {
+  if (!scheduled) return "pending";
+  const state = parseMeetingSummaryState(note.tags);
+  if (state === "failed") return "failed";
+  return "pending";
 }
 
 export async function importMeetingTranscript(
@@ -265,7 +278,10 @@ export async function summarizeMeetingNote(
   try {
     const updated = await notes.updateNote(noteId, {
       content,
-      tags: sourceKey && syncedWithImport ? meetingTags(sourceKey, tagsSnapshot, importVersion) : tagsSnapshot,
+      tags:
+        sourceKey && syncedWithImport
+          ? buildMeetingTags(sourceKey, tagsSnapshot, importVersion)
+          : stripMeetingSummaryStateTags(tagsSnapshot),
       expectedVersion: baseVersion,
     });
     if (!updated) throw new ValidationError("note not found");

@@ -34,3 +34,29 @@ export function parseMeetingImportVersion(tags: string[]): number | null {
   const value = Number(tag.slice(MEETING_IMPORT_VERSION_TAG_PREFIX.length));
   return Number.isInteger(value) ? value : null;
 }
+
+export const MEETING_SUMMARY_STATE_TAG_PREFIX = "meeting-summary-state:";
+
+export function meetingSummaryStateTag(state: "pending" | "failed"): string {
+  return `${MEETING_SUMMARY_STATE_TAG_PREFIX}${state}`;
+}
+
+export function parseMeetingSummaryState(tags: string[]): "pending" | "failed" | null {
+  const tag = tags.find((item) => item.startsWith(MEETING_SUMMARY_STATE_TAG_PREFIX));
+  if (!tag) return null;
+  const value = tag.slice(MEETING_SUMMARY_STATE_TAG_PREFIX.length);
+  return value === "pending" || value === "failed" ? value : null;
+}
+
+export function stripMeetingSummaryStateTags(tags: string[]): string[] {
+  return tags.filter((item) => !item.startsWith(MEETING_SUMMARY_STATE_TAG_PREFIX));
+}
+
+export function buildMeetingTags(sourceId: string, existing: string[] = [], importVersion?: number): string[] {
+  const base = stripMeetingSummaryStateTags(
+    existing.filter((tag) => !tag.startsWith(MEETING_IMPORT_VERSION_TAG_PREFIX)),
+  );
+  const tags = [...new Set([MEETING_TAG, plaudSourceTag(sourceId), ...base])];
+  if (importVersion !== undefined) tags.push(meetingImportVersionTag(importVersion));
+  return tags;
+}

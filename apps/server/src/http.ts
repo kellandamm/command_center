@@ -52,6 +52,7 @@ import { handleReadLaterRoutes } from "./read-later/routes";
 import { ReadLaterService } from "./read-later/service";
 import { CaptureAccess } from "./read-later/capture-access";
 import { handleMeetingImportRoute } from "./meetings/routes";
+import { getMeetingSummaryQueue } from "./meetings/summary-queue";
 import { handleXBookmarkApiRoutes, handleXBookmarkImport, isXBookmarkImportPayload } from "./read-later/x-bookmarks-routes";
 import type { XBookmarksService } from "./read-later/x-bookmarks-service";
 import type { XBookmarksStore } from "./read-later/x-bookmarks-store";
@@ -162,6 +163,10 @@ export function createApp(app: App): Server {
   const queueNonces = new QueueNonceStore(QUEUE_HMAC_WINDOW_SEC * 1000);
   const shareLinkRateLimiter = new ShareLinkRateLimiter(app.cfg.shareLinksRateLimitPerMinute);
   app.xBookmarksService.start();
+
+  const meetingSummaryQueue = getMeetingSummaryQueue();
+  meetingSummaryQueue.attach(app.cfg, app.notes);
+  meetingSummaryQueue.resumePending();
 
   return createServer(async (req, res) => {
     try {
