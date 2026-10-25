@@ -1,11 +1,12 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Config } from "../config";
 import type { NotesStore } from "../notes/store";
-import type { CaptureAccess } from "../read-later/capture-access";
 import { ValidationError } from "../settings";
 import { authenticateMeetingImport } from "./auth";
 import { MEETING_IMPORT_MAX_BYTES } from "./constants";
-import { importMeetingTranscript } from "./import-service";
+
+const READ_BODY_MAX_BYTES = MEETING_IMPORT_MAX_BYTES + 64_000;
+import { importMeetingTranscript, MeetingEditedLocallyError } from "./import-service";
 
 function json(res: ServerResponse, status: number, data: unknown): void {
   res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
@@ -31,7 +32,6 @@ async function readJson(req: IncomingMessage, maxBytes: number): Promise<Record<
 export async function handleMeetingImportRoute(
   cfg: Config,
   notes: NotesStore,
-  captureAccess: CaptureAccess,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -39,13 +39,13 @@ export async function handleMeetingImportRoute(
     json(res, 405, { error: "method not allowed" });
     return;
   }
-  const auth = await authenticateMeetingImport(cfg, req, captureAccess);
+  const auth = await authenticateMeetingImport(cfg, req);
   if (!auth.ok) {
     json(res, auth.status, { error: "unauthorized" });
     return;
   }
   try {
-    const body = await readJson(req, MEETING_IMPORT_MAX_BYTES);
+    const body = await readJson(req, READ_BODY_MAX_BYTES);
     const result = await importMeetingTranscript(cfg, notes, body);
     json(res, result.created ? 201 : 200, {
       noteId: result.note.id,
@@ -53,8 +53,12 @@ export async function handleMeetingImportRoute(
       summaryStatus: result.summaryStatus,
     });
   } catch (err) {
+    if (err instanceof MeetingEditedLocallyError) {
+      json(res, 409, { error: "edited locally" });
+      return;
+    }
     if (err instanceof ValidationError) {
-      json(res, 400, { error: "invalid request" });
+      json(res, 400, { error: err.message });
       return;
     }
     json(res, 500, { error: "import failed" });

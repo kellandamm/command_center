@@ -228,7 +228,7 @@ export function createApp(app: App): Server {
       }
 
       if (method === "POST" && path === "/api/meetings/import") {
-        await handleMeetingImportRoute(app.cfg, app.notes, captureAccess, req, res);
+        await handleMeetingImportRoute(app.cfg, app.notes, req, res);
         return;
       }
 

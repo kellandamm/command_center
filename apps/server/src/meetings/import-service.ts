@@ -2,16 +2,21 @@ import type { Config } from "../config";
 import { llmConfig } from "../config";
 import type { FetchLike } from "../llm/provider";
 import type { KnowledgeNote, NotesStore } from "../notes/store";
+import { NoteConflictError } from "../notes/store";
 import { ValidationError } from "../settings";
 import { buildMeetingNoteContent } from "./content";
 import {
   MEETING_IMPORT_MAX_BYTES,
   MEETING_TAG,
   MEETINGS_SPACE_NAME,
+  meetingImportVersionTag,
+  parseMeetingImportVersion,
   plaudSourceTag,
   SUMMARY_PENDING,
+  TRANSCRIPT_SECTION,
 } from "./constants";
-import { summarizeMeetingTranscript } from "./summarize";
+import { withMeetingImportLock } from "./import-lock";
+import { summarizeMeetingTranscript, transcriptChunkCount } from "./summarize";
 import { formatTranscriptBody, parseTranscriptInput } from "./transcript";
 
 export interface MeetingImportPayload {
@@ -29,14 +34,23 @@ export interface MeetingImportResult {
   summaryStatus: "ok" | "pending";
 }
 
+export class MeetingEditedLocallyError extends Error {
+  constructor() {
+    super("edited locally");
+  }
+}
+
+function parseRecordedAt(raw: unknown): string {
+  if (typeof raw !== "string" || !raw.trim()) throw new ValidationError("recordedAt is required");
+  const ms = Date.parse(raw.trim());
+  if (!Number.isFinite(ms)) throw new ValidationError("invalid recordedAt");
+  return new Date(ms).toISOString();
+}
+
 function validatePayload(raw: Record<string, unknown>): MeetingImportPayload {
   if (typeof raw.sourceId !== "string" || !raw.sourceId.trim()) throw new ValidationError("sourceId is required");
   if (typeof raw.title !== "string" || !raw.title.trim()) throw new ValidationError("title is required");
-  if (typeof raw.recordedAt !== "string" || !Number.isFinite(Date.parse(raw.recordedAt))) {
-    throw new ValidationError("recordedAt must be an ISO timestamp");
-  }
-  const recordedAt = new Date(raw.recordedAt).toISOString();
-  if (recordedAt !== raw.recordedAt.trim()) throw new ValidationError("recordedAt must be an ISO timestamp");
+  const recordedAt = parseRecordedAt(raw.recordedAt);
 
   let durationSec: number | undefined;
   if (raw.durationSec !== undefined) {
@@ -56,9 +70,7 @@ function validatePayload(raw: Record<string, unknown>): MeetingImportPayload {
 
   const { text, segments } = parseTranscriptInput(raw.transcript);
   if (Buffer.byteLength(text, "utf8") > MEETING_IMPORT_MAX_BYTES) throw new ValidationError("transcript too large");
-
-  const sizeCheck = JSON.stringify({ ...raw, transcript: text });
-  if (Buffer.byteLength(sizeCheck, "utf8") > MEETING_IMPORT_MAX_BYTES) throw new ValidationError("payload too large");
+  if (transcriptChunkCount(text) > 20) throw new ValidationError("transcript too large");
 
   return {
     sourceId: raw.sourceId.trim(),
@@ -85,20 +97,29 @@ async function ensureMeetingsSpaceId(notes: NotesStore): Promise<string> {
   return space.id;
 }
 
-function meetingTags(sourceId: string, extra: string[] = []): string[] {
-  return [...new Set([MEETING_TAG, plaudSourceTag(sourceId), ...extra])];
+function meetingTags(sourceId: string, existing: string[] = [], importVersion?: number): string[] {
+  const base = existing.filter((tag) => !tag.startsWith("meeting-import-ver:"));
+  const tags = [...new Set([MEETING_TAG, plaudSourceTag(sourceId), ...base])];
+  if (importVersion !== undefined) tags.push(meetingImportVersionTag(importVersion));
+  return tags;
 }
 
-export async function importMeetingTranscript(
+function noteEditedSinceImport(note: KnowledgeNote): boolean {
+  const importedVersion = parseMeetingImportVersion(note.tags);
+  if (importedVersion === null) return false;
+  return (note.version ?? 0) > importedVersion;
+}
+
+async function persistImport(
   cfg: Config,
   notes: NotesStore,
-  raw: Record<string, unknown>,
-  options: { fetchFn?: FetchLike; skipSummary?: boolean } = {},
+  payload: MeetingImportPayload,
+  options: { fetchFn?: FetchLike; skipSummary?: boolean },
 ): Promise<MeetingImportResult> {
-  const payload = validatePayload(raw);
   const parsed = parseTranscriptInput(payload.transcript);
   const transcriptBlock = formatTranscriptBody(
     payload.recordedAt,
+    cfg.tz,
     payload.durationSec,
     payload.participants,
     parsed.text,
@@ -112,7 +133,8 @@ export async function importMeetingTranscript(
     try {
       summary = await summarizeMeetingTranscript(llm, parsed.text, options.fetchFn);
       summaryStatus = "ok";
-    } catch {
+    } catch (err) {
+      if (err instanceof ValidationError && err.message === "transcript too large") throw err;
       summary = SUMMARY_PENDING;
       summaryStatus = "pending";
     }
@@ -120,20 +142,32 @@ export async function importMeetingTranscript(
 
   const content = buildMeetingNoteContent(summary, transcriptBlock);
   if (Buffer.byteLength(content, "utf8") > 200_000) throw new ValidationError("transcript too large");
+
   const spaceId = await ensureMeetingsSpaceId(notes);
   const existing = findMeetingNoteBySourceId(notes, payload.sourceId);
 
   if (existing) {
-    const note = await notes.updateNote(existing.id, {
-      title: payload.title,
-      content,
-      tags: meetingTags(payload.sourceId, existing.tags),
-      spaceId,
-      sensitive: true,
-      expectedVersion: existing.version ?? 0,
-    });
-    if (!note) throw new ValidationError("note not found");
-    return { note, created: false, summaryStatus };
+    if (noteEditedSinceImport(existing)) throw new MeetingEditedLocallyError();
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const current = notes.getNote(existing.id) ?? existing;
+      const importVersion = (current.version ?? 0) + 1;
+      try {
+        const note = await notes.updateNote(current.id, {
+          title: payload.title,
+          content,
+          tags: meetingTags(payload.sourceId, current.tags, importVersion),
+          spaceId,
+          sensitive: true,
+          expectedVersion: current.version ?? 0,
+        });
+        if (!note) throw new ValidationError("note not found");
+        return { note, created: false, summaryStatus };
+      } catch (err) {
+        if (err instanceof NoteConflictError && attempt < 3) continue;
+        throw err;
+      }
+    }
+    throw new ValidationError("import failed");
   }
 
   const note = await notes.createNote({
@@ -143,7 +177,22 @@ export async function importMeetingTranscript(
     spaceId,
     sensitive: true,
   });
-  return { note, created: true, summaryStatus };
+  const importVersion = (note.version ?? 0) + 1;
+  const stamped = await notes.updateNote(note.id, {
+    tags: meetingTags(payload.sourceId, note.tags, importVersion),
+    expectedVersion: note.version ?? 0,
+  });
+  return { note: stamped ?? note, created: true, summaryStatus };
+}
+
+export async function importMeetingTranscript(
+  cfg: Config,
+  notes: NotesStore,
+  raw: Record<string, unknown>,
+  options: { fetchFn?: FetchLike; skipSummary?: boolean } = {},
+): Promise<MeetingImportResult> {
+  const payload = validatePayload(raw);
+  return withMeetingImportLock(payload.sourceId, () => persistImport(cfg, notes, payload, options));
 }
 
 export async function summarizeMeetingNote(
@@ -159,9 +208,9 @@ export async function summarizeMeetingNote(
   const llm = llmConfig(cfg);
   if (!llm) throw new ValidationError("LLM is not configured");
 
-  const transcriptIdx = note.content.indexOf("## Transcript");
+  const transcriptIdx = note.content.indexOf(TRANSCRIPT_SECTION);
   if (transcriptIdx < 0) throw new ValidationError("invalid meeting note");
-  const transcriptBody = note.content.slice(transcriptIdx + "## Transcript".length).trim();
+  const transcriptBody = note.content.slice(transcriptIdx + TRANSCRIPT_SECTION.length).trim();
 
   let summary = SUMMARY_PENDING;
   try {

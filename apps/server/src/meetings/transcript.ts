@@ -43,24 +43,35 @@ function formatTimestamp(sec: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+export function formatRecordedAt(isoUtc: string, timeZone: string): string {
+  const date = new Date(isoUtc);
+  if (!Number.isFinite(date.getTime())) return isoUtc;
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
 export function formatTranscriptBody(
   recordedAt: string,
+  timeZone: string,
   durationSec: number | undefined,
   participants: string[] | undefined,
   text: string,
   segments?: TranscriptSegment[],
 ): string {
-  const meta: string[] = [`**Recorded:** ${recordedAt}`];
-  if (durationSec !== undefined) meta.push(`**Duration:** ${Math.round(durationSec)}s`);
-  if (participants?.length) meta.push(`**Participants:** ${participants.join(", ")}`);
+  const meta: string[] = [`Recorded: ${formatRecordedAt(recordedAt, timeZone)}`];
+  if (durationSec !== undefined) meta.push(`Duration: ${Math.round(durationSec)}s`);
+  if (participants?.length) meta.push(`Participants: ${participants.join(", ")}`);
   const lines: string[] = [...meta, ""];
   if (segments?.length) {
     for (const segment of segments) {
-      const label = [
-        segment.speaker ? `**${segment.speaker}**` : null,
-        segment.startSec !== undefined ? `(${formatTimestamp(segment.startSec)})` : null,
-      ].filter(Boolean).join(" ");
-      lines.push(label || "—", segment.text, "");
+      const parts: string[] = [];
+      if (segment.speaker) parts.push(segment.speaker);
+      if (segment.startSec !== undefined) parts.push(`(${formatTimestamp(segment.startSec)})`);
+      const prefix = parts.length ? `${parts.join(" ")}: ` : "";
+      lines.push(`${prefix}${segment.text}`);
     }
   } else {
     lines.push(text);
