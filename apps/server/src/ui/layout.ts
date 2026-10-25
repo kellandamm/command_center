@@ -144,6 +144,15 @@ html.dark .morning-briefing{--paper-ink:#f0ede3;--paper-muted:#b2aea3;--paper-ru
 .morning-kicker{display:flex;justify-content:space-between;gap:1rem;border-bottom:1px solid var(--paper-rule);padding:.25rem 0 .65rem;font-size:.68rem;letter-spacing:.16em;color:var(--paper-muted)}
 .morning-masthead h1{margin:.2em 0 0;font-family:Georgia,"Times New Roman",serif;font-size:clamp(3rem,8vw,7.25rem);font-weight:700;letter-spacing:-.065em;line-height:.98;color:var(--paper-ink)}
 .morning-deck{margin:.3rem 0 0;font-family:Georgia,"Times New Roman",serif;font-size:clamp(1rem,2vw,1.25rem);font-style:italic;color:var(--paper-muted)}
+.morning-mode{display:flex;gap:.35rem;margin:0 0 .75rem;font-family:ui-sans-serif,system-ui,sans-serif}
+.morning-mode button{border:1px solid var(--paper-rule);background:transparent;color:var(--paper-muted);padding:.35rem .75rem;min-height:2rem;font-size:.8rem;letter-spacing:.04em}
+.morning-mode button[aria-selected=true]{border-color:var(--paper-ink);color:var(--paper-ink);font-weight:600}
+.shutdown-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:1rem 1.25rem;margin-top:.5rem}
+.shutdown-section{border-top:1px solid var(--paper-ink);padding-top:.65rem}
+.shutdown-section h2{margin:0 0 .5rem;font-family:Georgia,"Times New Roman",serif;font-size:1.15rem}
+.shutdown-section ul{list-style:none;padding:0;margin:0}
+.shutdown-section li{padding:.35rem 0;border-top:1px dotted var(--paper-rule)}
+.shutdown-section li:first-child{border-top:0}
 .morning-edition{display:flex;align-items:center;justify-content:space-between;gap:1rem;border-top:3px double var(--paper-ink);border-bottom:2px solid var(--paper-ink);padding:.45rem 0;margin:0 0 1.5rem;font-family:Georgia,"Times New Roman",serif;font-variant:small-caps;letter-spacing:.045em}
 .morning-edition label{margin:0}
 .morning-edition select{width:auto;max-width:12rem;border:0;padding:.1rem .25rem;background:transparent;color:inherit;font-family:inherit;font-size:.95rem}

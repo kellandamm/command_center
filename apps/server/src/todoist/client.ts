@@ -19,6 +19,13 @@ export interface TodoistTask {
 export type TodoistFetch = typeof fetch;
 
 const API = "https://api.todoist.com/rest/v2";
+const SYNC_API = "https://api.todoist.com/sync/v9";
+
+export interface TodoistCompletedTask {
+  id: string;
+  content: string;
+  completedAt: string;
+}
 
 function authHeaders(token: string): Record<string, string> {
   return { authorization: `Bearer ${token}`, "content-type": "application/json" };
@@ -31,6 +38,31 @@ async function readError(res: Response): Promise<string> {
   } catch {
     return `HTTP ${res.status}`;
   }
+}
+
+/** Completed tasks in `[since, until)` (ISO instants). Uses Sync API v9 — stub-friendly in tests. */
+export async function listCompletedTasks(
+  token: string,
+  since: string,
+  until: string,
+  fetchFn: TodoistFetch = fetch,
+): Promise<TodoistCompletedTask[]> {
+  const res = await fetchFn(`${SYNC_API}/completed/get_all`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ since, until, limit: 200, offset: 0 }),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  const body = (await res.json()) as { items?: Array<{ completed_at?: string; item?: { id?: string; content?: string } }> };
+  const out: TodoistCompletedTask[] = [];
+  for (const row of body.items ?? []) {
+    const id = row.item?.id;
+    const content = row.item?.content;
+    const completedAt = row.completed_at;
+    if (!id || !content || !completedAt) continue;
+    out.push({ id, content, completedAt });
+  }
+  return out;
 }
 
 export async function listTasks(token: string, fetchFn: TodoistFetch = fetch): Promise<TodoistTask[]> {

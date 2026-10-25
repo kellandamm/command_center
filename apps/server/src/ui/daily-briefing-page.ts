@@ -8,22 +8,36 @@ export function dailyBriefingPage(nav?: NavLink[]): string {
     nav,
     body: `<main class="morning-briefing">
   <header class="morning-masthead">
-    <h1>The Morning Briefing</h1>
-    <p class="morning-deck">Your topics, weather, and schedule for the day ahead.</p>
+    <h1 id="db-page-title">The Morning Briefing</h1>
+    <p class="morning-deck" id="db-page-deck">Your topics, weather, and schedule for the day ahead.</p>
   </header>
-  <div class="morning-edition">
+  <div class="morning-mode" role="tablist" aria-label="Briefing mode">
+    <button type="button" id="db-mode-morning" role="tab" aria-selected="true" aria-controls="db-morning-view">Morning</button>
+    <button type="button" id="db-mode-shutdown" role="tab" aria-selected="false" aria-controls="db-shutdown-view">Shutdown</button>
+  </div>
+  <div class="morning-edition" id="db-morning-edition">
     <label><span class="visually-hidden">Briefing day</span><select id="db-day" aria-label="Briefing day"></select></label>
     <a href="/settings#topics">Manage topics</a>
     <div class="morning-edition-actions"><span id="db-meta" class="dim"></span><button type="button" id="db-refresh" class="ghost">Refresh edition</button></div>
   </div>
   <div id="db-error" class="morning-error" role="status" hidden></div>
-  <div class="briefing-grid" id="db-sections">
+  <div class="briefing-grid" id="db-morning-view" role="tabpanel">
     <section class="briefing-section briefing-topics" id="db-topics"><div class="section-head"><h2>Your topics</h2><span class="status-pill dim" id="db-topics-status">Loading</span></div>
       <p class="dim">Web results from the past 24 hours, summarized from search excerpts. Follow the sources for the full story.</p><div id="db-topics-body" aria-live="polite"></div></section>
     <aside class="briefing-rail" aria-label="Your day">
       <section class="briefing-section briefing-rail-card" id="db-calendar"><div class="section-head"><h2>Your day</h2><span class="status-pill dim" id="db-calendar-status">Loading</span></div><div id="db-calendar-body"></div></section>
       <section class="briefing-section briefing-rail-card" id="db-weather"><div class="section-head"><h2>The almanac</h2><span class="status-pill dim" id="db-weather-status">Loading</span></div><div id="db-weather-body"></div></section>
     </aside>
+  </div>
+  <div id="db-shutdown-view" role="tabpanel" hidden>
+    <p class="dim" id="db-shutdown-meta">End-of-day review in America/Chicago.</p>
+    <div id="db-shutdown-error" class="morning-error" role="status" hidden></div>
+    <div class="shutdown-grid" id="db-shutdown-body" aria-live="polite"></div>
+    <div class="morning-edition-actions" style="margin-top:1rem">
+      <button type="button" id="db-shutdown-refresh" class="ghost">Reload shutdown review</button>
+      <button type="button" id="db-shutdown-reflect" class="ghost" hidden>Generate reflection</button>
+    </div>
+    <p class="dim" id="db-shutdown-reflection" hidden></p>
   </div>
 </main>`,
     script: `
@@ -130,6 +144,72 @@ window.viewPreferencesReady.then(function(prefs){
   ["weather","calendar","topics"].forEach(function(key){if(sections[key]===false)document.getElementById("db-"+key).hidden=true});
 });
 initDays();
+var shutdownLoaded=false;
+function shutdownError(message){
+  var el=document.getElementById("db-shutdown-error");el.textContent=message;el.hidden=!message;
+}
+function renderShutdown(r){
+  var body=document.getElementById("db-shutdown-body");
+  var meta=document.getElementById("db-shutdown-meta");
+  if(!r){body.innerHTML='<p class="dim">No shutdown data.</p>';return;}
+  meta.textContent="Shutdown review for "+esc(r.day)+" ("+esc(r.zone)+") · generated "+new Date(r.generatedAt).toLocaleString();
+  var doneTodoist=(r.done.todoist||[]).map(function(t){return '<li><strong>'+esc(t.content)+'</strong><span class="dim"> · Todoist</span></li>';}).join("");
+  var doneBoard=(r.done.board||[]).map(function(b){return '<li><strong>'+esc(b.title)+'</strong><span class="dim"> · Board</span></li>';}).join("");
+  var openTodoist=(r.unfinished.todoist.overdue||[]).concat(r.unfinished.todoist.today||[]).map(function(t){
+    return '<li><strong>'+esc(t.content)+'</strong><span class="dim"> · Todoist</span></li>';
+  }).join("");
+  var blocked=(r.unfinished.blockedToday||[]).map(function(b){
+    return '<li><strong>'+esc(b.title)+'</strong><span class="dim"> · blocked today</span></li>';
+  }).join("");
+  var tomorrowEv=(r.tomorrowPreview.events||[]).map(function(ev){
+    var when=ev.allDay?ev.start+" (all day)":new Date(ev.start).toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
+    return '<li><strong>'+esc(ev.summary)+'</strong><br><span class="dim">'+esc(when)+'</span></li>';
+  }).join("");
+  var tomorrowTasks=(r.tomorrowPreview.tasksDue||[]).map(function(t){
+    return '<li><strong>'+esc(t.content)+'</strong><span class="dim"> · due tomorrow</span></li>';
+  }).join("");
+  body.innerHTML=
+    '<section class="shutdown-section"><h2>Done today</h2><ul>'+(doneTodoist||doneBoard?doneTodoist+doneBoard:'<li class="dim">Nothing recorded yet.</li>')+'</ul></section>'
+    +'<section class="shutdown-section"><h2>Planned but not done</h2><ul>'+(openTodoist||blocked?openTodoist+blocked:'<li class="dim">All clear.</li>')+'</ul></section>'
+    +'<section class="shutdown-section"><h2>Time</h2><p>Calendar <strong>'+esc(String(r.time.calendarHours))+'</strong> h · Blocked tasks <strong>'+esc(String(r.time.blockedTaskHours))+'</strong> h</p></section>'
+    +'<section class="shutdown-section"><h2>Tomorrow</h2><h3 class="dim" style="font-size:.85rem;margin:.5rem 0 0">First events</h3><ul>'+(tomorrowEv||'<li class="dim">No events loaded.</li>')+'</ul>'
+    +'<h3 class="dim" style="font-size:.85rem;margin:.75rem 0 0">Tasks due</h3><ul>'+(tomorrowTasks||'<li class="dim">None due tomorrow.</li>')+'</ul></section>';
+  var reflectBtn=document.getElementById("db-shutdown-reflect");
+  reflectBtn.hidden=!r.llmEnabled;
+  document.getElementById("db-shutdown-reflection").hidden=true;
+}
+function loadShutdown(force){
+  if(shutdownLoaded&&!force)return Promise.resolve();
+  shutdownError("");
+  document.getElementById("db-shutdown-body").innerHTML='<p class="dim">Loading…</p>';
+  return api("/api/briefing/shutdown").then(function(data){
+    shutdownLoaded=true;
+    renderShutdown(data.review);
+  }).catch(function(err){shutdownError(err.message||"Could not load shutdown review.");});
+}
+function setBriefingMode(mode){
+  var morning=mode==="morning";
+  document.getElementById("db-mode-morning").setAttribute("aria-selected",morning?"true":"false");
+  document.getElementById("db-mode-shutdown").setAttribute("aria-selected",morning?"false":"true");
+  document.getElementById("db-morning-view").hidden=!morning;
+  document.getElementById("db-morning-edition").hidden=!morning;
+  document.getElementById("db-shutdown-view").hidden=morning;
+  document.getElementById("db-page-title").textContent=morning?"The Morning Briefing":"Shutdown review";
+  document.getElementById("db-page-deck").textContent=morning?"Your topics, weather, and schedule for the day ahead.":"What you finished, what slipped, and a look at tomorrow.";
+  if(!morning)loadShutdown(false);
+}
+document.getElementById("db-mode-morning").onclick=function(){setBriefingMode("morning")};
+document.getElementById("db-mode-shutdown").onclick=function(){setBriefingMode("shutdown")};
+document.getElementById("db-shutdown-refresh").onclick=function(){loadShutdown(true)};
+document.getElementById("db-shutdown-reflect").onclick=function(){
+  var btn=this,box=document.getElementById("db-shutdown-reflection");
+  btn.disabled=true;box.hidden=true;shutdownError("");
+  api("/api/briefing/shutdown/reflection","POST",{}).then(function(data){
+    if(data.reflection){box.textContent=data.reflection;box.hidden=false;}
+    else if(!data.llmEnabled)shutdownError("LLM is not configured on the server.");
+    else shutdownError("Could not generate a reflection right now.");
+  }).catch(function(err){shutdownError(err.message||"Could not generate reflection.");}).finally(function(){btn.disabled=false;});
+};
 `,
   });
 }
