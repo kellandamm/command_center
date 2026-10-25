@@ -54,9 +54,14 @@ test("sensitive notes: excluded from LLM ask, search body, attention, and export
     assert.equal(backupJson.notes.length, 1);
     assert.equal(backupJson.notes[0].title, "Public");
 
-    const fullBackup = await fetch(`${base}/api/knowledge/export.json?includeSensitive=true`, { headers: authz });
-    const fullJson = await fullBackup.json();
-    assert.equal(fullJson.notes.length, 2);
+    assert.equal(
+      (await fetch(`${base}/api/knowledge/export.json?includeSensitive=true`, { headers: authz })).status,
+      403,
+    );
+    assert.equal(
+      (await fetch(`${base}/api/knowledge/export.md?includeSensitive=true`, { headers: authz })).status,
+      403,
+    );
 
     const md = await fetch(`${base}/api/knowledge/export.md`, { headers: authz });
     const mdText = await md.text();
@@ -107,6 +112,58 @@ test("sensitive notes: excluded from LLM ask, search body, attention, and export
     const continueIds = attention.find((s) => s.id === "continue")!.items.map((i) => i.id);
     assert.ok(!continueIds.includes(`note:${secret.id}`));
     assert.ok(continueIds.includes(`note:${publicNote.id}`));
+  } finally {
+    await closeIntegrationServer(server, integration);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("knowledge export: includeSensitive requires verified owner session", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-sensitive-export-"));
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    ADMIN_TOKEN: TOKEN,
+    OWNER_EMAILS: "owner@example.com",
+    TZ: "UTC",
+  });
+  const settings = new SettingsStore(dir);
+  await settings.load();
+  const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
+  const notes = await NotesStore.open(dir);
+  const integration = await openIntegrationStores(dir, cfg);
+  const server = createApp({
+    cfg,
+    auth: makeAuthenticator(cfg, async (jwt) => {
+      if (jwt === "owner") return { email: "owner@example.com" };
+      throw new Error("bad jwt");
+    }),
+    settings,
+    dailyBriefing,
+    notes,
+    ...integration,
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const ownerHeaders = { "cf-access-jwt-assertion": "owner" };
+
+  await notes.createNote({ title: "Secret", content: "TOP_SECRET_BODY", sensitive: true });
+  await notes.createNote({ title: "Public", content: "PUBLIC_BODY" });
+
+  try {
+    const adminDenied = await fetch(`${base}/api/knowledge/export.md?includeSensitive=true`, { headers: authz });
+    assert.equal(adminDenied.status, 403);
+
+    const adminSafe = await fetch(`${base}/api/knowledge/export.md`, { headers: authz });
+    assert.equal(adminSafe.status, 200);
+    const adminMd = await adminSafe.text();
+    assert.doesNotMatch(adminMd, /TOP_SECRET_BODY/);
+    assert.match(adminMd, /PUBLIC_BODY/);
+
+    const ownerExport = await fetch(`${base}/api/knowledge/export.md?includeSensitive=true`, { headers: ownerHeaders });
+    assert.equal(ownerExport.status, 200);
+    const ownerMd = await ownerExport.text();
+    assert.match(ownerMd, /TOP_SECRET_BODY/);
+    assert.match(ownerMd, /PUBLIC_BODY/);
   } finally {
     await closeIntegrationServer(server, integration);
     await rm(dir, { recursive: true, force: true });

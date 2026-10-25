@@ -370,6 +370,7 @@ export const notesPanel: PanelModule = {
     if (path === "/api/knowledge/export.md" && req.method === "GET") {
       const url = new URL(req.url ?? "/", "http://local");
       const includeSensitive = url.searchParams.get("includeSensitive") === "true";
+      if (includeSensitive && !ctx.owner) return ownerDenied(res), true;
       const content = ctx.notes.listNotes()
         .filter((note) => includeSensitive || !isNoteSensitive(note))
         .map((note) =>
@@ -387,6 +388,7 @@ export const notesPanel: PanelModule = {
     if (path === "/api/knowledge/export.json" && req.method === "GET") {
       const url = new URL(req.url ?? "/", "http://local");
       const includeSensitive = url.searchParams.get("includeSensitive") === "true";
+      if (includeSensitive && !ctx.owner) return ownerDenied(res), true;
       res.writeHead(200, {
         "content-type": "application/json; charset=utf-8",
         "content-disposition": 'attachment; filename="command-center-knowledge.json"',
