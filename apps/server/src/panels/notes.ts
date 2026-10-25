@@ -15,6 +15,8 @@ import { notesZipLimitsFromEnv } from "../notes/zip-limits";
 import { readNotesZip } from "../notes/zip-read";
 import { buildNotesZipExport } from "../notes/zip-export";
 import { OWNER_ACTION_FORBIDDEN } from "../owner-auth";
+import { meetingNotesForLlmContext, noteCitationHref } from "../meetings/qa";
+import { summarizeMeetingNote } from "../meetings/import-service";
 import { button, panelCard } from "../ui/components";
 import type { PanelModule } from "./types";
 
@@ -270,6 +272,25 @@ export const notesPanel: PanelModule = {
       return true;
     }
 
+    const summarizeMatch = path.match(/^\/api\/meetings\/([^/]+)\/summarize$/);
+    if (summarizeMatch && req.method === "POST") {
+      if (!ctx.owner) return ownerDenied(res), true;
+      let id: string;
+      try { id = decodeURIComponent(summarizeMatch[1]!); }
+      catch { throw new ValidationError("Invalid note identifier"); }
+      try {
+        const note = await summarizeMeetingNote(ctx.cfg, ctx.notes, id);
+        json(200, { note });
+      } catch (err) {
+        if (err instanceof ValidationError) {
+          const message = err.message === "LLM is not configured" ? "LLM is not configured" : "summarization failed";
+          return error(err.message === "note not found" ? 404 : 400, message), true;
+        }
+        return error(500, "summarization failed"), true;
+      }
+      return true;
+    }
+
     if (path === "/api/knowledge/ask" && req.method === "POST") {
       const llm = llmConfig(ctx.cfg);
       if (!llm) return error(503, "LLM is not configured"), true;
@@ -277,6 +298,8 @@ export const notesPanel: PanelModule = {
       if (typeof body.question !== "string" || !body.question.trim()) throw new ValidationError("question is required");
       if (body.spaceId !== undefined && typeof body.spaceId !== "string") throw new ValidationError("spaceId must be a string");
       if (body.sourceId !== undefined && typeof body.sourceId !== "string") throw new ValidationError("sourceId must be a string");
+      const includeSensitiveMeetings = body.includeSensitiveMeetings === true;
+      if (includeSensitiveMeetings && !ctx.owner) return error(403, OWNER_ACTION_FORBIDDEN), true;
       let context: { space: { instructions: string; references: Array<{ id: string; title: string; href: string; excerpt: string }> }; notes: ReturnType<typeof ctx.notes.listNotes>; sources: ReturnType<typeof ctx.notes.listSources> } | undefined;
       if (body.sourceId) {
         const source = ctx.notes.getSource(body.sourceId);
@@ -285,10 +308,18 @@ export const notesPanel: PanelModule = {
       } else if (body.spaceId) {
         context = ctx.notes.getSpaceContent(body.spaceId);
         if (!context) return error(404, "space not found"), true;
+        if (includeSensitiveMeetings) {
+          const extra = meetingNotesForLlmContext(ctx.notes.listNotes()).filter((note) => note.spaceId === body.spaceId);
+          context = { ...context, notes: [...context.notes, ...extra] };
+        }
       } else {
+        const baseNotes = notesForLlmContext(ctx.notes.listNotes());
+        const meetingNotes = includeSensitiveMeetings ? meetingNotesForLlmContext(ctx.notes.listNotes()) : [];
+        const byId = new Map<string, ReturnType<typeof ctx.notes.listNotes>[number]>();
+        for (const note of [...baseNotes, ...meetingNotes]) byId.set(note.id, note);
         context = {
           space: { instructions: "", references: [] },
-          notes: notesForLlmContext(ctx.notes.listNotes()),
+          notes: [...byId.values()],
           sources: ctx.notes.listSources(),
         };
       }
@@ -298,10 +329,29 @@ export const notesPanel: PanelModule = {
       if (questionTimes.length >= MAX_KNOWLEDGE_QUESTIONS_PER_HOUR) {
         return error(429, "Knowledge question limit reached; try again later"), true;
       }
-      const sources = [
-        ...context.notes.map((item) => ({ id: item.id, title: item.title, url: item.sourceUrl, content: item.content })),
-        ...context.sources.map((item) => ({ id: item.id, title: item.title, url: item.url, content: item.excerpt })),
-        ...context.space.references.map((item) => ({ id: item.id, title: item.title, url: item.href, content: item.excerpt })),
+      type AskSource = { id: string; title: string; url: string | null; citationUrl: string | null; content: string };
+      const sources: AskSource[] = [
+        ...context.notes.map((item) => ({
+          id: item.id,
+          title: item.title,
+          url: item.sourceUrl,
+          citationUrl: item.sourceUrl ?? noteCitationHref(item.id),
+          content: item.content,
+        })),
+        ...context.sources.map((item) => ({
+          id: item.id,
+          title: item.title,
+          url: item.url,
+          citationUrl: item.url,
+          content: item.excerpt,
+        })),
+        ...context.space.references.map((item) => ({
+          id: item.id,
+          title: item.title,
+          url: item.href,
+          citationUrl: item.href,
+          content: item.excerpt,
+        })),
       ];
       if (!sources.length) return error(400, "Add notes or captured sources to this space before asking a question"), true;
       questionTimes.push(Date.now());
@@ -332,7 +382,12 @@ export const notesPanel: PanelModule = {
       ]);
       json(200, {
         answer,
-        citations: includedSources.map(({ id, title, url }, index) => ({ id, title, url, number: index + 1 })),
+        citations: includedSources.map(({ id, title, citationUrl }, index) => ({
+          id,
+          title,
+          url: citationUrl,
+          number: index + 1,
+        })),
       });
       return true;
     }
