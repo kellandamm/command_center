@@ -21,7 +21,8 @@ import {
   shouldSendDuringQuietHours,
 } from "../src/notify/ntfy";
 import { inQuietHours, parseQuietHours } from "../src/notify/quiet-hours";
-import { sendBriefingDigest, runCalendarReminders } from "../src/notify/tick";
+import { sendBriefingDigest, runCalendarReminders, retryPendingDigest, runNtfyTick } from "../src/notify/tick";
+import { NtfyBackgroundRunner } from "../src/notify/scheduler-ntfy";
 import type { DailyBriefingRecord } from "../src/daily-briefing/types";
 import { CalendarWorkspace } from "../src/calendar/workspace";
 
@@ -130,6 +131,36 @@ test("briefing digest ignores quiet hours", async () => {
   }
 });
 
+test("reminder catches up within lead window after a missed tick", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-ntfy-catch-"));
+  const fixture = join(dirname(fileURLToPath(import.meta.url)), "fixtures/demo-week.ics");
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    ADMIN_TOKEN: TOKEN,
+    TZ: "UTC",
+    NTFY_TOPIC: "reminders",
+    NTFY_REMINDER_MINUTES: "10",
+    ICS_LOCAL_FILES: fixture,
+  });
+  const sent = await NtfySentSet.open(dir);
+  const calendar = await CalendarWorkspace.open(cfg);
+  let posts = 0;
+  stubTransport(() => { posts++; });
+  try {
+    const deps = {
+      deployment: cfg,
+      effective: cfg,
+      calendar,
+      sent,
+      now: new Date("2026-10-15T13:55:00.000Z"),
+    };
+    await runCalendarReminders(deps, { remaining: 10 });
+    assert.equal(posts, 1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("reminder dedupe across ticks at ~10 minutes before start", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-ntfy-"));
   const fixture = join(dirname(fileURLToPath(import.meta.url)), "fixtures/demo-week.ics");
@@ -186,13 +217,92 @@ test("briefing digest fires once per slot", async () => {
   }
 });
 
-async function notifyApiHarness(owner: boolean) {
+test("pending digest retries after failed send", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-ntfy-pending-"));
+  const cfg = loadConfig({ DATA_DIR: dir, ADMIN_TOKEN: TOKEN, NTFY_TOPIC: "brief" });
+  const sent = await NtfySentSet.open(dir);
+  const rec: DailyBriefingRecord = {
+    day: "2026-10-13",
+    generatedAt: "2026-10-13T12:00:00Z",
+    trigger: "schedule",
+    sources: {
+      weather: { status: "not_configured" },
+      calendar: { status: "empty", data: { events: [] } },
+      topics: { status: "not_configured" },
+    },
+  };
+  let calls = 0;
+  setNtfyTransportForTests(async () => {
+    calls++;
+    return { status: calls === 1 ? 500 : 200 };
+  });
+  const deps = { deployment: cfg, effective: cfg, sent, now: new Date(rec.generatedAt) };
+  try {
+    await sendBriefingDigest(deps, rec, "2026-10-13 06:00");
+    assert.ok(sent.pendingDigest());
+    assert.equal(calls, 1);
+    await retryPendingDigest(deps, { remaining: 10 });
+    assert.equal(calls, 2);
+    assert.ok(sent.has("digest:2026-10-13 06:00"));
+    assert.equal(sent.pendingDigest(), undefined);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("background runner queues digest while a tick is in flight", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-ntfy-queue-"));
+  const cfg = loadConfig({ DATA_DIR: dir, ADMIN_TOKEN: TOKEN, NTFY_TOPIC: "q" });
+  const sent = await NtfySentSet.open(dir);
+  const settings = new SettingsStore(dir);
+  await settings.load();
+  let inFlight = 0;
+  let maxInFlight = 0;
+  let posts = 0;
+  setNtfyTransportForTests(async () => {
+    inFlight++;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    posts++;
+    await new Promise((r) => setTimeout(r, 40));
+    inFlight--;
+    return { status: 200 };
+  });
+  const runner = new NtfyBackgroundRunner();
+  const hooks = {
+    deployment: cfg,
+    cfg,
+    ntfySent: sent,
+  };
+  const rec: DailyBriefingRecord = {
+    day: "2026-10-13",
+    generatedAt: "2026-10-13T12:00:00Z",
+    trigger: "schedule",
+    sources: {
+      weather: { status: "not_configured" },
+      calendar: { status: "empty", data: { events: [] } },
+      topics: { status: "not_configured" },
+    },
+  };
+  try {
+    const now = new Date(rec.generatedAt);
+    runner.scheduleBriefingDigest(hooks, rec, "2026-10-13 06:00", now);
+    runner.scheduleBriefingDigest(hooks, rec, "2026-10-14 06:00", now);
+    await new Promise((r) => setTimeout(r, 250));
+    assert.equal(maxInFlight, 1);
+    assert.equal(posts, 2);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+async function notifyApiHarness(owner: boolean, extra: Record<string, string> = {}) {
   const dir = await mkdtemp(join(tmpdir(), "cc-ntfy-api-"));
   const deployment = loadConfig({
     DATA_DIR: dir,
     ADMIN_TOKEN: TOKEN,
     ALLOW_INSECURE_NO_AUTH: "1",
     NTFY_TOPIC: "phone",
+    ...extra,
   });
   const settings = new SettingsStore(dir);
   await settings.load();
@@ -235,6 +345,18 @@ test("notify test endpoint requires owner", async () => {
 test("notify test endpoint sends for owner", async () => {
   stubTransport(() => {});
   const h = await notifyApiHarness(true);
+  try {
+    const ok = await fetch(`${h.base}/api/notify/test`, { method: "POST", headers: { "x-ah": "1" } });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(await ok.json(), { ok: true });
+  } finally {
+    await h.close();
+  }
+});
+
+test("notify test endpoint bypasses quiet hours", async () => {
+  stubTransport(() => {});
+  const h = await notifyApiHarness(true, { NTFY_QUIET_HOURS: "22-7", TZ: "UTC" });
   try {
     const ok = await fetch(`${h.base}/api/notify/test`, { method: "POST", headers: { "x-ah": "1" } });
     assert.equal(ok.status, 200);

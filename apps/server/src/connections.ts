@@ -210,17 +210,16 @@ export class ConnectionsStore {
     if (required.some((field) => !cfg[field])) return { ok: false, message: "Connection is disabled or required fields are missing." };
     let url: string;
     let headers: Record<string, string>;
-    let method = "GET";
-    let body: string | undefined;
     switch (id) {
       case "llm": url = `${cfg.llmBaseUrl}/models`; headers = { authorization: `Bearer ${cfg.llmApiKey}` }; break;
       case "brave": url = "https://api.search.brave.com/res/v1/web/search?q=connection%20test&count=1"; headers = { "X-Subscription-Token": cfg.braveSearchApiKey! }; break;
       case "github": url = "https://api.github.com/user"; headers = { authorization: `Bearer ${cfg.githubToken}` }; break;
       case "todoist": url = "https://api.todoist.com/api/v1/projects"; headers = { authorization: `Bearer ${cfg.todoistApiToken}` }; break;
       case "recallio": url = `${cfg.recallioUrl}/api/search?q=connection%20test`; headers = cfg.cfAccessClientId && cfg.cfAccessClientSecret ? { "cf-access-client-id": cfg.cfAccessClientId, "cf-access-client-secret": cfg.cfAccessClientSecret } : {}; break;
+      default: return { ok: false, message: "Unknown connection." };
     }
     try {
-      const response = await request(url, { method, body, headers, maxRedirects: 0, maxBytes: 64_000, timeoutMs: 10_000 });
+      const response = await request(url, { headers, maxRedirects: 0, maxBytes: 64_000, timeoutMs: 10_000 });
       const ok = response.status >= 200 && response.status < 300 && response.contentType.includes("json");
       return {
         ok,

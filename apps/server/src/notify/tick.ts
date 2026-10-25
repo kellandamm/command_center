@@ -10,11 +10,10 @@ import type { WinsStore } from "../wins/store";
 import { dayKey } from "../store";
 import { briefingDigestLines } from "./briefing-digest";
 import { notify, notifyIfAllowed, resolveNtfyConfig, type NtfyResolved } from "./ntfy";
-import type { NtfySentSet } from "./sent-set";
+import { NtfySentSet, PENDING_DIGEST_MAX_MS } from "./sent-set";
 import type { CalendarEvent } from "../calendar/parse-ics";
 import { NTFY_QUIET_TZ } from "./quiet-hours";
 
-export const NTFY_TICK_INTERVAL_MS = 60_000;
 export const NTFY_MAX_SENDS_PER_TICK = 10;
 
 export interface NtfyTickDeps {
@@ -51,7 +50,22 @@ function absoluteUrl(runtime: NtfyResolved, path: string): string | undefined {
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
-/** Morning digest is always sent (ignores quiet hours). */
+async function deliverDigest(cfg: NtfyResolved, deps: NtfyTickDeps, slot: string, body: string, click?: string): Promise<boolean> {
+  const ok = await notify(cfg, {
+    title: "Daily briefing",
+    body,
+    priority: "default",
+    tags: ["briefing"],
+    click,
+  });
+  if (ok) {
+    await deps.sent.mark(digestKey(slot));
+    await deps.sent.clearPendingDigest();
+  }
+  return ok;
+}
+
+/** Morning digest is always sent (ignores quiet hours). Retries via pending state until success or 6h. */
 export async function sendBriefingDigest(
   deps: NtfyTickDeps,
   rec: DailyBriefingRecord,
@@ -60,39 +74,53 @@ export async function sendBriefingDigest(
   const cfg = resolveNtfyConfig(deps.deployment, deps.effective);
   if (!cfg.enabled) return;
   const key = digestKey(slot);
-  if (deps.sent.has(key)) return;
-  const lines = briefingDigestLines(rec);
-  const ok = await notify(cfg, {
-    title: "Daily briefing",
-    body: lines.join("\n"),
-    priority: "default",
-    tags: ["briefing"],
-    click: absoluteUrl(cfg, "/briefing"),
-  });
-  if (ok) await deps.sent.mark(key);
+  if (deps.sent.has(key)) {
+    await deps.sent.clearPendingDigest();
+    return;
+  }
+  const body = briefingDigestLines(rec).join("\n");
+  const click = absoluteUrl(cfg, "/briefing");
+  const ok = await deliverDigest(cfg, deps, slot, body, click);
+  if (!ok) {
+    await deps.sent.setPendingDigest({ slot, body, click, createdAt: deps.now.getTime() });
+  }
 }
 
-function inReminderLeadWindow(msUntilStart: number, leadMs: number): boolean {
-  const slackMs = NTFY_TICK_INTERVAL_MS;
-  return msUntilStart > 0 && msUntilStart <= leadMs && msUntilStart > leadMs - slackMs;
+export async function retryPendingDigest(deps: NtfyTickDeps, budget: { remaining: number }): Promise<void> {
+  if (budget.remaining <= 0) return;
+  const cfg = resolveNtfyConfig(deps.deployment, deps.effective);
+  if (!cfg.enabled) return;
+  const pending = deps.sent.pendingDigest();
+  if (!pending) return;
+  if (deps.sent.has(digestKey(pending.slot))) {
+    await deps.sent.clearPendingDigest();
+    return;
+  }
+  if (deps.now.getTime() - pending.createdAt > PENDING_DIGEST_MAX_MS) {
+    await deps.sent.clearPendingDigest();
+    return;
+  }
+  const ok = await deliverDigest(cfg, deps, pending.slot, pending.body, pending.click);
+  if (ok) budget.remaining--;
 }
 
 export async function runCalendarReminders(deps: NtfyTickDeps, budget: { remaining: number }): Promise<void> {
   const cfg = resolveNtfyConfig(deps.deployment, deps.effective);
   if (!cfg.enabled || !deps.calendar || budget.remaining <= 0) return;
   const leadMs = cfg.reminderMinutes * 60_000;
+  const nowMs = deps.now.getTime();
   try {
     const snap = await deps.calendar.snapshot({
       rangeStart: deps.now,
-      rangeEnd: new Date(deps.now.getTime() + leadMs + NTFY_TICK_INTERVAL_MS),
+      rangeEnd: new Date(nowMs + leadMs),
       limit: 50,
     });
     for (const event of snap.events) {
       if (budget.remaining <= 0) break;
       if (event.allDay) continue;
       const startMs = event.start.getTime();
-      const msUntilStart = startMs - deps.now.getTime();
-      if (!inReminderLeadWindow(msUntilStart, leadMs)) continue;
+      const msUntilStart = startMs - nowMs;
+      if (msUntilStart <= 0 || msUntilStart > leadMs) continue;
       const key = eventReminderKey(event);
       if (deps.sent.has(key)) continue;
       const mins = Math.max(1, Math.round(msUntilStart / 60_000));
@@ -109,10 +137,10 @@ export async function runCalendarReminders(deps: NtfyTickDeps, budget: { remaini
       }
     }
   } catch {
-    const now = Date.now();
-    if (now - lastCalendarReminderErrorAt >= 15 * 60_000) {
+    const t = Date.now();
+    if (t - lastCalendarReminderErrorAt >= 15 * 60_000) {
       console.error("ntfy: calendar reminders skipped (calendar unavailable)");
-      lastCalendarReminderErrorAt = now;
+      lastCalendarReminderErrorAt = t;
     }
   }
 }
@@ -127,7 +155,7 @@ async function runCoachNudge(deps: NtfyTickDeps, budget: { remaining: number }):
   const snap = deps.attention.snapshot();
   const sections = composeAttentionSections({
     todayYmd: today,
-    tz: deps.effective.tz,
+    tz: NTFY_QUIET_TZ,
     nowMs: deps.now.getTime(),
     cards: deps.board.list(),
     notes: deps.notes.listNotes().filter((n) => !isNoteSensitive(n)),
@@ -157,6 +185,7 @@ async function runCoachNudge(deps: NtfyTickDeps, budget: { remaining: number }):
 export async function runNtfyTick(deps: NtfyTickDeps): Promise<void> {
   await deps.sent.prune();
   const budget = { remaining: NTFY_MAX_SENDS_PER_TICK };
+  await retryPendingDigest(deps, budget);
   await runCalendarReminders(deps, budget);
   await runCoachNudge(deps, budget);
 }

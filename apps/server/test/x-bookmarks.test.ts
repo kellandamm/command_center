@@ -275,6 +275,6 @@ test("x bookmarks: ssrf guard blocks private and non-http targets", async () => 
   for (const bad of ["http://127.0.0.1/", "http://169.254.169.254/", "http://[::1]/", "file:///etc/passwd"]) {
     await assert.rejects(assertPublicUrl(bad), BlockedUrlError);
   }
-  await assert.rejects(assertPublicUrl("https://evil.example/", async () => ["10.0.0.1"]), BlockedUrlError);
-  await assert.rejects(assertPublicUrl("https://example.com/", async () => ["::ffff:127.0.0.1"]), BlockedUrlError);
+  await assert.rejects(assertPublicUrl("https://evil.example/", { resolve: async () => ["10.0.0.1"] }), BlockedUrlError);
+  await assert.rejects(assertPublicUrl("https://example.com/", { resolve: async () => ["::ffff:127.0.0.1"] }), BlockedUrlError);
 });

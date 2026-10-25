@@ -79,7 +79,7 @@ import { excalidrawAssetContentType, readExcalidrawAsset } from "./whiteboard/as
 import { whiteboardPage } from "./ui/whiteboard-page";
 import { whiteboardEditorScript } from "./ui/whiteboard-editor-asset";
 import { readBody, readRawBody } from "./request-body";
-import { notifyIfAllowed, ntfyStatus, resolveNtfyConfig } from "./notify/ntfy";
+import { notify, ntfyStatus, resolveNtfyConfig } from "./notify/ntfy";
 
 export interface App {
   cfg: Config;
@@ -408,12 +408,12 @@ export function createApp(app: App): Server {
         if (!who.owner) return json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
         const resolved = resolveNtfyConfig(deployment, app.cfg);
         if (!resolved.enabled) return json(res, 503, { error: "Phone notifications are not configured (set NTFY_TOPIC)." });
-        const ok = await notifyIfAllowed(resolved, {
+        const ok = await notify(resolved, {
           title: "Test notification",
           body: "If you see this on your phone, ntfy is working.",
           priority: "default",
           tags: ["test"],
-        }, new Date());
+        });
         return json(res, ok ? 200 : 502, { ok });
       }
 

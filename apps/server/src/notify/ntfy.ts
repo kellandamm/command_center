@@ -98,7 +98,10 @@ export function maskNtfyTopic(topic: string): string {
   return `${t.slice(0, 2)}•••${t.slice(-2)}`;
 }
 
-/** Deployment env wins over connection-vault values on `effective`. */
+/**
+ * Deployment env wins over the connection vault on `effective`.
+ * `NTFY_TOPIC` in env still applies when the vault ntfy connection is disabled.
+ */
 export function resolveNtfyConfig(deployment: Config, effective: Config = deployment): NtfyResolved {
   const topic = deployment.ntfyTopic ?? effective.ntfyTopic;
   const publishBase = (deployment.ntfyUrl ?? effective.ntfyUrl ?? DEFAULT_URL).replace(/\/+$/, "");
@@ -116,9 +119,6 @@ export function resolveNtfyConfig(deployment: Config, effective: Config = deploy
     envOrigin,
   };
 }
-
-/** @deprecated alias */
-export const resolveNtfyRuntime = resolveNtfyConfig;
 
 export function ntfyStatus(cfg: NtfyResolved): { enabled: boolean; topicMasked: string | null } {
   return {

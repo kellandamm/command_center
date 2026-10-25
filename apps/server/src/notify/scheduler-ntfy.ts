@@ -19,8 +19,11 @@ export interface NtfySchedulerHooks {
   attention?: AttentionStore;
 }
 
+let lastBackgroundErrorAt = 0;
+
 export class NtfyBackgroundRunner {
   private busy = false;
+  private readonly queue: Array<() => Promise<void>> = [];
 
   private deps(now: Date, hooks: NtfySchedulerHooks): NtfyTickDeps {
     return {
@@ -37,27 +40,37 @@ export class NtfyBackgroundRunner {
   }
 
   scheduleBriefingDigest(hooks: NtfySchedulerHooks, rec: DailyBriefingRecord, slot: string, now: Date): void {
-    this.run(async () => {
+    this.enqueue(async () => {
       await sendBriefingDigest(this.deps(now, hooks), rec, slot);
     });
   }
 
   scheduleTick(hooks: NtfySchedulerHooks, now: Date): void {
-    this.run(async () => {
+    this.enqueue(async () => {
       await runNtfyTick(this.deps(now, hooks));
     });
   }
 
-  private run(work: () => Promise<void>): void {
-    if (this.busy) return;
+  private enqueue(work: () => Promise<void>): void {
+    this.queue.push(work);
+    this.pump();
+  }
+
+  private pump(): void {
+    if (this.busy || !this.queue.length) return;
     this.busy = true;
+    const work = this.queue.shift()!;
     void work()
-      .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : "unknown error";
-        console.error(`ntfy background work failed: ${msg}`);
+      .catch(() => {
+        const now = Date.now();
+        if (now - lastBackgroundErrorAt >= 15 * 60_000) {
+          console.error("ntfy: background work failed");
+          lastBackgroundErrorAt = now;
+        }
       })
       .finally(() => {
         this.busy = false;
+        this.pump();
       });
   }
 }
