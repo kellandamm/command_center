@@ -67,6 +67,7 @@ import { notesEditorScript } from "./ui/notes-editor-asset";
 import type { CalendarWorkspace } from "./calendar/workspace";
 import { CalendarConflictError } from "./calendar/store";
 import { handleCalendarRoutes } from "./calendar/routes";
+import { handleQuickAddRoutes } from "./quick-add/routes";
 import { exportCalendar } from "./calendar/export";
 import { calendarSettingsPage } from "./ui/calendar-settings-page";
 import { calendarEventPage } from "./ui/calendar-event-page";
@@ -246,6 +247,16 @@ export function createApp(app: App): Server {
       const get = method === "GET" || method === "HEAD";
 
       if (get && path === "/assets/notes-editor.js") return send(res, 200, await notesEditorScript(), "text/javascript", extra);
+      if (await handleQuickAddRoutes(
+        app.cfg,
+        app.calendar,
+        canManageSharedServerState(app.cfg, { owner: who.owner === true, who: who.who }),
+        who.owner === true,
+        req,
+        res,
+        path,
+        readBody,
+      )) return;
       if (app.calendar && await handleCalendarRoutes(app.calendar, req, res, path, who.owner === true, readBody)) return;
       if (path === "/api/connections" || path.startsWith("/api/connections/")) {
         if (!who.owner) return json(res, 403, { error: "Connection management requires a verified owner login. Set OWNER_EMAILS and sign in through Cloudflare Access; machine/admin tokens cannot manage keys." });
