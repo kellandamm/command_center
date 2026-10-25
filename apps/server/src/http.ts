@@ -475,7 +475,12 @@ export function createApp(app: App): Server {
       if (path.startsWith("/api/x-bookmarks")) {
         if (await handleXBookmarkApiRoutes(app.xBookmarks, req, res, path, readBody)) return;
       }
-      if (await handleDailyBriefingRoutes(app, app.dailyBriefing, req, res, path)) return;
+      if (await handleDailyBriefingRoutes(app, app.dailyBriefing, req, res, path, {
+        owner: who.owner === true,
+        who: who.who,
+        email: who.email,
+        serviceToken: who.serviceToken,
+      }, readBody)) return;
       if (path.startsWith("/api/board") || path.startsWith("/api/wins")) {
         const bodyForApi = get ? undefined : await readBody(req);
         if (await handleBoardRoutes(app.board, app.hobieQueue, app.wins, app.cfg, req, res, path, bodyForApi)) return;

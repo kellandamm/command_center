@@ -1,7 +1,17 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { App } from "../http";
+import { llmConfigured } from "../config";
 import { dayKey } from "../store";
+import { canManageSharedServerState, OWNER_ACTION_FORBIDDEN } from "../owner-auth";
+import {
+  buildShutdownReview,
+  generateShutdownReflection,
+  parseClientShutdownReview,
+} from "../briefing/shutdown-service";
+import { ValidationError } from "../settings";
 import type { DailyBriefingService } from "./service";
+
+const REFLECTION_BODY_LIMIT = 64 * 1024;
 
 function json(res: ServerResponse, status: number, data: unknown) {
   res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
@@ -16,7 +26,49 @@ export async function handleDailyBriefingRoutes(
   req: IncomingMessage,
   res: ServerResponse,
   path: string,
+  principal?: { owner: boolean; who: string; email?: string; serviceToken?: boolean },
+  readBody?: (req: IncomingMessage, limit?: number) => Promise<unknown>,
 ): Promise<boolean> {
+  if (path === "/api/briefing/shutdown" && req.method === "GET" && principal) {
+    if (!canManageSharedServerState(app.cfg, principal)) {
+      json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
+      return true;
+    }
+    const review = await buildShutdownReview({
+      cfg: app.cfg,
+      board: app.board,
+      calendar: app.calendar,
+      now: new Date(),
+    });
+    json(res, 200, { review });
+    return true;
+  }
+
+  if (path === "/api/briefing/shutdown/reflection" && req.method === "POST" && principal && readBody) {
+    if (!principal.owner) {
+      json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
+      return true;
+    }
+    let body: unknown;
+    try {
+      body = await readBody(req, REFLECTION_BODY_LIMIT);
+    } catch (err) {
+      if (err instanceof ValidationError && err.message === "request body too large") {
+        json(res, 413, { error: "Request body too large." });
+        return true;
+      }
+      throw err;
+    }
+    const source = parseClientShutdownReview(body);
+    if (!source) {
+      json(res, 400, { error: "Invalid shutdown review payload." });
+      return true;
+    }
+    const reflection = await generateShutdownReflection(source, app.cfg);
+    json(res, 200, { reflection, llmEnabled: llmConfigured(app.cfg) });
+    return true;
+  }
+
   if (path === "/api/daily-briefing/days" && req.method === "GET") {
     const days = await daily.listDays();
     json(res, 200, { days });
