@@ -71,8 +71,10 @@ export interface Config {
   ntfyTopic: string | null;
   ntfyToken: string | null;
   ntfyReminderMinutes: number;
-  /** Local quiet hours window, e.g. `22-7` (uses TZ). */
+  /** Local quiet hours window in America/Chicago, e.g. `22-7`. */
   ntfyQuietHours: string | null;
+  /** Optional daily Attention coach nudge (`NTFY_COACH=1`). */
+  ntfyCoach: boolean;
   /** Public site origin for notification click links (e.g. https://home.example.com). */
   appPublicUrl: string | null;
 }
@@ -229,6 +231,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ntfyToken: blank(env.NTFY_TOKEN),
     ntfyReminderMinutes: Math.min(120, Math.max(1, Number(env.NTFY_REMINDER_MINUTES ?? 10) || 10)),
     ntfyQuietHours: blank(env.NTFY_QUIET_HOURS),
+    ntfyCoach: truthy(env.NTFY_COACH),
     appPublicUrl: blank(env.APP_PUBLIC_URL)?.replace(/\/+$/, "") ?? null,
   };
 }

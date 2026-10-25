@@ -9,9 +9,13 @@ import type { AttentionStore } from "../attention/store";
 import type { WinsStore } from "../wins/store";
 import { dayKey } from "../store";
 import { briefingDigestLines } from "./briefing-digest";
-import { notifyIfAllowed, resolveNtfyRuntime } from "./ntfy";
+import { notify, notifyIfAllowed, resolveNtfyConfig, type NtfyResolved } from "./ntfy";
 import type { NtfySentSet } from "./sent-set";
 import type { CalendarEvent } from "../calendar/parse-ics";
+import { NTFY_QUIET_TZ } from "./quiet-hours";
+
+export const NTFY_TICK_INTERVAL_MS = 60_000;
+export const NTFY_MAX_SENDS_PER_TICK = 10;
 
 export interface NtfyTickDeps {
   deployment: Config;
@@ -24,6 +28,8 @@ export interface NtfyTickDeps {
   sent: NtfySentSet;
   now: Date;
 }
+
+let lastCalendarReminderErrorAt = 0;
 
 function eventReminderKey(event: CalendarEvent): string {
   const cal = event.calendarId ?? "legacy";
@@ -39,69 +45,89 @@ function coachKey(day: string): string {
   return `coach:${day}`;
 }
 
-function absoluteUrl(runtime: ReturnType<typeof resolveNtfyRuntime>, path: string): string | undefined {
+function absoluteUrl(runtime: NtfyResolved, path: string): string | undefined {
   const base = runtime.publicBaseUrl?.replace(/\/+$/, "");
   if (!base) return undefined;
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+/** Morning digest is always sent (ignores quiet hours). */
 export async function sendBriefingDigest(
   deps: NtfyTickDeps,
   rec: DailyBriefingRecord,
   slot: string,
 ): Promise<void> {
-  const runtime = resolveNtfyRuntime(deps.deployment, deps.effective);
-  if (!runtime.enabled) return;
+  const cfg = resolveNtfyConfig(deps.deployment, deps.effective);
+  if (!cfg.enabled) return;
   const key = digestKey(slot);
   if (deps.sent.has(key)) return;
   const lines = briefingDigestLines(rec);
-  const ok = await notifyIfAllowed(runtime, {
+  const ok = await notify(cfg, {
     title: "Daily briefing",
     body: lines.join("\n"),
     priority: "default",
     tags: ["briefing"],
-    click: absoluteUrl(runtime, "/briefing"),
-  }, deps.now);
+    click: absoluteUrl(cfg, "/briefing"),
+  });
   if (ok) await deps.sent.mark(key);
 }
 
-export async function runCalendarReminders(deps: NtfyTickDeps): Promise<void> {
-  const runtime = resolveNtfyRuntime(deps.deployment, deps.effective);
-  if (!runtime.enabled || !deps.calendar) return;
-  const horizonMs = runtime.reminderMinutes * 60_000;
-  const snap = await deps.calendar.snapshot({
-    rangeStart: deps.now,
-    rangeEnd: new Date(deps.now.getTime() + horizonMs),
-    limit: 50,
-  });
-  for (const event of snap.events) {
-    const startMs = event.start.getTime();
-    if (startMs < deps.now.getTime() || startMs > deps.now.getTime() + horizonMs) continue;
-    const key = eventReminderKey(event);
-    if (deps.sent.has(key)) continue;
-    const mins = Math.max(1, Math.round((startMs - deps.now.getTime()) / 60_000));
-    const when = event.allDay ? "today" : `in ${mins} min`;
-    const ok = await notifyIfAllowed(runtime, {
-      title: event.summary.slice(0, 120) || "Calendar event",
-      body: `Starts ${when}${event.location ? ` · ${event.location.slice(0, 80)}` : ""}`,
-      priority: "high",
-      tags: ["calendar"],
-      click: absoluteUrl(runtime, "/calendar"),
-    }, deps.now);
-    if (ok) await deps.sent.mark(key);
+function inReminderLeadWindow(msUntilStart: number, leadMs: number): boolean {
+  const slackMs = NTFY_TICK_INTERVAL_MS;
+  return msUntilStart > 0 && msUntilStart <= leadMs && msUntilStart > leadMs - slackMs;
+}
+
+export async function runCalendarReminders(deps: NtfyTickDeps, budget: { remaining: number }): Promise<void> {
+  const cfg = resolveNtfyConfig(deps.deployment, deps.effective);
+  if (!cfg.enabled || !deps.calendar || budget.remaining <= 0) return;
+  const leadMs = cfg.reminderMinutes * 60_000;
+  try {
+    const snap = await deps.calendar.snapshot({
+      rangeStart: deps.now,
+      rangeEnd: new Date(deps.now.getTime() + leadMs + NTFY_TICK_INTERVAL_MS),
+      limit: 50,
+    });
+    for (const event of snap.events) {
+      if (budget.remaining <= 0) break;
+      if (event.allDay) continue;
+      const startMs = event.start.getTime();
+      const msUntilStart = startMs - deps.now.getTime();
+      if (!inReminderLeadWindow(msUntilStart, leadMs)) continue;
+      const key = eventReminderKey(event);
+      if (deps.sent.has(key)) continue;
+      const mins = Math.max(1, Math.round(msUntilStart / 60_000));
+      const ok = await notifyIfAllowed(cfg, {
+        title: event.summary.slice(0, 120) || "Calendar event",
+        body: `Starts in ${mins} min${event.location ? ` · ${event.location.slice(0, 80)}` : ""}`,
+        priority: "default",
+        tags: ["calendar"],
+        click: absoluteUrl(cfg, "/calendar"),
+      }, deps.now);
+      if (ok) {
+        await deps.sent.mark(key);
+        budget.remaining--;
+      }
+    }
+  } catch {
+    const now = Date.now();
+    if (now - lastCalendarReminderErrorAt >= 15 * 60_000) {
+      console.error("ntfy: calendar reminders skipped (calendar unavailable)");
+      lastCalendarReminderErrorAt = now;
+    }
   }
 }
 
-export async function runCoachNudge(deps: NtfyTickDeps): Promise<void> {
-  const runtime = resolveNtfyRuntime(deps.deployment, deps.effective);
-  if (!runtime.enabled || !deps.board || !deps.notes || !deps.wins || !deps.attention) return;
-  const today = dayKey(deps.now, runtime.tz);
+async function runCoachNudge(deps: NtfyTickDeps, budget: { remaining: number }): Promise<void> {
+  const cfg = resolveNtfyConfig(deps.deployment, deps.effective);
+  if (!cfg.coachEnabled || !cfg.enabled || budget.remaining <= 0) return;
+  if (!deps.board || !deps.notes || !deps.wins || !deps.attention) return;
+  const today = dayKey(deps.now, NTFY_QUIET_TZ);
   const key = coachKey(today);
   if (deps.sent.has(key)) return;
   const snap = deps.attention.snapshot();
   const sections = composeAttentionSections({
     todayYmd: today,
-    tz: runtime.tz,
+    tz: deps.effective.tz,
     nowMs: deps.now.getTime(),
     cards: deps.board.list(),
     notes: deps.notes.listNotes().filter((n) => !isNoteSensitive(n)),
@@ -115,18 +141,22 @@ export async function runCoachNudge(deps: NtfyTickDeps): Promise<void> {
   const due = sections.find((s) => s.id === "due");
   const top = due?.items[0];
   if (!top) return;
-  const ok = await notifyIfAllowed(runtime, {
+  const ok = await notifyIfAllowed(cfg, {
     title: "Attention",
     body: `${top.title} — ${top.reason}`,
     priority: "low",
     tags: ["coach"],
-    click: absoluteUrl(runtime, top.href),
+    click: absoluteUrl(cfg, top.href),
   }, deps.now);
-  if (ok) await deps.sent.mark(key);
+  if (ok) {
+    await deps.sent.mark(key);
+    budget.remaining--;
+  }
 }
 
 export async function runNtfyTick(deps: NtfyTickDeps): Promise<void> {
   await deps.sent.prune();
-  await runCalendarReminders(deps);
-  await runCoachNudge(deps);
+  const budget = { remaining: NTFY_MAX_SENDS_PER_TICK };
+  await runCalendarReminders(deps, budget);
+  await runCoachNudge(deps, budget);
 }

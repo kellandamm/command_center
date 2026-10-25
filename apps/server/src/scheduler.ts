@@ -9,7 +9,7 @@ import type { CalendarWorkspace } from "./calendar/workspace";
 import type { NotesStore } from "./notes/store";
 import type { AttentionStore } from "./attention/store";
 import { NtfySentSet } from "./notify/sent-set";
-import { runNtfyTick, sendBriefingDigest } from "./notify/tick";
+import { NtfyBackgroundRunner } from "./notify/scheduler-ntfy";
 
 export interface KVLike {
   get<T>(key: string): Promise<T | undefined>;
@@ -70,6 +70,7 @@ export function dueBriefingSlot(state: SchedState, briefingTime: string, now: Da
 export class Scheduler {
   private timer: NodeJS.Timeout | null = null;
   private ticking = false;
+  private readonly ntfyRunner = new NtfyBackgroundRunner();
   constructor(
     private d: {
       deployment: Config;
@@ -145,32 +146,30 @@ export class Scheduler {
         };
         await this.d.kv.set(KEY, state);
         if (!failed && this.d.ntfySent) {
-          await sendBriefingDigest({
+          this.ntfyRunner.scheduleBriefingDigest({
             deployment: this.d.deployment,
-            effective: this.d.cfg,
+            cfg: this.d.cfg,
+            ntfySent: this.d.ntfySent,
             calendar: this.d.calendar,
             board: this.d.board,
             notes: this.d.notes,
             wins: this.d.wins,
             attention: this.d.attention,
-            sent: this.d.ntfySent,
-            now,
-          }, rec, slot);
+          }, rec, slot, now);
         }
       }
 
       if (this.d.ntfySent) {
-        await runNtfyTick({
+        this.ntfyRunner.scheduleTick({
           deployment: this.d.deployment,
-          effective: this.d.cfg,
+          cfg: this.d.cfg,
+          ntfySent: this.d.ntfySent,
           calendar: this.d.calendar,
           board: this.d.board,
           notes: this.d.notes,
           wins: this.d.wins,
           attention: this.d.attention,
-          sent: this.d.ntfySent,
-          now,
-        });
+        }, now);
       }
     } finally {
       this.ticking = false;

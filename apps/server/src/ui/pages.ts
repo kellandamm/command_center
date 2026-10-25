@@ -23,7 +23,8 @@ export function settingsPage(nav?: NavLink[]): string {
 <button type="button" id="ntfy-test" disabled>Send test notification</button>
 <span id="ntfy-test-status" class="dim" role="status"></span>
 </div>
-<p class="dim">Configure <code>NTFY_TOPIC</code> on the server (or save credentials under Service connections). Subscribe to the same topic in the ntfy app on your phone.</p>
+<p class="dim">Configure <code>NTFY_TOPIC</code> on the server (or save credentials under Service connections). Subscribe to the same topic in the ntfy app on your phone. The morning briefing digest is sent even during quiet hours; reminders and other alerts follow <code>NTFY_QUIET_HOURS</code> (America/Chicago).</p>
+<p id="ntfy-owner-hint" class="dim" role="status" hidden>Owner sign-in required to send a test notification.</p>
 </section>
 <div class="settings-tabs" role="tablist">
   <button type="button" class="ghost on" data-tab="views">Views</button>
@@ -151,16 +152,21 @@ function renderDeploymentFeatures(meta){
   addFeatureRow(list,"Encrypted API key storage",!!(meta&&meta.connectionsStorage),"Set CONNECTIONS_MASTER_KEY (64 hex chars, openssl rand -hex 32) and restart to save API keys in Service connections. Back it up: saved keys can't be decrypted without it.",null);
   addFeatureRow(list,"Owner-only shared settings",ownerOn,"OWNER_EMAILS is not set; any signed-in session including ADMIN_TOKEN can edit shared settings on this server.","OWNER_EMAILS is set; shared settings, dashboard layout writes, and capture tokens require an owner login or ADMIN_TOKEN.");
 }
-function renderNtfy(ntfy,meta){
+function renderNtfy(ntfy){
   var status=document.getElementById("ntfy-status");
   var btn=document.getElementById("ntfy-test");
+  var ownerHint=document.getElementById("ntfy-owner-hint");
   if(!status||!btn)return;
   if(ntfy&&ntfy.enabled){
     status.textContent="On · topic "+(ntfy.topicMasked||"••••");
   }else{
     status.textContent="Off · set NTFY_TOPIC (or ntfy connection) and restart the server.";
   }
-  btn.disabled=!meta||meta.canManage===false||!(ntfy&&ntfy.enabled);
+  var canTest=!!(ntfy&&ntfy.enabled&&ntfy.canTest);
+  btn.disabled=!canTest;
+  if(ownerHint){
+    ownerHint.hidden=!(ntfy&&ntfy.enabled&&!ntfy.canTest);
+  }
 }
 function setSettingsReadOnly(meta){
   var readOnly=!(meta&&meta.canManage!==false);
@@ -186,7 +192,7 @@ function loadSettings(){
       :"Connection setup needed: "+[!providers.search?"Brave Search (BRAVE_SEARCH_API_KEY)":"",!providers.summarizer?"AI summarizer (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL)":""].filter(Boolean).join("; ")+". Open service connections to configure keys, or use deployment environment variables.";
     renderDeploymentFeatures(r.meta||{});
     var meta=r.meta||{};
-    renderNtfy(r.ntfy,meta);
+    renderNtfy(r.ntfy);
     setSettingsReadOnly(meta);
     document.getElementById("topics-save").disabled=meta.canManage===false;
     renderTabsEditor();bindViewPreferences();

@@ -79,7 +79,7 @@ import { excalidrawAssetContentType, readExcalidrawAsset } from "./whiteboard/as
 import { whiteboardPage } from "./ui/whiteboard-page";
 import { whiteboardEditorScript } from "./ui/whiteboard-editor-asset";
 import { readBody, readRawBody } from "./request-body";
-import { notifyIfAllowed, ntfyStatus, resolveNtfyRuntime } from "./notify/ntfy";
+import { notifyIfAllowed, ntfyStatus, resolveNtfyConfig } from "./notify/ntfy";
 
 export interface App {
   cfg: Config;
@@ -401,14 +401,14 @@ export function createApp(app: App): Server {
       }
 
       if (get && path === "/api/notify/status") {
-        const runtime = resolveNtfyRuntime(deployment, app.cfg);
-        return json(res, 200, ntfyStatus(runtime));
+        const resolved = resolveNtfyConfig(deployment, app.cfg);
+        return json(res, 200, { ...ntfyStatus(resolved), canTest: who.owner === true });
       }
       if (req.method === "POST" && path === "/api/notify/test") {
         if (!who.owner) return json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
-        const runtime = resolveNtfyRuntime(deployment, app.cfg);
-        if (!runtime.enabled) return json(res, 503, { error: "Phone notifications are not configured (set NTFY_TOPIC)." });
-        const ok = await notifyIfAllowed(runtime, {
+        const resolved = resolveNtfyConfig(deployment, app.cfg);
+        if (!resolved.enabled) return json(res, 503, { error: "Phone notifications are not configured (set NTFY_TOPIC)." });
+        const ok = await notifyIfAllowed(resolved, {
           title: "Test notification",
           body: "If you see this on your phone, ntfy is working.",
           priority: "default",
@@ -419,7 +419,7 @@ export function createApp(app: App): Server {
 
       if (get && path === "/api/settings") {
         const principal = { owner: who.owner === true, who: who.who, email: who.email, serviceToken: who.serviceToken };
-        const ntfy = ntfyStatus(resolveNtfyRuntime(deployment, app.cfg));
+        const ntfy = { ...ntfyStatus(resolveNtfyConfig(deployment, app.cfg)), canTest: who.owner === true };
         return json(res, 200, {
           settings: app.settings.get(),
           briefingProviders: { search: Boolean(app.cfg.braveSearchApiKey), summarizer: llmConfigured(app.cfg) },

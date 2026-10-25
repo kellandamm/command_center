@@ -5,6 +5,7 @@ import type { Config } from "./config";
 import { ValidationError } from "./settings";
 import { writeFileAtomic } from "./store";
 import { assertPublicUrl, safeFetch } from "./ssrf";
+import { notify, resolveNtfyConfig } from "./notify/ntfy";
 
 const providers = {
   llm: { label: "AI summarizer", fields: ["llmBaseUrl", "llmApiKey", "llmModel"] },
@@ -189,8 +190,23 @@ export class ConnectionsStore {
   }
 
   async test(id: Provider, request = safeFetch): Promise<{ ok: boolean; message: string }> {
+    if (id === "ntfy") {
+      const resolved = resolveNtfyConfig(this.env, this.config);
+      if (!resolved.enabled) return { ok: false, message: "Connection is disabled or required fields are missing." };
+      const ok = await notify(resolved, {
+        title: "Connection test",
+        body: "Connection test",
+        priority: "low",
+      });
+      return {
+        ok,
+        message: ok
+          ? "Notification accepted by the ntfy server."
+          : "Provider did not pass the access check. Check credentials and endpoint.",
+      };
+    }
     const cfg = this.config;
-    const required: Field[] = id === "recallio" ? ["recallioUrl"] : id === "ntfy" ? ["ntfyTopic"] : [...providers[id].fields];
+    const required: Field[] = id === "recallio" ? ["recallioUrl"] : [...providers[id].fields];
     if (required.some((field) => !cfg[field])) return { ok: false, message: "Connection is disabled or required fields are missing." };
     let url: string;
     let headers: Record<string, string>;
@@ -202,30 +218,14 @@ export class ConnectionsStore {
       case "github": url = "https://api.github.com/user"; headers = { authorization: `Bearer ${cfg.githubToken}` }; break;
       case "todoist": url = "https://api.todoist.com/api/v1/projects"; headers = { authorization: `Bearer ${cfg.todoistApiToken}` }; break;
       case "recallio": url = `${cfg.recallioUrl}/api/search?q=connection%20test`; headers = cfg.cfAccessClientId && cfg.cfAccessClientSecret ? { "cf-access-client-id": cfg.cfAccessClientId, "cf-access-client-secret": cfg.cfAccessClientSecret } : {}; break;
-      case "ntfy": {
-        const base = (cfg.ntfyUrl ?? "https://ntfy.sh").replace(/\/+$/, "");
-        const topic = cfg.ntfyTopic;
-        if (!topic) return { ok: false, message: "ntfy topic is required." };
-        url = `${base}/${encodeURIComponent(topic)}`;
-        method = "POST";
-        body = "Connection test";
-        headers = {
-          Title: "Connection test",
-          Priority: "low",
-          "content-type": "text/plain; charset=utf-8",
-          ...(cfg.ntfyToken ? { authorization: `Bearer ${cfg.ntfyToken}` } : {}),
-        };
-        break;
-      }
     }
     try {
       const response = await request(url, { method, body, headers, maxRedirects: 0, maxBytes: 64_000, timeoutMs: 10_000 });
-      const ok = response.status >= 200 && response.status < 300
-        && (id === "ntfy" || response.contentType.includes("json"));
+      const ok = response.status >= 200 && response.status < 300 && response.contentType.includes("json");
       return {
         ok,
         message: ok
-          ? (id === "ntfy" ? "Notification accepted by the ntfy server." : "Provider responded with JSON. This checks access, not every provider operation.")
+          ? "Provider responded with JSON. This checks access, not every provider operation."
           : `Provider did not pass the access check (HTTP ${response.status}). Check credentials and endpoint.`,
       };
     } catch {

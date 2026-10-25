@@ -1,4 +1,7 @@
-/** Parse `22-7` style quiet window (local hours in `tz`, end exclusive). */
+/** Quiet hours for phone notifications always use Chicago local time. */
+export const NTFY_QUIET_TZ = "America/Chicago";
+
+/** Parse `22-7` style quiet window (local hours in Chicago, end exclusive). */
 export function parseQuietHours(raw: string | null): { startHour: number; endHour: number } | null {
   if (!raw?.trim()) return null;
   const m = raw.trim().match(/^(\d{1,2})\s*-\s*(\d{1,2})$/);
@@ -19,8 +22,8 @@ export function localHour(now: Date, tz: string): number {
   return Number(parts.hour);
 }
 
-export function inQuietHours(now: Date, tz: string, window: { startHour: number; endHour: number }): boolean {
-  const hour = localHour(now, tz);
+export function inQuietHours(now: Date, window: { startHour: number; endHour: number }): boolean {
+  const hour = localHour(now, NTFY_QUIET_TZ);
   const { startHour, endHour } = window;
   if (startHour < endHour) return hour >= startHour && hour < endHour;
   return hour >= startHour || hour < endHour;
