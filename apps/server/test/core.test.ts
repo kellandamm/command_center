@@ -20,11 +20,19 @@ test("ssrf: private, loopback, metadata and mapped addresses are refused", () =>
 
 test("ssrf: assertPublicUrl checks scheme, credentials, literals and DNS answers", async () => {
   const pub = async () => ["93.184.216.34"];
-  await assertPublicUrl("https://example.com/x", pub);
+  await assertPublicUrl("https://example.com/x", { resolve: pub });
   for (const bad of ["file:///etc/passwd", "ftp://example.com", "https://user:pw@example.com", "http://127.0.0.1/", "http://[::1]/", "http://localhost/", "http://router/", "http://nas.local/", "http://2130706433/"]) {
-    await assert.rejects(assertPublicUrl(bad, pub), bad);
+    await assert.rejects(assertPublicUrl(bad, { resolve: pub }), bad);
   }
-  await assert.rejects(assertPublicUrl("https://rebind.example/", async () => ["93.184.216.34", "10.0.0.1"]));
+  await assert.rejects(assertPublicUrl("https://rebind.example/", { resolve: async () => ["93.184.216.34", "10.0.0.1"] }));
+});
+
+test("ssrf: assertPublicUrl times out a hanging DNS lookup", async () => {
+  const { BlockedUrlError } = await import("../src/ssrf");
+  await assert.rejects(
+    assertPublicUrl("https://example.com/", { timeoutMs: 40, resolve: () => new Promise(() => {}) }),
+    (err: unknown) => err instanceof BlockedUrlError && err.message === "timeout",
+  );
 });
 
 test("ssrf: readResponseBody truncates at maxBytes without hanging", async () => {

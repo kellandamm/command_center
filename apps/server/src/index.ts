@@ -28,6 +28,7 @@ import { LaunchpadStore } from "./launchpad/store";
 import { FocusSessionsStore } from "./focus/store";
 import { ShareLinksStore } from "./share-links/store";
 import { WhiteboardStore } from "./whiteboard/store";
+import { NtfySentSet } from "./notify/sent-set";
 
 async function main() {
   const deployment = loadConfig();
@@ -64,7 +65,9 @@ async function main() {
   const shareLinks = await ShareLinksStore.open(cfg.dataDir);
   const whiteboard = await WhiteboardStore.open(cfg.dataDir);
 
+  const ntfySent = await NtfySentSet.open(cfg.dataDir);
   const scheduler = new Scheduler({
+    deployment,
     cfg,
     settings,
     kv,
@@ -72,9 +75,13 @@ async function main() {
     board,
     wins,
     calendar,
+    notes,
+    attention,
+    ntfySent,
   });
   const server = createApp({
     cfg,
+    deployment,
     auth: makeAuthenticator(cfg),
     settings,
     dailyBriefing,

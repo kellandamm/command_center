@@ -93,7 +93,7 @@ test("scheduler: personal briefing runs once, retries source failures, never cal
       set: async (key, value) => { memory.set(key, value); },
     };
     let now = new Date(record.generatedAt);
-    const scheduler = new Scheduler({ cfg, settings, kv, dailyBriefing, now: () => now });
+    const scheduler = new Scheduler({ deployment: cfg, cfg, settings, kv, dailyBriefing, now: () => now });
     await scheduler.tick();
     await scheduler.tick();
     assert.equal(calls, 1);
