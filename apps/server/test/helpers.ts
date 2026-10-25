@@ -21,11 +21,12 @@ import { ShareLinksStore } from "../src/share-links/store";
 
 export async function closeIntegrationServer(
   server: Server,
-  integration: { board: BoardStore; wins: WinsStore },
+  integration: { board: BoardStore; wins: WinsStore; xBookmarksService: XBookmarksService },
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     server.close((err) => err ? reject(err) : resolve());
   });
+  await integration.xBookmarksService.drain();
   integration.board.close();
   integration.wins.close();
 }

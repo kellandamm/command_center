@@ -109,6 +109,10 @@ export class XBookmarksStore {
     return this.data.items.filter((item) => item.status === "pending" && item.attempts < 2);
   }
 
+  async drain(): Promise<void> {
+    await this.queue;
+  }
+
   private async mutate<T>(change: (data: z.infer<typeof dataSchema>) => T): Promise<T> {
     const run = this.queue.then(async () => {
       const next = structuredClone(this.data);

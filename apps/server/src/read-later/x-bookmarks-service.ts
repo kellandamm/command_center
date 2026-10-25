@@ -32,6 +32,18 @@ export class XBookmarksService {
     void this.pump();
   }
 
+  async drain(): Promise<void> {
+    while (this.hasSchedulableWork() || this.active > 0) {
+      void this.pump();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    await this.store.drain();
+  }
+
+  private hasSchedulableWork(): boolean {
+    return this.store.pendingForProcessing().some((item) => !this.inFlight.has(item.postId));
+  }
+
   private async pump(): Promise<void> {
     if (this.running) return;
     this.running = true;
