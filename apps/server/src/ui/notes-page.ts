@@ -951,12 +951,17 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
   ${quickAddScript}
   var notesQuickAddMount=mountQuickAdd("notes-quick-add",{
     lockEditor:function(open){$("knowledge-fields").disabled=!!open;},
-    onCommitted:function(results,ctx){
+    onPreviewClose:function(){$("knowledge-fields").disabled=false;},
+    onCancel:function(){$("notes-quick-add").hidden=true;},
+    onCommitted:function(results,ctx,done){
       if(!results.length||!ctx||!ctx.lineText)return;
-      var body=$("knowledge-body"),marker="["+(results[0].kind==="task"?"task":"event")+"]("+results[0].url+")";
-      body.value=appendMarkerAfterLine(body.value,ctx.lineText,marker);
+      var body=$("knowledge-body");
+      results.forEach(function(r){
+        var marker="["+(r.kind==="task"?"task":"event")+"]("+r.url+")";
+        body.value=appendMarkerAfterLine(body.value,ctx.lineText,marker);
+      });
       setMode("source");changed();saveNote().catch(showError);
-      $("notes-quick-add").hidden=true;
+      if(done)$("notes-quick-add").hidden=true;
     }
   });
   function noteMarkedSensitive(){

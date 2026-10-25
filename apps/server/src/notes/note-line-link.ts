@@ -18,19 +18,4 @@ export function appendMarkerAfterLine(content: string, lineNeedle: string, marke
   return lines.join("\n");
 }
 
-/** Inline browser helper — keep in sync with appendMarkerAfterLine above. */
-export const appendMarkerAfterLineScript = `
-function appendMarkerAfterLine(content,lineNeedle,marker){
-  var needle=String(lineNeedle||"").trim();
-  if(!needle||!marker)return content;
-  var lines=content.split("\\n"),index=-1;
-  for(var i=0;i<lines.length;i++){
-    var line=lines[i];
-    if(line.trim()===needle||line.indexOf(needle)>=0){index=i;break;}
-  }
-  if(index<0)return content;
-  var row=lines[index];
-  if(row.indexOf(marker)>=0)return content;
-  lines[index]=row.replace(/\\s*$/,"")+" "+marker;
-  return lines.join("\\n");
-}`;
+export const appendMarkerAfterLineScript = `var appendMarkerAfterLine=(${appendMarkerAfterLine.toString()});`;

@@ -13,9 +13,10 @@ import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
 import { DailyBriefingService } from "../src/daily-briefing/service";
-import { appendMarkerAfterLine } from "../src/notes/note-line-link";
+import { appendMarkerAfterLine, appendMarkerAfterLineScript } from "../src/notes/note-line-link";
 import { OWNER_ACTION_FORBIDDEN } from "../src/owner-auth";
-import { QUICK_ADD_COMMIT_OWNER_REQUIRED } from "../src/quick-add/errors";
+import { QUICK_ADD_COMMIT_OWNER_REQUIRED, commitItemError } from "../src/quick-add/errors";
+import { ValidationError } from "../src/settings";
 import { parseQuickAddText } from "../src/quick-add/parse";
 import {
   eventPayloadFromItem,
@@ -288,4 +289,15 @@ test("quick-add note back-link: appendMarkerAfterLine leaves other lines unchang
   const marker = "[task](https://todoist.com/showTask?id=1)";
   const updated = appendMarkerAfterLine(original, "Call mom tomorrow", marker);
   assert.equal(updated, "Keep this line\nCall mom tomorrow [task](https://todoist.com/showTask?id=1)\nFooter stays");
+});
+
+test("appendMarkerAfterLineScript matches the TypeScript implementation", () => {
+  const run = new Function(`${appendMarkerAfterLineScript}; return appendMarkerAfterLine;`)() as typeof appendMarkerAfterLine;
+  const original = "Alpha\nBeta line\nGamma";
+  const marker = "[event](/calendar/events/1)";
+  assert.equal(run(original, "Beta line", marker), appendMarkerAfterLine(original, "Beta line", marker));
+});
+
+test("commitItemError: passes through ValidationError messages", () => {
+  assert.equal(commitItemError(new ValidationError("Choose a connected Google calendar")), "Choose a connected Google calendar");
 });
