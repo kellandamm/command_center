@@ -169,3 +169,72 @@ test("knowledge export: includeSensitive requires verified owner session", async
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("sensitive note detail API: admin token denied; owner can read history", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-sensitive-note-api-"));
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    ADMIN_TOKEN: TOKEN,
+    OWNER_EMAILS: "owner@example.com",
+    TZ: "UTC",
+  });
+  const settings = new SettingsStore(dir);
+  await settings.load();
+  const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
+  const notes = await NotesStore.open(dir);
+  const integration = await openIntegrationStores(dir, cfg);
+  const server = createApp({
+    cfg,
+    auth: makeAuthenticator(cfg, async (jwt) => {
+      if (jwt === "owner") return { email: "owner@example.com" };
+      throw new Error("bad jwt");
+    }),
+    settings,
+    dailyBriefing,
+    notes,
+    ...integration,
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const ownerHeaders = { "cf-access-jwt-assertion": "owner" };
+  const writeHeaders = { ...authz, "content-type": "application/json" };
+
+  const sensitive = await notes.createNote({ title: "Secret", content: "BODY_V1", sensitive: true });
+  await notes.updateNote(sensitive.id, { expectedVersion: sensitive.version, content: "BODY_V2" });
+  const publicNote = await notes.createNote({ title: "Public", content: "PUBLIC_BODY" });
+  const sensitiveUrl = `${base}/api/knowledge/notes/${encodeURIComponent(sensitive.id)}`;
+
+  try {
+    assert.equal((await fetch(sensitiveUrl, { headers: authz })).status, 403);
+    assert.equal((await fetch(`${sensitiveUrl}/history`, { headers: authz })).status, 403);
+    assert.equal(
+      (await fetch(sensitiveUrl, { method: "PUT", headers: writeHeaders, body: JSON.stringify({ content: "hack" }) })).status,
+      403,
+    );
+    assert.equal((await fetch(sensitiveUrl, { method: "DELETE", headers: writeHeaders })).status, 403);
+    assert.equal(
+      (await fetch(`${sensitiveUrl}/restore`, {
+        method: "POST",
+        headers: writeHeaders,
+        body: JSON.stringify({ revisionId: "any", expectedVersion: 1 }),
+      })).status,
+      403,
+    );
+
+    const ownerGet = await fetch(sensitiveUrl, { headers: ownerHeaders });
+    assert.equal(ownerGet.status, 200);
+    assert.equal((await ownerGet.json()).note.content, "BODY_V2");
+
+    const ownerHistory = await fetch(`${sensitiveUrl}/history`, { headers: ownerHeaders });
+    assert.equal(ownerHistory.status, 200);
+    const revisions = (await ownerHistory.json()).revisions;
+    assert.equal(revisions[0]?.content, "BODY_V1");
+
+    const publicGet = await fetch(`${base}/api/knowledge/notes/${encodeURIComponent(publicNote.id)}`, { headers: authz });
+    assert.equal(publicGet.status, 200);
+    assert.equal((await publicGet.json()).note.content, "PUBLIC_BODY");
+  } finally {
+    await closeIntegrationServer(server, integration);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
