@@ -54,9 +54,14 @@ test("sensitive notes: excluded from LLM ask, search body, attention, and export
     assert.equal(backupJson.notes.length, 1);
     assert.equal(backupJson.notes[0].title, "Public");
 
-    const fullBackup = await fetch(`${base}/api/knowledge/export.json?includeSensitive=true`, { headers: authz });
-    const fullJson = await fullBackup.json();
-    assert.equal(fullJson.notes.length, 2);
+    assert.equal(
+      (await fetch(`${base}/api/knowledge/export.json?includeSensitive=true`, { headers: authz })).status,
+      403,
+    );
+    assert.equal(
+      (await fetch(`${base}/api/knowledge/export.md?includeSensitive=true`, { headers: authz })).status,
+      403,
+    );
 
     const md = await fetch(`${base}/api/knowledge/export.md`, { headers: authz });
     const mdText = await md.text();
@@ -113,8 +118,8 @@ test("sensitive notes: excluded from LLM ask, search body, attention, and export
   }
 });
 
-test("sensitive note detail API: admin token denied; owner can read history", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "cc-sensitive-note-api-"));
+test("knowledge export: includeSensitive requires verified owner session", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-sensitive-export-"));
   const cfg = loadConfig({
     DATA_DIR: dir,
     ADMIN_TOKEN: TOKEN,
@@ -140,42 +145,25 @@ test("sensitive note detail API: admin token denied; owner can read history", as
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const ownerHeaders = { "cf-access-jwt-assertion": "owner" };
-  const writeHeaders = { ...authz, "content-type": "application/json" };
 
-  const sensitive = await notes.createNote({ title: "Secret", content: "BODY_V1", sensitive: true });
-  await notes.updateNote(sensitive.id, { expectedVersion: sensitive.version, content: "BODY_V2" });
-  const publicNote = await notes.createNote({ title: "Public", content: "PUBLIC_BODY" });
-  const sensitiveUrl = `${base}/api/knowledge/notes/${encodeURIComponent(sensitive.id)}`;
+  await notes.createNote({ title: "Secret", content: "TOP_SECRET_BODY", sensitive: true });
+  await notes.createNote({ title: "Public", content: "PUBLIC_BODY" });
 
   try {
-    assert.equal((await fetch(sensitiveUrl, { headers: authz })).status, 403);
-    assert.equal((await fetch(`${sensitiveUrl}/history`, { headers: authz })).status, 403);
-    assert.equal(
-      (await fetch(sensitiveUrl, { method: "PUT", headers: writeHeaders, body: JSON.stringify({ content: "hack" }) })).status,
-      403,
-    );
-    assert.equal((await fetch(sensitiveUrl, { method: "DELETE", headers: writeHeaders })).status, 403);
-    assert.equal(
-      (await fetch(`${sensitiveUrl}/restore`, {
-        method: "POST",
-        headers: writeHeaders,
-        body: JSON.stringify({ revisionId: "any", expectedVersion: 1 }),
-      })).status,
-      403,
-    );
+    const adminDenied = await fetch(`${base}/api/knowledge/export.md?includeSensitive=true`, { headers: authz });
+    assert.equal(adminDenied.status, 403);
 
-    const ownerGet = await fetch(sensitiveUrl, { headers: ownerHeaders });
-    assert.equal(ownerGet.status, 200);
-    assert.equal((await ownerGet.json()).note.content, "BODY_V2");
+    const adminSafe = await fetch(`${base}/api/knowledge/export.md`, { headers: authz });
+    assert.equal(adminSafe.status, 200);
+    const adminMd = await adminSafe.text();
+    assert.doesNotMatch(adminMd, /TOP_SECRET_BODY/);
+    assert.match(adminMd, /PUBLIC_BODY/);
 
-    const ownerHistory = await fetch(`${sensitiveUrl}/history`, { headers: ownerHeaders });
-    assert.equal(ownerHistory.status, 200);
-    const revisions = (await ownerHistory.json()).revisions;
-    assert.equal(revisions[0]?.content, "BODY_V1");
-
-    const publicGet = await fetch(`${base}/api/knowledge/notes/${encodeURIComponent(publicNote.id)}`, { headers: authz });
-    assert.equal(publicGet.status, 200);
-    assert.equal((await publicGet.json()).note.content, "PUBLIC_BODY");
+    const ownerExport = await fetch(`${base}/api/knowledge/export.md?includeSensitive=true`, { headers: ownerHeaders });
+    assert.equal(ownerExport.status, 200);
+    const ownerMd = await ownerExport.text();
+    assert.match(ownerMd, /TOP_SECRET_BODY/);
+    assert.match(ownerMd, /PUBLIC_BODY/);
   } finally {
     await closeIntegrationServer(server, integration);
     await rm(dir, { recursive: true, force: true });

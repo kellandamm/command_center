@@ -1,16 +1,10 @@
 import { zip } from "../read-later/zip";
 import type { KnowledgeNote, KnowledgeSpace } from "./store";
+import { isNoteSensitive } from "./sensitive";
 import { safeExportFileName } from "./zip-vault";
 
-type NoteWithSensitive = KnowledgeNote & { sensitive?: boolean };
-
-function isSensitiveNote(note: KnowledgeNote): boolean {
-  // shortcut: honor KnowledgeNote.sensitive when the field lands; export excludes those notes.
-  return Boolean((note as NoteWithSensitive).sensitive);
-}
-
 function exportPathForNote(note: KnowledgeNote, spacesById: Map<string, KnowledgeSpace>, usedPaths: Set<string>): string | null {
-  if (isSensitiveNote(note)) return null;
+  if (isNoteSensitive(note)) return null;
   const space = note.spaceId ? spacesById.get(note.spaceId) : undefined;
   const base = safeExportFileName(note.title);
   let path = space ? `${safeExportFileName(space.name)}/${base}.md` : `${base}.md`;
@@ -42,7 +36,7 @@ export function buildNotesZipExport(notes: KnowledgeNote[], spaces: KnowledgeSpa
   const files: Array<{ name: string; data: Buffer }> = [];
   let skippedSensitive = 0;
   for (const note of notes) {
-    if (isSensitiveNote(note)) {
+    if (isNoteSensitive(note)) {
       skippedSensitive += 1;
       continue;
     }

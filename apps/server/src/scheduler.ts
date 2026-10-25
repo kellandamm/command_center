@@ -6,6 +6,10 @@ import type { Config } from "./config";
 import type { SettingsStore } from "./settings";
 import { dayKey } from "./store";
 import type { CalendarWorkspace } from "./calendar/workspace";
+import type { NotesStore } from "./notes/store";
+import type { AttentionStore } from "./attention/store";
+import { NtfySentSet } from "./notify/sent-set";
+import { NtfyBackgroundRunner } from "./notify/scheduler-ntfy";
 
 export interface KVLike {
   get<T>(key: string): Promise<T | undefined>;
@@ -66,8 +70,10 @@ export function dueBriefingSlot(state: SchedState, briefingTime: string, now: Da
 export class Scheduler {
   private timer: NodeJS.Timeout | null = null;
   private ticking = false;
+  private readonly ntfyRunner = new NtfyBackgroundRunner();
   constructor(
     private d: {
+      deployment: Config;
       cfg: Config;
       settings: SettingsStore;
       kv: KVLike;
@@ -75,6 +81,9 @@ export class Scheduler {
       board?: BoardStore;
       wins?: WinsStore;
       calendar?: CalendarWorkspace;
+      notes?: NotesStore;
+      attention?: AttentionStore;
+      ntfySent?: NtfySentSet;
       now?: () => Date;
     },
   ) {}
@@ -136,6 +145,31 @@ export class Scheduler {
           lastStatus: failed ? "failed" : "ok",
         };
         await this.d.kv.set(KEY, state);
+        if (!failed && this.d.ntfySent) {
+          this.ntfyRunner.scheduleBriefingDigest({
+            deployment: this.d.deployment,
+            cfg: this.d.cfg,
+            ntfySent: this.d.ntfySent,
+            calendar: this.d.calendar,
+            board: this.d.board,
+            notes: this.d.notes,
+            wins: this.d.wins,
+            attention: this.d.attention,
+          }, rec, slot, now);
+        }
+      }
+
+      if (this.d.ntfySent) {
+        this.ntfyRunner.scheduleTick({
+          deployment: this.d.deployment,
+          cfg: this.d.cfg,
+          ntfySent: this.d.ntfySent,
+          calendar: this.d.calendar,
+          board: this.d.board,
+          notes: this.d.notes,
+          wins: this.d.wins,
+          attention: this.d.attention,
+        }, now);
       }
     } finally {
       this.ticking = false;

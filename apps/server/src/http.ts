@@ -51,6 +51,7 @@ import { capturePage } from "./ui/capture-page";
 import { handleReadLaterRoutes } from "./read-later/routes";
 import { ReadLaterService } from "./read-later/service";
 import { CaptureAccess } from "./read-later/capture-access";
+import { handleMeetingImportRoute } from "./meetings/routes";
 import { handleXBookmarkApiRoutes, handleXBookmarkImport, isXBookmarkImportPayload } from "./read-later/x-bookmarks-routes";
 import type { XBookmarksService } from "./read-later/x-bookmarks-service";
 import type { XBookmarksStore } from "./read-later/x-bookmarks-store";
@@ -67,6 +68,7 @@ import { notesEditorScript } from "./ui/notes-editor-asset";
 import type { CalendarWorkspace } from "./calendar/workspace";
 import { CalendarConflictError } from "./calendar/store";
 import { handleCalendarRoutes } from "./calendar/routes";
+import { handleQuickAddRoutes } from "./quick-add/routes";
 import { exportCalendar } from "./calendar/export";
 import { calendarSettingsPage } from "./ui/calendar-settings-page";
 import { calendarEventPage } from "./ui/calendar-event-page";
@@ -79,9 +81,12 @@ import { excalidrawAssetContentType, readExcalidrawAsset } from "./whiteboard/as
 import { whiteboardPage } from "./ui/whiteboard-page";
 import { whiteboardEditorScript } from "./ui/whiteboard-editor-asset";
 import { readBody, readRawBody } from "./request-body";
+import { notify, ntfyStatus, resolveNtfyConfig } from "./notify/ntfy";
 
 export interface App {
   cfg: Config;
+  /** Deployment env defaults (env wins over connection vault for ntfy). */
+  deployment?: Config;
   auth: Authenticator;
   settings: SettingsStore;
   dailyBriefing: DailyBriefingService;
@@ -123,6 +128,7 @@ const icons = new Map<string, Buffer>();
 const icon = (name: string, size: number, maskable = false) => icons.get(name) ?? (icons.set(name, iconPng(size, maskable)), icons.get(name)!);
 
 export function createApp(app: App): Server {
+  const deployment = app.deployment ?? app.cfg;
   const integrationDeps = (): IntegrationDeps => ({
     cfg: app.cfg,
     notes: app.notes,
@@ -226,6 +232,11 @@ export function createApp(app: App): Server {
         }
       }
 
+      if (method === "POST" && path === "/api/meetings/import") {
+        await handleMeetingImportRoute(app.cfg, app.notes, req, res);
+        return;
+      }
+
       if (await handleSharePublicRoutes(app.cfg, app.shareLinks, shareLinkRateLimiter, req, res, path)) return;
 
       const getEarly = method === "GET" || method === "HEAD";
@@ -246,6 +257,16 @@ export function createApp(app: App): Server {
       const get = method === "GET" || method === "HEAD";
 
       if (get && path === "/assets/notes-editor.js") return send(res, 200, await notesEditorScript(), "text/javascript", extra);
+      if (await handleQuickAddRoutes(
+        app.cfg,
+        app.calendar,
+        canManageSharedServerState(app.cfg, { owner: who.owner === true, who: who.who }),
+        who.owner === true,
+        req,
+        res,
+        path,
+        readBody,
+      )) return;
       if (app.calendar && await handleCalendarRoutes(app.calendar, req, res, path, who.owner === true, readBody)) return;
       if (path === "/api/connections" || path.startsWith("/api/connections/")) {
         if (!who.owner) return json(res, 403, { error: "Connection management requires a verified owner login. Set OWNER_EMAILS and sign in through Cloudflare Access; machine/admin tokens cannot manage keys." });
@@ -396,11 +417,30 @@ export function createApp(app: App): Server {
         return json(res, 200, { layout });
       }
 
+      if (get && path === "/api/notify/status") {
+        const resolved = resolveNtfyConfig(deployment, app.cfg);
+        return json(res, 200, { ...ntfyStatus(resolved), canTest: who.owner === true });
+      }
+      if (req.method === "POST" && path === "/api/notify/test") {
+        if (!who.owner) return json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
+        const resolved = resolveNtfyConfig(deployment, app.cfg);
+        if (!resolved.enabled) return json(res, 503, { error: "Phone notifications are not configured (set NTFY_TOPIC)." });
+        const ok = await notify(resolved, {
+          title: "Test notification",
+          body: "If you see this on your phone, ntfy is working.",
+          priority: "default",
+          tags: ["test"],
+        });
+        return json(res, ok ? 200 : 502, { ok });
+      }
+
       if (get && path === "/api/settings") {
         const principal = { owner: who.owner === true, who: who.who, email: who.email, serviceToken: who.serviceToken };
+        const ntfy = { ...ntfyStatus(resolveNtfyConfig(deployment, app.cfg)), canTest: who.owner === true };
         return json(res, 200, {
           settings: app.settings.get(),
           briefingProviders: { search: Boolean(app.cfg.braveSearchApiKey), summarizer: llmConfigured(app.cfg) },
+          ntfy,
           meta: {
             canManage: canManageSharedServerState(app.cfg, principal),
             signedInAs: who.who,
@@ -435,7 +475,12 @@ export function createApp(app: App): Server {
       if (path.startsWith("/api/x-bookmarks")) {
         if (await handleXBookmarkApiRoutes(app.xBookmarks, req, res, path, readBody)) return;
       }
-      if (await handleDailyBriefingRoutes(app, app.dailyBriefing, req, res, path)) return;
+      if (await handleDailyBriefingRoutes(app, app.dailyBriefing, req, res, path, {
+        owner: who.owner === true,
+        who: who.who,
+        email: who.email,
+        serviceToken: who.serviceToken,
+      }, readBody)) return;
       if (path.startsWith("/api/board") || path.startsWith("/api/wins")) {
         const bodyForApi = get ? undefined : await readBody(req);
         if (await handleBoardRoutes(app.board, app.hobieQueue, app.wins, app.cfg, req, res, path, bodyForApi)) return;

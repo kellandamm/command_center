@@ -38,11 +38,34 @@ export function isPublicIp(ip: string): boolean {
 
 export class BlockedUrlError extends Error {}
 
+async function raceTimeout<T>(ms: number, run: () => Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new BlockedUrlError("timeout")), ms);
+    run().then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+export type AssertPublicUrlOptions = {
+  resolve?: (host: string) => Promise<string[]>;
+  timeoutMs?: number;
+};
+
 /** Throws unless `url` is http(s) and every address its host resolves to is public. */
 export async function assertPublicUrl(
   url: string,
-  resolve: (host: string) => Promise<string[]> = async (h) => (await lookup(h, { all: true })).map((r) => r.address),
+  options: AssertPublicUrlOptions = {},
 ): Promise<URL> {
+  const timeoutMs = options.timeoutMs ?? 20_000;
+  const resolve = options.resolve ?? (async (h) => (await lookup(h, { all: true })).map((r) => r.address));
   let u: URL;
   try {
     u = new URL(url);
@@ -59,8 +82,9 @@ export async function assertPublicUrl(
   if (!host.includes(".") || /\.(local|localhost|internal|lan|home\.arpa)$/i.test(host)) throw new BlockedUrlError("host is not public");
   let addrs: string[];
   try {
-    addrs = await resolve(host);
-  } catch {
+    addrs = await raceTimeout(timeoutMs, () => resolve(host));
+  } catch (err) {
+    if (err instanceof BlockedUrlError) throw err;
     throw new BlockedUrlError("host did not resolve");
   }
   if (!addrs.length || !addrs.every(isPublicIp)) throw new BlockedUrlError("host resolves to a non-public address");
@@ -86,14 +110,15 @@ export async function safeFetch(
 ): Promise<{ finalUrl: string; status: number; contentType: string; body: string; headers: Record<string, string> }> {
   const maxBytes = opts.maxBytes ?? 3_000_000;
   let current = url;
+  const timeoutMs = opts.timeoutMs ?? 20_000;
   for (let hop = 0; hop <= (opts.maxRedirects ?? 5); hop++) {
-    await assertPublicUrl(current);
+    await assertPublicUrl(current, { timeoutMs });
     const res = await fetch(current, {
       method: opts.method ?? "GET",
       body: opts.body,
       redirect: "manual",
       headers: { "user-agent": "ai-homepage-server/1.0 (+self-hosted)", accept: "*/*", ...opts.headers },
-      signal: AbortSignal.timeout(opts.timeoutMs ?? 20_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (res.status >= 300 && res.status < 400 && res.headers.get("location")) {
       current = new URL(res.headers.get("location")!, current).href;

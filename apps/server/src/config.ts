@@ -49,6 +49,8 @@ export interface Config {
   /** Optional allow-list of Access service-token client ids (`common_name`) for bookmarks import. */
   bookmarksImportAllowedClientIds: string[];
   hobiePollToken: string | null;
+  /** Bearer token for POST /api/meetings/import (Hobie sync); ≥ 24 chars when set. */
+  meetingsImportToken: string | null;
   /** HMAC key for Hobie queue producer (create/read tasks). Min 32 chars when set. */
   queueHmacKeyProducer: string | null;
   /** HMAC key for homelab worker (claim/result/proposals). Min 32 chars when set. */
@@ -66,6 +68,17 @@ export interface Config {
   shareLinksRateLimitPerMinute: number;
   /** Optional Excalidraw whiteboard page (`WHITEBOARD_ENABLED`, default off). */
   whiteboardEnabled: boolean;
+  /** ntfy server base URL (default https://ntfy.sh). */
+  ntfyUrl: string | null;
+  ntfyTopic: string | null;
+  ntfyToken: string | null;
+  ntfyReminderMinutes: number;
+  /** Local quiet hours window in America/Chicago, e.g. `22-7`. */
+  ntfyQuietHours: string | null;
+  /** Optional daily Attention coach nudge (`NTFY_COACH=1`). */
+  ntfyCoach: boolean;
+  /** Public site origin for notification click links (e.g. https://home.example.com). */
+  appPublicUrl: string | null;
 }
 
 export interface LlmConfig {
@@ -145,6 +158,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   const hobiePollToken = blank(env.HOBIE_POLL_TOKEN);
   if (hobiePollToken && hobiePollToken.length < 24) throw new Error("HOBIE_POLL_TOKEN must be at least 24 characters.");
+  const meetingsImportToken = blank(env.MEETINGS_IMPORT_TOKEN);
+  if (meetingsImportToken && meetingsImportToken.length < 24) {
+    throw new Error("MEETINGS_IMPORT_TOKEN must be at least 24 characters.");
+  }
   const connectionsMasterKey = blank(env.CONNECTIONS_MASTER_KEY);
   if (connectionsMasterKey && !/^[a-f0-9]{64}$/i.test(connectionsMasterKey)) {
     throw new Error("CONNECTIONS_MASTER_KEY must be 32 random bytes encoded as 64 hexadecimal characters.");
@@ -199,6 +216,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     bookmarksImportSecret,
     bookmarksImportAllowedClientIds: parseCommaList(env.BOOKMARKS_IMPORT_ALLOWED_CLIENT_IDS),
     hobiePollToken,
+    meetingsImportToken,
     queueHmacKeyProducer: blank(env.QUEUE_HMAC_KEY_PRODUCER),
     queueHmacKeyWorker: blank(env.QUEUE_HMAC_KEY_WORKER),
     mcpMaxHobiePending: Math.min(50, Math.max(1, Number(env.MCP_MAX_HOBIE_PENDING ?? 20) || 20)),
@@ -215,6 +233,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ),
     shareLinksRateLimitPerMinute: Math.min(300, Math.max(1, Number(env.SHARE_LINKS_RATE_LIMIT_PER_MINUTE ?? 60) || 60)),
     whiteboardEnabled: truthy(env.WHITEBOARD_ENABLED),
+    ntfyUrl: blank(env.NTFY_URL)?.replace(/\/+$/, "") ?? null,
+    ntfyTopic: blank(env.NTFY_TOPIC),
+    ntfyToken: blank(env.NTFY_TOKEN),
+    ntfyReminderMinutes: Math.min(120, Math.max(1, Number(env.NTFY_REMINDER_MINUTES ?? 10) || 10)),
+    ntfyQuietHours: blank(env.NTFY_QUIET_HOURS),
+    ntfyCoach: truthy(env.NTFY_COACH),
+    appPublicUrl: blank(env.APP_PUBLIC_URL)?.replace(/\/+$/, "") ?? null,
   };
 }
 

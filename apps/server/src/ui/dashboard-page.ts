@@ -15,6 +15,7 @@ import { tasksDashboardScript } from "../panels/tasks";
 import { weatherDashboardScript } from "../panels/weather";
 import { dashboardGridCss, dashboardGridScript } from "./dashboard-grid";
 import { page, type NavLink } from "./layout";
+import { quickAddCss, quickAddScript } from "./quick-add";
 
 export const dashboardPanelCss = `
 .tasks-chips{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.35rem}
@@ -82,9 +83,16 @@ export function dashboardPage(nav?: NavLink[]): string {
     title: "Command center",
     active: "/",
     nav,
-    extraCss: dashboardGridCss + dashboardPanelCss,
+    extraCss: dashboardGridCss + dashboardPanelCss + quickAddCss,
     body: `<div class="dashboard-page">
 <header class="page-header"><h1>Dashboard</h1><p class="dim">Drag panels, pin what matters, and jump in quickly.</p></header>
+<div class="dashboard-quick-add-bar quick-add-bar">
+<div id="dashboard-quick-add" class="quick-add-wrap" aria-label="Quick add">
+  <div class="quick-add-row"><input class="quick-add-input" type="text" placeholder="Quick add — e.g. call mom tomorrow 3pm" autocomplete="off" /><button type="button" class="ghost quick-add-parse">Preview</button></div>
+  <p class="quick-add-status dim" role="status"></p>
+  <div class="quick-add-preview quick-add-dropdown" hidden></div>
+</div>
+</div>
 <div class="dashboard-toolbar row">
   <button type="button" class="ghost" id="dashboard-reset-layout">Reset layout</button>
   <a class="ghost" id="dashboard-export-layout" href="/api/dashboard-layout/export.json">Export layout</a>
@@ -106,6 +114,8 @@ document.getElementById("dashboard-import-layout")?.addEventListener("change",fu
   .finally(function(){input.value="";});
 });
 ${PANEL_SCRIPTS.map((fn) => fn()).join("\n")}
+${quickAddScript}
+mountQuickAdd("dashboard-quick-add");
 `,
   });
 }
