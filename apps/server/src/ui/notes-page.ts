@@ -1,6 +1,8 @@
 import type { NavLink } from "./layout";
 import { page } from "./layout";
 import { button, dialog } from "./components";
+import { quickAddCss, quickAddScript } from "./quick-add";
+import { appendMarkerAfterLineScript } from "../notes/note-line-link";
 import { workspacePage, workspaceTabs } from "./workspace";
 
 const tabs = (active: string) => workspaceTabs([
@@ -43,6 +45,7 @@ $("transfer-import").onclick=function(){busy(this,async function(){
 export function notesPage(nav?: NavLink[]): string {
   return page({
     title: "Notes — Command center",
+    extraCss: quickAddCss,
     active: "/notes",
     nav,
     body: `<header class="page-header notes-header"><div><h1>Notes</h1><p class="dim">A quiet place to think, write, and connect ideas.</p></div>
@@ -156,6 +159,7 @@ export function notesPage(nav?: NavLink[]): string {
         <button class="ghost" type="button" data-note-format="link">Link</button>
         <button class="ghost" type="button" data-note-format="code">Code</button>
         <button class="ghost" type="button" data-note-format="table">Table</button>
+        <button class="ghost" type="button" id="knowledge-line-quick-add" disabled title="Parse selection into a task or event">Link selection</button>
         <button class="ghost" type="button" data-note-format="undo">Undo</button>
         <button class="ghost" type="button" data-note-format="redo">Redo</button>
       </div>
@@ -184,6 +188,7 @@ export function notesPage(nav?: NavLink[]): string {
       <p class="dim">Questions use only notes and captured sources assigned to the selected space. Content is sent to the configured LLM only when you ask, with a limit of 10 questions per hour.</p>
       <label for="knowledge-ask-space">Space</label><select id="knowledge-ask-space"><option value="">Choose a space</option></select>
       <label for="knowledge-question">Question</label><textarea id="knowledge-question" style="min-height:5rem" placeholder="What do my sources say about…"></textarea>
+      <label id="knowledge-ask-meetings-wrap" class="row" style="margin-top:.5rem;display:none"><input id="knowledge-ask-meetings" type="checkbox"> Include sensitive meeting transcripts (owner only)</label>
       <button id="knowledge-ask" type="button" style="margin-top:.75rem">Ask with sources</button>
       <div id="knowledge-answer" style="white-space:pre-wrap;margin-top:1rem"></div>
       <div id="knowledge-citations" class="row"></div>
@@ -193,6 +198,12 @@ export function notesPage(nav?: NavLink[]): string {
       <p class="dim">Add links in Markdown using <code>[[Note title]]</code>. Click a note node to open it.</p>
       <div id="knowledge-graph" style="overflow:auto"></div>
     </details>
+    <div id="notes-quick-add" class="quick-add-wrap" aria-label="Link selection preview" hidden>
+      <input class="quick-add-input" type="hidden" value="" />
+      <p class="dim">Review the parsed task or event, then confirm to create it and append a link on the note line.</p>
+      <div class="quick-add-preview" hidden></div>
+      <p class="quick-add-status dim" role="status"></p>
+    </div>
     <div id="knowledge-status" class="dim" aria-live="polite" style="margin-top:.75rem"></div>
   </div>
 </div>
@@ -554,6 +565,7 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     if($("knowledge-writing").dataset.mode==="write")setMode("write");
     if(note){var url=new URL(location.href);url.searchParams.set("note",note.id);history.replaceState(null,"",url);}
     else{var url=new URL(location.href);url.searchParams.delete("note");history.replaceState(null,"",url);}
+    if(typeof refreshLineQuickAdd==="function")refreshLineQuickAdd();
   }
   function renderBacklinks(){
     var el=$("knowledge-backlinks");el.replaceChildren();
@@ -867,11 +879,14 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     var spaceId=$("knowledge-ask-space").value,question=$("knowledge-question").value.trim();
     if(!spaceId||!question){$("knowledge-answer").textContent="Choose a space and enter a question.";return;}
     $("knowledge-answer").textContent="Working…";$("knowledge-citations").replaceChildren();
-    apiCall("/api/knowledge/ask","POST",{spaceId:spaceId,question:question}).then(function(data){
+    var askBody={spaceId:spaceId,question:question};
+    if(serverCaps.owner&&$("knowledge-ask-meetings").checked)askBody.includeSensitiveMeetings=true;
+    apiCall("/api/knowledge/ask","POST",askBody).then(function(data){
       $("knowledge-answer").textContent=data.answer;
       (data.citations||[]).forEach(function(citation){
         var link=node("a","btn ghost","["+citation.number+"] "+citation.title);
-        var href=safeUrl(citation.url)||(["/board","/calendar"].indexOf(citation.url)>=0?citation.url:null);
+        var noteHref=citation.url&&citation.url.indexOf("/notes?note=")===0?citation.url:null;
+        var href=noteHref||safeUrl(citation.url)||(["/board","/calendar"].indexOf(citation.url)>=0?citation.url:null);
         link.href=href||"#";
         if(safeUrl(citation.url)){link.target="_blank";link.rel="noopener noreferrer";}
         $("knowledge-citations").appendChild(link);
@@ -930,12 +945,50 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
   function initialLoad(){
     return api("/api/state").then(function(data){
       serverCaps.owner=!!data.owner;serverCaps.shareLinksEnabled=!!data.shareLinksEnabled;
+      $("knowledge-ask-meetings-wrap").style.display=serverCaps.owner?"flex":"none";
     }).catch(function(){}).then(function(){
       return load().then(renderGraph);
     }).catch(function(error){showError(error);status.appendChild(document.createTextNode(" Retry loading your notes. Your saved content has not been changed."));$("knowledge-retry-load").hidden=false;});
   }
   $("knowledge-retry-load").querySelector("button").onclick=initialLoad;
   initialLoad();
+  ${appendMarkerAfterLineScript}
+  ${quickAddScript}
+  var notesQuickAddMount=mountQuickAdd("notes-quick-add",{
+    lockEditor:function(open){$("knowledge-fields").disabled=!!open;},
+    onPreviewClose:function(){$("knowledge-fields").disabled=false;},
+    onCancel:function(){$("notes-quick-add").hidden=true;},
+    onCommitted:function(results,ctx,done){
+      if(!results.length||!ctx||!ctx.lineText)return;
+      var body=$("knowledge-body");
+      results.forEach(function(r){
+        var marker="["+(r.kind==="task"?"task":"event")+"]("+r.url+")";
+        body.value=appendMarkerAfterLine(body.value,ctx.lineText,marker);
+      });
+      setMode("source");changed();saveNote().catch(showError);
+      if(done)$("notes-quick-add").hidden=true;
+    }
+  });
+  function noteMarkedSensitive(){
+    if(state.current&&state.current.sensitive)return true;
+    if($("knowledge-sensitive").dataset.value==="true")return true;
+    return false;
+  }
+  function refreshLineQuickAdd(){
+    var btn=$("knowledge-line-quick-add");
+    var disabled=noteMarkedSensitive()||!$("knowledge-body").value.slice($("knowledge-body").selectionStart,$("knowledge-body").selectionEnd).trim();
+    btn.disabled=disabled;
+    btn.title=noteMarkedSensitive()?"Sensitive notes cannot be sent to the parser.":"Parse the selected line into a task or event";
+  }
+  $("knowledge-body").addEventListener("select",refreshLineQuickAdd);
+  $("knowledge-body").addEventListener("keyup",refreshLineQuickAdd);
+  $("knowledge-line-quick-add").onclick=function(){
+    if(noteMarkedSensitive())return;
+    var editor=$("knowledge-body"),selected=editor.value.slice(editor.selectionStart,editor.selectionEnd).trim();
+    if(!selected){status.textContent="Select text on a line first.";return;}
+    $("notes-quick-add").hidden=false;
+    notesQuickAddMount.parseSelection(selected,{lineText:selected});
+  };
 })();`,
   });
 }

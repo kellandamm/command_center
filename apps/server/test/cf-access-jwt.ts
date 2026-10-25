@@ -7,6 +7,7 @@ export const TEST_CF_AUD = "command-center-test-aud";
 export interface TestCfAccessKeys {
   verifier: CfAccessJwtVerifier;
   signServiceTokenJwt: (commonName: string, opts?: { expiresAt?: number }) => Promise<string>;
+  signEmailJwt: (email: string, opts?: { expiresAt?: number }) => Promise<string>;
 }
 
 export async function createTestCfAccessJwt(): Promise<TestCfAccessKeys> {
@@ -25,5 +26,14 @@ export async function createTestCfAccessJwt(): Promise<TestCfAccessKeys> {
     else builder.setExpirationTime("1h");
     return builder.sign(privateKey);
   };
-  return { verifier, signServiceTokenJwt };
+  const signEmailJwt = async (email: string, opts?: { expiresAt?: number }) => {
+    const builder = new SignJWT({ email })
+      .setProtectedHeader({ alg: "RS256" })
+      .setIssuer(issuer)
+      .setAudience(TEST_CF_AUD);
+    if (opts?.expiresAt !== undefined) builder.setExpirationTime(opts.expiresAt);
+    else builder.setExpirationTime("1h");
+    return builder.sign(privateKey);
+  };
+  return { verifier, signServiceTokenJwt, signEmailJwt };
 }
