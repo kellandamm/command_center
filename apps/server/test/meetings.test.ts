@@ -1021,9 +1021,191 @@ test("meetings import: without LLM does not leave pending summary job tag", asyn
     });
     assert.equal(res.status, 201);
     const body = await res.json();
-    assert.equal(body.summaryStatus, "pending");
+    assert.equal(body.summaryStatus, "skipped");
     const note = h.notes.getNote(body.noteId)!;
     assert.equal(parseMeetingSummaryState(note.tags), null);
+    assert.doesNotMatch(note.content, new RegExp(SUMMARY_PENDING));
+    assert.match(note.content, /no llm configured/);
+  } finally {
+    await h.close();
+  }
+});
+
+test("meetings summary: stale job does not overwrite newer re-import transcript (B blocked)", async () => {
+  const h = await harness();
+  try {
+    let phase = "import-a";
+    let unblockA: () => void = () => {};
+    const gateA = new Promise<void>((resolve) => {
+      unblockA = resolve;
+    });
+    const originalFetch = globalThis.fetch;
+    withMockLlmFetch(async (input, init) => {
+      if (!String(input).includes("api.example")) return originalFetch(input, init);
+      const body = String(init?.body ?? "");
+      if (phase === "import-a") {
+        await gateA;
+        return new Response(JSON.stringify({ choices: [{ message: { content: "Summary for transcript A" } }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ choices: [{ message: { content: "Summary for transcript B" } }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const first = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-ab-blocked", transcript: "TRANSCRIPT_A_MARKER text" }),
+    });
+    const { noteId } = await first.json();
+    phase = "import-b";
+    const second = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-ab-blocked", transcript: "TRANSCRIPT_B_MARKER text" }),
+    });
+    assert.equal(second.status, 200);
+    unblockA();
+    await waitForNoteSummary(noteId, h.notes);
+    const note = h.notes.getNote(noteId)!;
+    assert.match(note.content, /TRANSCRIPT_B_MARKER/);
+    assert.doesNotMatch(note.content, /TRANSCRIPT_A_MARKER/);
+    assert.match(note.content, /Summary for transcript B/);
+    assert.doesNotMatch(note.content, /Summary for transcript A/);
+  } finally {
+    await h.close();
+  }
+});
+
+test("meetings summary: stale job does not overwrite newer re-import transcript (B free)", async () => {
+  const h = await harness();
+  try {
+    const originalFetch = globalThis.fetch;
+    withMockLlmFetch(async (input, init) => {
+      if (!String(input).includes("api.example")) return originalFetch(input, init);
+      const body = String(init?.body ?? "");
+      if (body.includes("TRANSCRIPT_A_MARKER")) {
+        return new Response(JSON.stringify({ choices: [{ message: { content: "Summary for transcript A" } }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ choices: [{ message: { content: "Summary for transcript B" } }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const first = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-ab-free", transcript: "TRANSCRIPT_A_MARKER text" }),
+    });
+    const { noteId } = await first.json();
+    await waitForMeetingSummaryIdle();
+    const second = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-ab-free", transcript: "TRANSCRIPT_B_MARKER text" }),
+    });
+    assert.equal(second.status, 200);
+    await waitForNoteSummary(noteId, h.notes);
+    const note = h.notes.getNote(noteId)!;
+    assert.match(note.content, /TRANSCRIPT_B_MARKER/);
+    assert.doesNotMatch(note.content, /TRANSCRIPT_A_MARKER/);
+    assert.match(note.content, /Summary for transcript B/);
+  } finally {
+    await h.close();
+  }
+});
+
+test("meetings summary: middle transcript edit triggers rerun with sha256 fingerprint", async () => {
+  const h = await harness();
+  try {
+    let llmCalls = 0;
+    let unblock: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
+    const pad = "x".repeat(200);
+    const transcriptA = `${pad}MIDDLE_A${pad}`;
+    const transcriptB = `${pad}MIDDLE_B${pad}`;
+    assert.equal(transcriptA.length, transcriptB.length);
+    const originalFetch = globalThis.fetch;
+    withMockLlmFetch(async (input, init) => {
+      if (!String(input).includes("api.example")) return originalFetch(input, init);
+      llmCalls += 1;
+      const body = String(init?.body ?? "");
+      await gate;
+      const content = body.includes("MIDDLE_B") ? "Summary after middle fix" : "Summary before middle fix";
+      return new Response(JSON.stringify({ choices: [{ message: { content } }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const first = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-middle-hash", transcript: transcriptA }),
+    });
+    const { noteId } = await first.json();
+    await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-middle-hash", transcript: transcriptB }),
+    });
+    assert.equal(llmCalls, 1);
+    unblock();
+    await waitForNoteSummary(noteId, h.notes);
+    assert.equal(llmCalls, 2);
+    assert.match(h.notes.getNote(noteId)!.content, /Summary after middle fix/);
+    assert.match(h.notes.getNote(noteId)!.content, /MIDDLE_B/);
+  } finally {
+    await h.close();
+  }
+});
+
+test("meetings summary queue: store write errors do not reject the pump task", async () => {
+  const h = await harness();
+  try {
+    const originalFetch = globalThis.fetch;
+    withMockLlmFetch(async (input, init) => {
+      if (String(input).includes("api.example")) {
+        return new Response(JSON.stringify({ choices: [{ message: { content: "ok summary one" } }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return originalFetch(input, init);
+    });
+    const first = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-store-fail", transcript: "first note" }),
+    });
+    const noteId = (await first.json()).noteId;
+    const notes = h.notes;
+    const originalUpdate = notes.updateNote.bind(notes);
+    let failNextWrite = true;
+    notes.updateNote = async (id, patch) => {
+      if (failNextWrite && id === noteId && patch.content) {
+        failNextWrite = false;
+        throw new Error("disk full");
+      }
+      return originalUpdate(id, patch);
+    };
+    await waitForMeetingSummaryIdle();
+    const second = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-store-fail-2", transcript: "second note" }),
+    });
+    assert.equal(second.status, 201);
+    const noteId2 = (await second.json()).noteId;
+    await waitForNoteSummary(noteId2, h.notes);
+    assert.match(h.notes.getNote(noteId2)!.content, /ok summary one/);
   } finally {
     await h.close();
   }

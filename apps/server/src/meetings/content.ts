@@ -2,9 +2,25 @@ import { NOTE_BODY_MAX_BYTES, SUMMARY_PENDING, SUMMARY_SECTION, TRANSCRIPT_SECTI
 
 const SUMMARY_TRUNCATED_MARKER = "\n\n_(Summary truncated to fit note size.)_";
 
-export function buildMeetingNoteContent(summary: string, transcriptBlock: string): string {
-  const summaryBody = summary.trim() || SUMMARY_PENDING;
+export function buildMeetingNoteContent(
+  summary: string,
+  transcriptBlock: string,
+  options?: { allowEmptySummary?: boolean },
+): string {
+  const trimmed = summary.trim();
+  const summaryBody = trimmed || (options?.allowEmptySummary ? "" : SUMMARY_PENDING);
   return `${SUMMARY_SECTION}\n\n${summaryBody}\n\n${TRANSCRIPT_SECTION}\n\n${transcriptBlock}`;
+}
+
+/** Replace only the summary section; transcript bytes in `existingContent` are preserved. */
+export function replaceMeetingNoteSummary(existingContent: string, summary: string): string {
+  const transcriptIdx = existingContent.indexOf(TRANSCRIPT_SECTION);
+  if (transcriptIdx < 0) throw new Error("invalid meeting note");
+  const tail = existingContent.slice(transcriptIdx);
+  const transcriptBlock = existingContent.slice(transcriptIdx + TRANSCRIPT_SECTION.length).trim();
+  const capped = capSummaryForNoteBudget(summary, transcriptBlock);
+  const summaryBody = capped.trim() || SUMMARY_PENDING;
+  return `${SUMMARY_SECTION}\n\n${summaryBody}\n\n${tail}`;
 }
 
 export function noteContentByteLength(summary: string, transcriptBlock: string): number {

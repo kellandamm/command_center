@@ -37,7 +37,7 @@ export interface MeetingImportPayload {
   transcript: string | Array<{ speaker?: string; startSec?: number; text: string }>;
 }
 
-export type MeetingImportSummaryStatus = "pending" | "done" | "failed";
+export type MeetingImportSummaryStatus = "pending" | "done" | "failed" | "skipped";
 
 export interface MeetingImportResult {
   note: KnowledgeNote;
@@ -158,9 +158,11 @@ async function persistImport(
     }
   }
 
-  const content = finalizeMeetingNoteContent(SUMMARY_PENDING, transcriptBlock);
   const llm = llmConfig(cfg);
   const scheduleBackgroundSummary = !options.skipSummary && Boolean(llm);
+  const content = scheduleBackgroundSummary
+    ? finalizeMeetingNoteContent(SUMMARY_PENDING, transcriptBlock)
+    : buildMeetingNoteContent("", transcriptBlock, { allowEmptySummary: true });
 
   const spaceId = await ensureMeetingsSpaceId(notes);
 
@@ -188,7 +190,7 @@ async function persistImport(
         if (scheduleBackgroundSummary) {
           getMeetingSummaryQueue().schedule(note.id, note.version ?? 0);
         }
-        const summaryStatus = resolveImportSummaryStatus(note, scheduleBackgroundSummary);
+        const summaryStatus = resolveImportSummaryStatus(note, scheduleBackgroundSummary, Boolean(llm));
         return { note, created: false, summaryStatus };
       } catch (err) {
         if (err instanceof NoteConflictError && attempt < 3) {
@@ -224,17 +226,19 @@ async function persistImport(
   if (scheduleBackgroundSummary) {
     getMeetingSummaryQueue().schedule(saved.id, saved.version ?? 0);
   }
-  const summaryStatus = resolveImportSummaryStatus(saved, scheduleBackgroundSummary);
+  const summaryStatus = resolveImportSummaryStatus(saved, scheduleBackgroundSummary, Boolean(llm));
   return { note: saved, created: true, summaryStatus };
 }
 
 function resolveImportSummaryStatus(
   note: KnowledgeNote,
   scheduled: boolean,
+  llmConfigured: boolean,
 ): MeetingImportSummaryStatus {
   const state = parseMeetingSummaryState(note.tags);
   if (state === "failed") return "failed";
   if (scheduled) return "pending";
+  if (!llmConfigured) return "skipped";
   return "pending";
 }
 

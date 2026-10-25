@@ -1,9 +1,10 @@
+import { createHash } from "node:crypto";
 import type { Config } from "../config";
 import { llmConfig } from "../config";
 import type { FetchLike } from "../llm/provider";
 import type { NotesStore } from "../notes/store";
 import { NoteConflictError } from "../notes/store";
-import { finalizeMeetingNoteContent } from "./content";
+import { replaceMeetingNoteSummary } from "./content";
 import {
   buildMeetingTags,
   MEETING_TAG,
@@ -22,15 +23,19 @@ const DEFAULT_SHUTDOWN_MS = 5_000;
 
 type InFlight = { writeVersion: number; needsRerun: boolean; transcriptFingerprint: string };
 
+function logStoreError(): void {
+  console.error("meeting-summary:store_error");
+}
+
 function transcriptBlockFromContent(content: string): string {
   const idx = content.indexOf(TRANSCRIPT_SECTION);
   if (idx < 0) return "";
   return content.slice(idx + TRANSCRIPT_SECTION.length).trim();
 }
 
-function transcriptFingerprint(block: string): string {
+export function transcriptSha256(block: string): string {
   if (!block) return "";
-  return `${block.length}:${block.slice(0, 80)}:${block.slice(-80)}`;
+  return createHash("sha256").update(block, "utf8").digest("hex");
 }
 
 function tagsWithSummaryState(tags: string[], state: "pending" | "failed" | null): string[] {
@@ -86,7 +91,7 @@ export class MeetingSummaryQueue {
     const notes = this.notes;
     const note = notes?.getNote(noteId);
     const block = note ? transcriptBlockFromContent(note.content) : "";
-    const fingerprint = transcriptFingerprint(block);
+    const fingerprint = transcriptSha256(block);
 
     const existing = this.inFlight.get(noteId);
     if (existing) {
@@ -113,7 +118,7 @@ export class MeetingSummaryQueue {
       if (!note.tags.includes(MEETING_TAG)) continue;
       if (parseMeetingSummaryState(note.tags) !== "pending") continue;
       if (noteEditedSinceImport(note)) {
-        void this.clearPendingTag(note.id, note.version ?? 0, note.tags);
+        void this.clearPendingTag(note.id, note.version ?? 0, note.tags).catch(() => logStoreError());
         continue;
       }
       if (!transcriptBlockFromContent(note.content)) continue;
@@ -144,6 +149,9 @@ export class MeetingSummaryQueue {
       this.running += 1;
       this.activeJobs.add(noteId);
       const task = this.runJob(noteId)
+        .catch(() => {
+          console.error("meeting-summary:task_error");
+        })
         .finally(() => {
           this.running -= 1;
           this.activeJobs.delete(noteId);
@@ -170,7 +178,8 @@ export class MeetingSummaryQueue {
         expectedVersion,
       });
     } catch (err) {
-      if (!(err instanceof NoteConflictError)) throw err;
+      if (err instanceof NoteConflictError) return;
+      logStoreError();
     }
   }
 
@@ -188,8 +197,18 @@ export class MeetingSummaryQueue {
         expectedVersion: writeVersion,
       });
     } catch (err) {
-      if (!(err instanceof NoteConflictError)) throw err;
+      if (err instanceof NoteConflictError) return;
+      logStoreError();
     }
+  }
+
+  private deferToRerun(noteId: string, live: { version?: number; content: string }): void {
+    const flight = this.inFlight.get(noteId);
+    if (!flight) return;
+    const block = transcriptBlockFromContent(live.content);
+    flight.writeVersion = live.version ?? 0;
+    flight.transcriptFingerprint = transcriptSha256(block);
+    flight.needsRerun = true;
   }
 
   private async runJob(noteId: string): Promise<void> {
@@ -220,6 +239,8 @@ export class MeetingSummaryQueue {
         return;
       }
 
+      const transcriptHashAtStart = transcriptSha256(transcriptBlock);
+
       let summaryText = "";
       let llmOk = false;
       try {
@@ -234,8 +255,20 @@ export class MeetingSummaryQueue {
       writeVersion = flightNow.writeVersion;
 
       const live = notes.getNote(noteId);
-      if (!live || (live.version ?? 0) !== writeVersion) {
-        if (live) await this.clearPendingTag(noteId, live.version ?? 0, live.tags);
+      if (!live) return;
+
+      if ((live.version ?? 0) !== writeVersion) {
+        if (noteEditedSinceImport(live)) {
+          await this.clearPendingTag(noteId, live.version ?? 0, live.tags);
+        } else {
+          this.deferToRerun(noteId, live);
+        }
+        return;
+      }
+
+      const liveTranscriptHash = transcriptSha256(transcriptBlockFromContent(live.content));
+      if (liveTranscriptHash !== transcriptHashAtStart) {
+        this.deferToRerun(noteId, live);
         return;
       }
 
@@ -247,7 +280,7 @@ export class MeetingSummaryQueue {
         return;
       }
 
-      const content = finalizeMeetingNoteContent(summaryText, transcriptBlock);
+      const content = replaceMeetingNoteSummary(live.content, summaryText);
       const nextTags = importSyncedTags(tagsSnapshot, sourceKey, writeVersion, null);
 
       await notes.updateNote(noteId, {
