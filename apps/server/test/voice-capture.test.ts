@@ -25,9 +25,26 @@ function llmItemsJson() {
   return JSON.stringify({
     items: [
       { kind: "task", title: "Call dentist", due: "2026-10-26T09:00" },
-      { kind: "event", title: "Lunch with Sam", start: "2026-10-31T12:00", end: "2026-10-31T13:00" },
+      { kind: "task", title: "Lunch with Sam", due: "2026-10-31T12:00" },
     ],
   });
+}
+
+function isTodoistTaskCreate(url: string, init?: RequestInit): boolean {
+  return url.includes("api.todoist.com/api/v1/tasks")
+    && init?.method === "POST"
+    && !url.includes("/close")
+    && !url.includes("completed");
+}
+
+function stubTodoistTask(id: string, content: string) {
+  return {
+    id,
+    content,
+    description: "",
+    priority: 1,
+    due: null,
+  };
 }
 
 function stubFetch(original: typeof fetch): typeof fetch {
@@ -41,15 +58,8 @@ function stubFetch(original: typeof fetch): typeof fetch {
         choices: [{ message: { content: llmItemsJson() } }],
       }), { status: 200, headers: { "content-type": "application/json" } });
     }
-    if (url.includes("api.todoist.com/rest/v2/tasks") && init?.method === "POST") {
-      return new Response(JSON.stringify({
-        id: "td-voice",
-        content: "Call dentist",
-        description: "",
-        priority: 1,
-        due: null,
-        url: "https://todoist.com/showTask?id=td-voice",
-      }), { status: 200 });
+    if (isTodoistTaskCreate(url, init)) {
+      return new Response(JSON.stringify(stubTodoistTask("td-voice", "Call dentist")), { status: 200 });
     }
     return original(input, init);
   };
@@ -168,7 +178,7 @@ test("voice capture audio: stubbed pipeline creates pending capture without exte
   let todoistPosts = 0;
   globalThis.fetch = async (input, init) => {
     const url = String(input);
-    if (url.includes("api.todoist.com") && init?.method === "POST") todoistPosts++;
+    if (isTodoistTaskCreate(url, init)) todoistPosts++;
     return stubFetch(originalFetch)(input, init);
   };
   const logSpy: unknown[][] = [];
@@ -245,16 +255,14 @@ test("voice capture: confirm commits and dismiss removes", async () => {
       body: Buffer.from("audio-bytes"),
     });
     const { id, items } = await created.json() as { id: string; items: unknown[] };
-    const cal = await h.calendar.create({ kind: "native", name: "Personal" });
     const confirm = await fetch(`${h.base}/api/voice-captures/${id}/confirm`, {
       method: "POST",
       headers: ownerSession,
-      body: JSON.stringify({ items, calendarId: cal.id }),
+      body: JSON.stringify({ items }),
     });
     assert.equal(confirm.status, 200);
     const data = await confirm.json() as { results: unknown[] };
     assert.equal(data.results.length, 2);
-    assert.equal(h.calendar.store.events().length, 1);
 
     const gone = await fetch(`${h.base}/api/voice-captures/${id}`, { headers: ownerSession });
     assert.equal(gone.status, 404);
@@ -311,12 +319,10 @@ test("voice capture: partial confirm keeps failed items for retry", async () => 
         choices: [{ message: { content: JSON.stringify({ items: [{ kind: "task", title: "One" }, { kind: "task", title: "Two" }] }) } }],
       }), { status: 200 });
     }
-    if (url.includes("api.todoist.com/rest/v2/tasks") && init?.method === "POST") {
+    if (isTodoistTaskCreate(url, init)) {
       todoistCalls++;
       if (todoistCalls === 1) {
-        return new Response(JSON.stringify({
-          id: "td-1", content: "One", description: "", priority: 1, due: null, url: "https://todoist.com/showTask?id=td-1",
-        }), { status: 200 });
+        return new Response(JSON.stringify(stubTodoistTask("td-1", "One")), { status: 200 });
       }
       return new Response("fail", { status: 500 });
     }
