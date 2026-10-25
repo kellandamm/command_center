@@ -1,6 +1,18 @@
 import { build } from "esbuild";
 import { cpSync, mkdirSync } from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+const serverRoot = fileURLToPath(new URL("..", import.meta.url));
+const reactRoot = path.join(serverRoot, "node_modules/react");
+const reactDomRoot = path.join(serverRoot, "node_modules/react-dom");
+/** tunnel-rat (via Excalidraw) otherwise resolves react@19 next to react@18 and breaks hooks. */
+const reactAliases = {
+  react: reactRoot,
+  "react-dom": reactDomRoot,
+  "react/jsx-runtime": path.join(reactRoot, "jsx-runtime.js"),
+  "react-dom/client": path.join(reactDomRoot, "client.js"),
+};
 
 mkdirSync(new URL("../dist/", import.meta.url), { recursive: true });
 
@@ -22,6 +34,10 @@ const whiteboard = await build({
   write: false,
   jsx: "automatic",
   loader: { ".css": "empty" },
+  define: { "process.env.NODE_ENV": '"production"' },
+  alias: reactAliases,
+  mainFields: ["module", "main"],
+  conditions: ["production", "import", "module", "browser", "default"],
 });
 const whiteboardScript = whiteboard.outputFiles[0].text;
 await import("node:fs/promises").then(({ writeFile }) =>

@@ -52,6 +52,7 @@ function App() {
         files: latest.current.files,
       }),
     };
+    document.dispatchEvent(new CustomEvent("whiteboard:ready"));
   }, []);
 
   return (
@@ -74,5 +75,11 @@ function App() {
   );
 }
 
-const mount = document.getElementById("whiteboard-root");
-if (mount) createRoot(mount).render(<App />);
+function mountEditor() {
+  const mount = document.getElementById("whiteboard-root");
+  if (!mount) return;
+  createRoot(mount).render(<App />);
+}
+
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mountEditor);
+else mountEditor();
