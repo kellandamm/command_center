@@ -28,6 +28,7 @@ import { LaunchpadStore } from "./launchpad/store";
 import { FocusSessionsStore } from "./focus/store";
 import { ShareLinksStore } from "./share-links/store";
 import { WhiteboardStore } from "./whiteboard/store";
+import { VoiceCaptureStore } from "./voice-capture/store";
 
 async function main() {
   const deployment = loadConfig();
@@ -63,6 +64,7 @@ async function main() {
   const focusSessions = await FocusSessionsStore.open(cfg.dataDir);
   const shareLinks = await ShareLinksStore.open(cfg.dataDir);
   const whiteboard = await WhiteboardStore.open(cfg.dataDir);
+  const voiceCaptures = await VoiceCaptureStore.open(cfg.dataDir);
 
   const scheduler = new Scheduler({
     cfg,
@@ -97,6 +99,7 @@ async function main() {
     connections,
     calendar,
     shareLinks,
+    voiceCaptures,
   });
   server.listen(cfg.port, cfg.host, () => {
     console.log(`command-center ${cfg.version} listening on ${cfg.host}:${cfg.port} (tz ${cfg.tz})`);
