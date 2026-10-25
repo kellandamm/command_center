@@ -16,6 +16,7 @@ import {
   completedOnChicagoDay,
   dayRangeIso,
   generateShutdownReflection,
+  parseClientShutdownReview,
   SHUTDOWN_TZ,
 } from "../src/briefing/shutdown-service";
 import { dayKey } from "../src/store";
@@ -254,6 +255,49 @@ test("shutdown: Todoist open failure still returns completed tasks", async () =>
   }
 });
 
+test("shutdown: parseClientShutdownReview rejects malformed payloads", () => {
+  assert.equal(parseClientShutdownReview({ review: { done: {}, unfinished: {} } }), null);
+  const valid = {
+    zone: SHUTDOWN_TZ,
+    day: "2026-10-14",
+    tomorrow: "2026-10-15",
+    generatedAt: "2026-10-14T12:00:00.000Z",
+    todoistConfigured: true,
+    llmEnabled: true,
+    done: { todoist: [], board: [] },
+    unfinished: { todoist: { overdue: [], today: [] }, blockedToday: [] },
+    time: { calendarHours: 1, blockedTaskHours: 0.5 },
+    tomorrowPreview: { events: [], tasksDue: [] },
+    errors: {},
+  };
+  assert.ok(parseClientShutdownReview({ review: valid }));
+  assert.equal(parseClientShutdownReview({ review: { ...valid, time: { calendarHours: "bad", blockedTaskHours: 0 } } }), null);
+});
+
+test("shutdown: calendar planning failure is isolated", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-shutdown-plan-"));
+  try {
+    const cfg = loadConfig({ DATA_DIR: dir, ALLOW_INSECURE_NO_AUTH: "1" });
+    const integration = await openIntegrationStores(dir, cfg);
+    const calendar = {
+      planning: () => {
+        throw new Error("planning failed");
+      },
+      snapshot: async () => ({ events: [], configured: true, timezone: "UTC", feeds: [], truncated: false }),
+    } as unknown as CalendarWorkspace;
+    const review = await buildShutdownReview({
+      cfg,
+      board: integration.board,
+      calendar,
+      now: new Date("2026-10-14T12:00:00Z"),
+    });
+    assert.equal(review.errors.calendar, "Couldn't load calendar.");
+    integration.board.close();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("shutdown: calendar snapshot failure is isolated", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-shutdown-cal-"));
   try {
@@ -324,7 +368,18 @@ test("shutdown: reflection only when POST is called", async () => {
     });
     assert.equal(llmCalls, 0);
 
-    const reflection = await generateShutdownReflection(review, cfg, fetchFn);
+    const source = {
+      day: review.day,
+      zone: SHUTDOWN_TZ as typeof SHUTDOWN_TZ,
+      doneTodoist: review.done.todoist.length,
+      doneBoard: review.done.board.length,
+      openCount: 0,
+      calendarHours: review.time.calendarHours,
+      blockedHours: review.time.blockedTaskHours,
+      tomorrowEvents: review.tomorrowPreview.events.length,
+      tomorrowTasksDue: review.tomorrowPreview.tasksDue.length,
+    };
+    const reflection = await generateShutdownReflection(source, cfg, fetchFn);
     assert.equal(reflection, "You closed the loop on the essentials.");
     assert.equal(llmCalls, 1);
     integration.board.close();
@@ -369,6 +424,12 @@ test("shutdown API: GET canManage; reflection requires owner not admin token", a
       body: JSON.stringify({ review: body.review }),
     });
     assert.equal(reflect.status, 200);
+    const badReflect = await fetch(`${ownerHarness.base}/api/briefing/shutdown/reflection`, {
+      method: "POST",
+      headers: { "x-ah": "1", "content-type": "application/json" },
+      body: JSON.stringify({ review: { done: {}, unfinished: {} } }),
+    });
+    assert.equal(badReflect.status, 400);
   } finally {
     await ownerHarness.close();
   }

@@ -181,9 +181,9 @@ function renderShutdown(r){
   var calNote=errs.calendar?'<p class="bad">'+esc(errs.calendar)+'</p>':"";
   body.innerHTML=
     '<section class="shutdown-section"><h2>Done today</h2><ul>'+doneNote+(doneEmpty&&!errs.todoistCompleted?'<li class="dim">Nothing recorded yet.</li>':doneTodoist+doneBoard)+'</ul></section>'
-    +'<section class="shutdown-section"><h2>Planned but not done</h2><ul>'+openNote+(openEmpty&&!errs.todoistOpen?'<li class="dim">All clear.</li>':openTodoist+blocked)+'</ul></section>'
+    +'<section class="shutdown-section"><h2>Planned but not done</h2><ul>'+openNote+(openEmpty&&!errs.todoistOpen&&!errs.calendar?'<li class="dim">All clear.</li>':openTodoist+blocked)+'</ul></section>'
     +'<section class="shutdown-section"><h2>Time</h2>'+calNote+'<p>Calendar <strong>'+esc(String(r.time.calendarHours))+'</strong> h · Blocked tasks <strong>'+esc(String(r.time.blockedTaskHours))+'</strong> h</p></section>'
-    +'<section class="shutdown-section"><h2>Tomorrow</h2><h3 class="dim" style="font-size:.85rem;margin:.5rem 0 0">First events</h3><ul>'+(tomorrowEv||'<li class="dim">No events loaded.</li>')+'</ul>'
+    +'<section class="shutdown-section"><h2>Tomorrow</h2><h3 class="dim" style="font-size:.85rem;margin:.5rem 0 0">First events</h3><ul>'+(tomorrowEv||(errs.calendar?'<li class="bad">'+esc(errs.calendar)+'</li>':'<li class="dim">No events loaded.</li>'))+'</ul>'
     +'<h3 class="dim" style="font-size:.85rem;margin:.75rem 0 0">Tasks due</h3><ul>'+(tomorrowTasks||'<li class="dim">None due tomorrow.</li>')+'</ul></section>';
   var reflectBtn=document.getElementById("db-shutdown-reflect");
   reflectBtn.hidden=!r.llmEnabled;

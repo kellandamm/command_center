@@ -17,7 +17,22 @@ import {
 } from "../todoist/client";
 
 export const SHUTDOWN_TZ = "America/Chicago";
-const MAX_CLIENT_REVIEW_BYTES = 24_000;
+const MAX_CLIENT_REVIEW_BYTES = 64 * 1024;
+const MAX_REFLECTION_ARRAY = 100;
+const MAX_REFLECTION_STR = 300;
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export interface ShutdownReflectionSource {
+  day: string;
+  zone: typeof SHUTDOWN_TZ;
+  doneTodoist: number;
+  doneBoard: number;
+  openCount: number;
+  calendarHours: number;
+  blockedHours: number;
+  tomorrowEvents: number;
+  tomorrowTasksDue: number;
+}
 
 export type CompletedTasksFetcher = (
   token: string,
@@ -97,15 +112,96 @@ function durationMsOnDay(
   return Math.max(0, Math.min(endMs, dayEnd) - Math.max(startMs, dayStart));
 }
 
-export function parseClientShutdownReview(body: unknown): ShutdownReview | null {
+function capReflectionStr(value: unknown): string | null {
+  if (typeof value !== "string" || value.includes("\0")) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, MAX_REFLECTION_STR);
+}
+
+function validReflectionHours(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 24) return null;
+  return value;
+}
+
+function parseReflectionArray(value: unknown, item: (row: unknown) => boolean): number | null {
+  if (!Array.isArray(value) || value.length > MAX_REFLECTION_ARRAY) return null;
+  for (const row of value) {
+    if (!item(row)) return null;
+  }
+  return value.length;
+}
+
+function parseOpenTaskRow(row: unknown): boolean {
+  if (!row || typeof row !== "object") return false;
+  return capReflectionStr((row as { content?: unknown }).content) !== null;
+}
+
+function parseDoneTodoistRow(row: unknown): boolean {
+  if (!row || typeof row !== "object") return false;
+  const o = row as { id?: unknown; content?: unknown; completedAt?: unknown };
+  return capReflectionStr(o.id) !== null && capReflectionStr(o.content) !== null && capReflectionStr(o.completedAt) !== null;
+}
+
+function parseDoneBoardRow(row: unknown): boolean {
+  if (!row || typeof row !== "object") return false;
+  const o = row as { title?: unknown };
+  return capReflectionStr(o.title) !== null;
+}
+
+function parseBlockedRow(row: unknown): boolean {
+  if (!row || typeof row !== "object") return false;
+  return capReflectionStr((row as { title?: unknown }).title) !== null;
+}
+
+function parseTomorrowEventRow(row: unknown): boolean {
+  if (!row || typeof row !== "object") return false;
+  const o = row as { summary?: unknown; start?: unknown; allDay?: unknown };
+  return capReflectionStr(o.summary) !== null && capReflectionStr(o.start) !== null && typeof o.allDay === "boolean";
+}
+
+/** Validates client POST body; returns counts-only source safe for the LLM prompt. */
+export function parseClientShutdownReview(body: unknown): ShutdownReflectionSource | null {
   if (!body || typeof body !== "object") return null;
   const review = (body as { review?: unknown }).review;
   if (!review || typeof review !== "object") return null;
   if (Buffer.byteLength(JSON.stringify(review), "utf8") > MAX_CLIENT_REVIEW_BYTES) return null;
-  const r = review as ShutdownReview;
-  if (r.zone !== SHUTDOWN_TZ || !/^\d{4}-\d{2}-\d{2}$/.test(r.day) || !/^\d{4}-\d{2}-\d{2}$/.test(r.tomorrow)) return null;
-  if (!r.done || !r.unfinished || !r.time || !r.tomorrowPreview) return null;
-  return { ...r, errors: r.errors ?? {} };
+  const r = review as Record<string, unknown>;
+  if (r.zone !== SHUTDOWN_TZ || !DAY_RE.test(String(r.day ?? "")) || !DAY_RE.test(String(r.tomorrow ?? ""))) return null;
+  if (typeof r.generatedAt !== "string" || typeof r.todoistConfigured !== "boolean" || typeof r.llmEnabled !== "boolean") return null;
+  const done = r.done;
+  const unfinished = r.unfinished;
+  const time = r.time;
+  const tomorrowPreview = r.tomorrowPreview;
+  if (!done || typeof done !== "object" || !unfinished || typeof unfinished !== "object") return null;
+  if (!time || typeof time !== "object" || !tomorrowPreview || typeof tomorrowPreview !== "object") return null;
+  const doneTodoist = parseReflectionArray((done as { todoist?: unknown }).todoist, parseDoneTodoistRow);
+  const doneBoard = parseReflectionArray((done as { board?: unknown }).board, parseDoneBoardRow);
+  if (doneTodoist === null || doneBoard === null) return null;
+  const todoist = (unfinished as { todoist?: unknown }).todoist;
+  if (!todoist || typeof todoist !== "object") return null;
+  const overdue = parseReflectionArray((todoist as { overdue?: unknown }).overdue, parseOpenTaskRow);
+  const today = parseReflectionArray((todoist as { today?: unknown }).today, parseOpenTaskRow);
+  const blocked = parseReflectionArray((unfinished as { blockedToday?: unknown }).blockedToday, parseBlockedRow);
+  if (overdue === null || today === null || blocked === null) return null;
+  const calendarHours = validReflectionHours((time as { calendarHours?: unknown }).calendarHours);
+  const blockedHours = validReflectionHours((time as { blockedTaskHours?: unknown }).blockedTaskHours);
+  if (calendarHours === null || blockedHours === null) return null;
+  const events = parseReflectionArray((tomorrowPreview as { events?: unknown }).events, parseTomorrowEventRow);
+  const tasksDue = parseReflectionArray((tomorrowPreview as { tasksDue?: unknown }).tasksDue, parseOpenTaskRow);
+  if (events === null || tasksDue === null) return null;
+  if (r.errors !== undefined && (typeof r.errors !== "object" || r.errors === null)) return null;
+  return {
+    day: String(r.day),
+    zone: SHUTDOWN_TZ,
+    doneTodoist,
+    doneBoard,
+    openCount: overdue + today + blocked,
+    calendarHours,
+    blockedHours,
+    tomorrowEvents: events,
+    tomorrowTasksDue: tasksDue,
+  };
 }
 
 export async function buildShutdownReview(opts: {
@@ -149,23 +245,26 @@ export async function buildShutdownReview(opts: {
 
   const { overdue, today } = partitionTodayAndOverdue(openTasks, opts.now, SHUTDOWN_TZ);
 
-  const planning = opts.calendar?.planning();
-  const cardsById = new Map((planning?.cards ?? []).map((c) => [c.id, c]));
   const blockedToday: ShutdownReview["unfinished"]["blockedToday"] = [];
   let blockedMs = 0;
-  for (const block of planning?.blocks ?? []) {
-    if (!block.taskId || block.enabled === false) continue;
-    const ms = durationMsOnDay(block, day, SHUTDOWN_TZ);
-    if (ms <= 0) continue;
-    const card = cardsById.get(block.taskId);
-    if (!card || card.column === DONE) continue;
-    blockedToday.push({ title: card.title });
-    blockedMs += ms;
-  }
-
   let calendarMs = 0;
   let tomorrowEvents: ShutdownReview["tomorrowPreview"]["events"] = [];
   if (opts.calendar) {
+    try {
+      const planning = opts.calendar.planning();
+      const cardsById = new Map(planning.cards.map((c) => [c.id, c]));
+      for (const block of planning.blocks) {
+        if (!block.taskId || block.enabled === false) continue;
+        const ms = durationMsOnDay(block, day, SHUTDOWN_TZ);
+        if (ms <= 0) continue;
+        const card = cardsById.get(block.taskId);
+        if (!card || card.column === DONE) continue;
+        blockedToday.push({ title: card.title });
+        blockedMs += ms;
+      }
+    } catch {
+      errors.calendar = "Couldn't load calendar.";
+    }
     try {
       const rangeStart = slotInstant(day, "00:00", SHUTDOWN_TZ);
       const rangeEnd = slotInstant(nextDayKey(tomorrow), "00:00", SHUTDOWN_TZ);
@@ -214,23 +313,19 @@ export async function buildShutdownReview(opts: {
 }
 
 export async function generateShutdownReflection(
-  review: ShutdownReview,
+  source: ShutdownReflectionSource,
   cfg: Config,
   fetchFn: FetchLike = fetch,
 ): Promise<string | null> {
   const llm = llmConfig(cfg);
   if (!llm) return null;
-  const doneCount = review.done.todoist.length + review.done.board.length;
-  const openCount =
-    review.unfinished.todoist.overdue.length
-    + review.unfinished.todoist.today.length
-    + review.unfinished.blockedToday.length;
+  const doneCount = source.doneTodoist + source.doneBoard;
   const prompt = [
-    `Shutdown review for ${review.day} (${review.zone}).`,
-    `Completed: ${doneCount} items (${review.done.todoist.length} Todoist, ${review.done.board.length} board).`,
-    `Still open from today's plan: ${openCount}.`,
-    `Calendar ${review.time.calendarHours}h vs blocked tasks ${review.time.blockedTaskHours}h.`,
-    `Tomorrow: ${review.tomorrowPreview.events.length} early events, ${review.tomorrowPreview.tasksDue.length} tasks due.`,
+    `Shutdown review for ${source.day} (${source.zone}).`,
+    `Completed: ${doneCount} items (${source.doneTodoist} Todoist, ${source.doneBoard} board).`,
+    `Still open from today's plan: ${source.openCount}.`,
+    `Calendar ${source.calendarHours}h vs blocked tasks ${source.blockedHours}h.`,
+    `Tomorrow: ${source.tomorrowEvents} early events, ${source.tomorrowTasksDue} tasks due.`,
   ].join(" ");
   try {
     const text = await chatCompletion(

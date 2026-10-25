@@ -8,7 +8,10 @@ import {
   generateShutdownReflection,
   parseClientShutdownReview,
 } from "../briefing/shutdown-service";
+import { ValidationError } from "../settings";
 import type { DailyBriefingService } from "./service";
+
+const REFLECTION_BODY_LIMIT = 64 * 1024;
 
 function json(res: ServerResponse, status: number, data: unknown) {
   res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
@@ -46,12 +49,22 @@ export async function handleDailyBriefingRoutes(
       json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
       return true;
     }
-    const review = parseClientShutdownReview(await readBody(req, 32_000));
-    if (!review) {
+    let body: unknown;
+    try {
+      body = await readBody(req, REFLECTION_BODY_LIMIT);
+    } catch (err) {
+      if (err instanceof ValidationError && err.message === "request body too large") {
+        json(res, 413, { error: "Request body too large." });
+        return true;
+      }
+      throw err;
+    }
+    const source = parseClientShutdownReview(body);
+    if (!source) {
       json(res, 400, { error: "Invalid shutdown review payload." });
       return true;
     }
-    const reflection = await generateShutdownReflection(review, app.cfg);
+    const reflection = await generateShutdownReflection(source, app.cfg);
     json(res, 200, { reflection, llmEnabled: llmConfigured(app.cfg) });
     return true;
   }
