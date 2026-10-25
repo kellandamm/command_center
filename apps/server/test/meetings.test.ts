@@ -14,7 +14,8 @@ import { CaptureAccess } from "../src/read-later/capture-access";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 import { createTestCfAccessJwt, TEST_CF_AUD, TEST_CF_TEAM } from "./cf-access-jwt";
 import { setIntegrationCfAccessVerifier } from "../src/mcp/auth";
-import { MEETING_IMPORT_MAX_BYTES, MEETING_TAG, SUMMARY_PENDING } from "../src/meetings/constants";
+import { finalizeMeetingNoteContent } from "../src/meetings/content";
+import { MEETING_IMPORT_MAX_BYTES, MEETING_TAG, NOTE_BODY_MAX_BYTES, SUMMARY_PENDING } from "../src/meetings/constants";
 import { findMeetingNoteBySourceId } from "../src/meetings/import-service";
 import { CHUNK_CHARS, mergeMeetingPartials, summarizeMeetingTranscript } from "../src/meetings/summarize";
 
@@ -318,6 +319,70 @@ test("meetings summarize: refresh import version so re-import is allowed", async
       body: JSON.stringify({ ...samplePayload, sourceId: "plaud-summarize-tag", transcript: "body v2" }),
     });
     assert.equal(reimport.status, 200);
+  } finally {
+    await h.close();
+  }
+});
+
+test("meetings content: oversized summary is capped to note budget", () => {
+  const transcript = "x".repeat(120_000);
+  assert.ok(Buffer.byteLength(finalizeMeetingNoteContent(SUMMARY_PENDING, transcript), "utf8") <= NOTE_BODY_MAX_BYTES);
+  const content = finalizeMeetingNoteContent("y".repeat(90_000), transcript);
+  assert.ok(Buffer.byteLength(content, "utf8") <= NOTE_BODY_MAX_BYTES);
+  assert.match(content, /truncated to fit note size/);
+});
+
+test("meetings summarize: returns 409 when edited during LLM", async () => {
+  const h = await harness({}, true);
+  try {
+    const originalFetch = globalThis.fetch;
+    let unblock: () => void = () => {};
+    const llmBlocked = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
+    let importLlmDone = false;
+    let summarizeLlmStarted = false;
+    withMockLlmFetch(async (input, init) => {
+      if (String(input).includes("api.example")) {
+        if (!importLlmDone) {
+          return new Response(JSON.stringify({ choices: [{ message: { content: "import summary" } }] }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        summarizeLlmStarted = true;
+        await llmBlocked;
+        return new Response(JSON.stringify({ choices: [{ message: { content: "Late summary text" } }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return originalFetch(input, init);
+    });
+    const imported = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-race-summarize", transcript: "body for summarize race" }),
+    });
+    const { noteId } = await imported.json();
+    importLlmDone = true;
+    const summarizePromise = fetch(`${h.base}/api/meetings/${encodeURIComponent(noteId)}/summarize`, {
+      method: "POST",
+      headers: sessionAuthz,
+    });
+    while (!summarizeLlmStarted) await new Promise<void>((resolve) => setImmediate(resolve));
+    const note = h.notes.getNote(noteId)!;
+    const edited = await fetch(`${h.base}/api/knowledge/notes/${encodeURIComponent(noteId)}`, {
+      method: "PUT",
+      headers: sessionAuthz,
+      body: JSON.stringify({ expectedVersion: note.version, content: `${note.content}\n\nRace edit kept.` }),
+    });
+    assert.equal(edited.status, 200);
+    unblock();
+    const summarized = await summarizePromise;
+    assert.equal(summarized.status, 409);
+    assert.match(h.notes.getNote(noteId)!.content, /Race edit kept/);
+    assert.doesNotMatch(h.notes.getNote(noteId)!.content, /Late summary text/);
   } finally {
     await h.close();
   }

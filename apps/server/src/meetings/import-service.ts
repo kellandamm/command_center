@@ -4,7 +4,7 @@ import type { FetchLike } from "../llm/provider";
 import type { KnowledgeNote, NotesStore } from "../notes/store";
 import { NoteConflictError } from "../notes/store";
 import { ValidationError } from "../settings";
-import { buildMeetingNoteContent } from "./content";
+import { buildMeetingNoteContent, finalizeMeetingNoteContent } from "./content";
 import {
   MEETING_IMPORT_MAX_BYTES,
   MEETING_TAG,
@@ -42,6 +42,8 @@ export class MeetingEditedLocallyError extends Error {
     super("edited locally");
   }
 }
+
+type NoteBaseline = { id: string; version: number; tags: string[] };
 
 function parseRecordedAt(raw: unknown): string {
   if (typeof raw !== "string" || !raw.trim()) throw new ValidationError("recordedAt is required");
@@ -106,10 +108,19 @@ function meetingTags(sourceId: string, existing: string[] = [], importVersion?: 
   return tags;
 }
 
-function noteEditedSinceImport(note: KnowledgeNote): boolean {
+function noteEditedSinceImport(note: Pick<KnowledgeNote, "version" | "tags">): boolean {
   const importedVersion = parseMeetingImportVersion(note.tags);
   if (importedVersion === null) return false;
   return (note.version ?? 0) > importedVersion;
+}
+
+function snapshotNote(note: KnowledgeNote): NoteBaseline {
+  return { id: note.id, version: note.version ?? 0, tags: [...note.tags] };
+}
+
+function assertNoteBaselineUnchanged(notes: NotesStore, baseline: NoteBaseline): void {
+  const live = notes.getNote(baseline.id);
+  if (!live || (live.version ?? 0) !== baseline.version) throw new MeetingEditedLocallyError();
 }
 
 function assertNoteBodyFits(transcriptBlock: string): void {
@@ -135,6 +146,13 @@ async function persistImport(
   );
   assertNoteBodyFits(transcriptBlock);
 
+  const existing = findMeetingNoteBySourceId(notes, payload.sourceId);
+  let importBaseline: NoteBaseline | undefined;
+  if (existing) {
+    if (noteEditedSinceImport(existing)) throw new MeetingEditedLocallyError();
+    importBaseline = snapshotNote(existing);
+  }
+
   let summary = SUMMARY_PENDING;
   let summaryStatus: "ok" | "pending" = "pending";
   const llm = llmConfig(cfg);
@@ -149,30 +167,35 @@ async function persistImport(
     }
   }
 
-  const content = buildMeetingNoteContent(summary, transcriptBlock);
-  if (Buffer.byteLength(content, "utf8") > NOTE_BODY_MAX_BYTES) throw new ValidationError("note too large");
+  if (importBaseline) assertNoteBaselineUnchanged(notes, importBaseline);
+
+  const content = finalizeMeetingNoteContent(summary, transcriptBlock);
 
   const spaceId = await ensureMeetingsSpaceId(notes);
-  const existing = findMeetingNoteBySourceId(notes, payload.sourceId);
 
-  if (existing) {
+  if (existing && importBaseline) {
     for (let attempt = 0; attempt < 4; attempt++) {
-      const current = notes.getNote(existing.id) ?? existing;
-      if (noteEditedSinceImport(current)) throw new MeetingEditedLocallyError();
-      const importVersion = (current.version ?? 0) + 1;
+      assertNoteBaselineUnchanged(notes, importBaseline);
+      const importVersion = importBaseline.version + 1;
       try {
-        const note = await notes.updateNote(current.id, {
+        const note = await notes.updateNote(importBaseline.id, {
           title: payload.title,
           content,
-          tags: meetingTags(payload.sourceId, current.tags, importVersion),
+          tags: meetingTags(payload.sourceId, importBaseline.tags, importVersion),
           spaceId,
           sensitive: true,
-          expectedVersion: current.version ?? 0,
+          expectedVersion: importBaseline.version,
         });
         if (!note) throw new ValidationError("note not found");
         return { note, created: false, summaryStatus };
       } catch (err) {
-        if (err instanceof NoteConflictError && attempt < 3) continue;
+        if (err instanceof NoteConflictError && attempt < 3) {
+          const live = notes.getNote(importBaseline.id);
+          if (!live) throw new MeetingEditedLocallyError();
+          importBaseline = snapshotNote(live);
+          if (noteEditedSinceImport(live)) throw new MeetingEditedLocallyError();
+          continue;
+        }
         throw err;
       }
     }
@@ -214,6 +237,10 @@ export async function summarizeMeetingNote(
   if (!note) throw new ValidationError("note not found");
   if (!note.tags.includes(MEETING_TAG)) throw new ValidationError("not a meeting note");
 
+  const baseVersion = note.version ?? 0;
+  const tagsSnapshot = [...note.tags];
+  const sourceKey = plaudSourceIdFromTags(tagsSnapshot);
+
   const llm = llmConfig(cfg);
   if (!llm) throw new ValidationError("LLM is not configured");
 
@@ -228,16 +255,18 @@ export async function summarizeMeetingNote(
     throw new ValidationError("summarization failed");
   }
 
-  const content = buildMeetingNoteContent(summary, transcriptBody);
-  const sourceKey = plaudSourceIdFromTags(note.tags);
-  const importedVersion = parseMeetingImportVersion(note.tags);
-  const syncedWithImport = importedVersion !== null && (note.version ?? 0) === importedVersion;
-  const importVersion = (note.version ?? 0) + 1;
+  const live = notes.getNote(noteId);
+  if (!live || (live.version ?? 0) !== baseVersion) throw new MeetingEditedLocallyError();
+
+  const content = finalizeMeetingNoteContent(summary, transcriptBody);
+  const importedVersion = parseMeetingImportVersion(tagsSnapshot);
+  const syncedWithImport = importedVersion !== null && baseVersion === importedVersion;
+  const importVersion = baseVersion + 1;
   try {
     const updated = await notes.updateNote(noteId, {
       content,
-      tags: sourceKey && syncedWithImport ? meetingTags(sourceKey, note.tags, importVersion) : note.tags,
-      expectedVersion: note.version ?? 0,
+      tags: sourceKey && syncedWithImport ? meetingTags(sourceKey, tagsSnapshot, importVersion) : tagsSnapshot,
+      expectedVersion: baseVersion,
     });
     if (!updated) throw new ValidationError("note not found");
     return updated;
