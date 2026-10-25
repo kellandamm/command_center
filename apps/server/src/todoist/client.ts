@@ -18,7 +18,29 @@ export interface TodoistTask {
 
 export type TodoistFetch = typeof fetch;
 
-const API = "https://api.todoist.com/rest/v2";
+const API = "https://api.todoist.com/api/v1";
+const PAGE_LIMIT = 200;
+const MAX_PAGES = 50;
+
+interface V1Due {
+  date?: string;
+  datetime?: string | null;
+  string?: string;
+  timezone?: string | null;
+}
+
+interface V1Task {
+  id: string;
+  content: string;
+  description?: string;
+  priority?: number;
+  due?: V1Due | null;
+}
+
+interface V1TaskPage {
+  results: V1Task[];
+  next_cursor: string | null;
+}
 
 function authHeaders(token: string): Record<string, string> {
   return { authorization: `Bearer ${token}`, "content-type": "application/json" };
@@ -33,10 +55,39 @@ async function readError(res: Response): Promise<string> {
   }
 }
 
+function mapV1Task(raw: V1Task): TodoistTask {
+  const due = raw.due;
+  return {
+    id: String(raw.id),
+    content: raw.content,
+    description: raw.description ?? "",
+    priority: raw.priority ?? 1,
+    due: due
+      ? {
+          date: due.date ?? "",
+          datetime: due.datetime ?? null,
+          string: due.string ?? due.date ?? "",
+          timezone: due.timezone ?? null,
+        }
+      : null,
+    url: `https://app.todoist.com/app/task/${encodeURIComponent(String(raw.id))}`,
+  };
+}
+
 export async function listTasks(token: string, fetchFn: TodoistFetch = fetch): Promise<TodoistTask[]> {
-  const res = await fetchFn(`${API}/tasks`, { headers: authHeaders(token) });
-  if (!res.ok) throw new Error(await readError(res));
-  return (await res.json()) as TodoistTask[];
+  const out: TodoistTask[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const qs = new URLSearchParams({ limit: String(PAGE_LIMIT) });
+    if (cursor) qs.set("cursor", cursor);
+    const res = await fetchFn(`${API}/tasks?${qs}`, { headers: authHeaders(token) });
+    if (!res.ok) throw new Error(await readError(res));
+    const body = (await res.json()) as V1TaskPage;
+    out.push(...body.results.map(mapV1Task));
+    cursor = body.next_cursor ?? undefined;
+    if (!cursor) break;
+  }
+  return out;
 }
 
 export async function createTask(token: string, content: string, fetchFn: TodoistFetch = fetch): Promise<TodoistTask> {
@@ -48,7 +99,7 @@ export async function createTask(token: string, content: string, fetchFn: Todois
     body: JSON.stringify({ content: trimmed }),
   });
   if (!res.ok) throw new Error(await readError(res));
-  return (await res.json()) as TodoistTask;
+  return mapV1Task((await res.json()) as V1Task);
 }
 
 export async function completeTask(token: string, id: string, fetchFn: TodoistFetch = fetch): Promise<void> {
