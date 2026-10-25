@@ -39,13 +39,29 @@ export async function listTasks(token: string, fetchFn: TodoistFetch = fetch): P
   return (await res.json()) as TodoistTask[];
 }
 
-export async function createTask(token: string, content: string, fetchFn: TodoistFetch = fetch): Promise<TodoistTask> {
-  const trimmed = content.trim();
+export interface CreateTaskInput {
+  content: string;
+  description?: string;
+  dueDate?: string;
+  dueDatetime?: string;
+}
+
+export async function createTask(
+  token: string,
+  input: string | CreateTaskInput,
+  fetchFn: TodoistFetch = fetch,
+): Promise<TodoistTask> {
+  const body = typeof input === "string" ? { content: input } : input;
+  const trimmed = body.content.trim();
   if (!trimmed) throw new Error("task content is required");
+  const payload: Record<string, string> = { content: trimmed };
+  if (body.description?.trim()) payload.description = body.description.trim();
+  if (body.dueDate) payload.due_date = body.dueDate;
+  if (body.dueDatetime) payload.due_datetime = body.dueDatetime;
   const res = await fetchFn(`${API}/tasks`, {
     method: "POST",
     headers: authHeaders(token),
-    body: JSON.stringify({ content: trimmed }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(await readError(res));
   return (await res.json()) as TodoistTask;
