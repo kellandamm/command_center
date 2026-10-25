@@ -26,6 +26,18 @@ function ownerDenied(res: ServerResponse): void {
   res.end(JSON.stringify({ error: OWNER_ACTION_FORBIDDEN }));
 }
 
+function sensitiveNoteOwnerRequired(
+  note: { sensitive?: boolean },
+  owner: boolean,
+  res: ServerResponse,
+): boolean {
+  if (isNoteSensitive(note) && !owner) {
+    ownerDenied(res);
+    return true;
+  }
+  return false;
+}
+
 async function readBinary(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let total = 0;
@@ -154,12 +166,15 @@ export const notesPanel: PanelModule = {
       let id: string;
       try { id = decodeURIComponent(historyMatch[1]!); }
       catch { throw new ValidationError("Invalid note identifier"); }
-      if (!ctx.notes.getNote(id)) return error(404, "note not found"), true;
+      const historyNote = ctx.notes.getNote(id);
+      if (!historyNote) return error(404, "note not found"), true;
       if (historyMatch[2] === "history" && req.method === "GET") {
+        if (sensitiveNoteOwnerRequired(historyNote, ctx.owner, res)) return true;
         json(200, { revisions: ctx.notes.noteHistory(id) });
         return true;
       }
       if (historyMatch[2] === "restore" && req.method === "POST") {
+        if (sensitiveNoteOwnerRequired(historyNote, ctx.owner, res)) return true;
         const body = await readJson(req);
         if (typeof body.revisionId !== "string" || typeof body.expectedVersion !== "number" || !Number.isInteger(body.expectedVersion)) throw new ValidationError("revisionId and expectedVersion are required");
         const note = await ctx.notes.restoreNote(id, body.revisionId, body.expectedVersion);
@@ -172,16 +187,23 @@ export const notesPanel: PanelModule = {
     if (noteId && req.method === "GET") {
       const note = ctx.notes.getNote(noteId);
       if (!note) return error(404, "note not found"), true;
+      if (sensitiveNoteOwnerRequired(note, ctx.owner, res)) return true;
       json(200, { note });
       return true;
     }
     if (noteId && req.method === "PUT") {
+      const existing = ctx.notes.getNote(noteId);
+      if (!existing) return error(404, "note not found"), true;
+      if (sensitiveNoteOwnerRequired(existing, ctx.owner, res)) return true;
       const note = await ctx.notes.updateNote(noteId, await readJson(req));
       if (!note) return error(404, "note not found"), true;
       json(200, { note });
       return true;
     }
     if (noteId && req.method === "DELETE") {
+      const existing = ctx.notes.getNote(noteId);
+      if (!existing) return error(404, "note not found"), true;
+      if (sensitiveNoteOwnerRequired(existing, ctx.owner, res)) return true;
       const deleted = await ctx.notes.deleteNote(noteId);
       if (!deleted) return error(404, "note not found"), true;
       json(200, { ok: true });
