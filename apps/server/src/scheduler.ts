@@ -6,6 +6,10 @@ import type { Config } from "./config";
 import type { SettingsStore } from "./settings";
 import { dayKey } from "./store";
 import type { CalendarWorkspace } from "./calendar/workspace";
+import type { NotesStore } from "./notes/store";
+import type { AttentionStore } from "./attention/store";
+import { NtfySentSet } from "./notify/sent-set";
+import { runNtfyTick, sendBriefingDigest } from "./notify/tick";
 
 export interface KVLike {
   get<T>(key: string): Promise<T | undefined>;
@@ -68,6 +72,7 @@ export class Scheduler {
   private ticking = false;
   constructor(
     private d: {
+      deployment: Config;
       cfg: Config;
       settings: SettingsStore;
       kv: KVLike;
@@ -75,6 +80,9 @@ export class Scheduler {
       board?: BoardStore;
       wins?: WinsStore;
       calendar?: CalendarWorkspace;
+      notes?: NotesStore;
+      attention?: AttentionStore;
+      ntfySent?: NtfySentSet;
       now?: () => Date;
     },
   ) {}
@@ -136,6 +144,33 @@ export class Scheduler {
           lastStatus: failed ? "failed" : "ok",
         };
         await this.d.kv.set(KEY, state);
+        if (!failed && this.d.ntfySent) {
+          await sendBriefingDigest({
+            deployment: this.d.deployment,
+            effective: this.d.cfg,
+            calendar: this.d.calendar,
+            board: this.d.board,
+            notes: this.d.notes,
+            wins: this.d.wins,
+            attention: this.d.attention,
+            sent: this.d.ntfySent,
+            now,
+          }, rec, slot);
+        }
+      }
+
+      if (this.d.ntfySent) {
+        await runNtfyTick({
+          deployment: this.d.deployment,
+          effective: this.d.cfg,
+          calendar: this.d.calendar,
+          board: this.d.board,
+          notes: this.d.notes,
+          wins: this.d.wins,
+          attention: this.d.attention,
+          sent: this.d.ntfySent,
+          now,
+        });
       }
     } finally {
       this.ticking = false;

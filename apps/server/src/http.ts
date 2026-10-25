@@ -79,9 +79,12 @@ import { excalidrawAssetContentType, readExcalidrawAsset } from "./whiteboard/as
 import { whiteboardPage } from "./ui/whiteboard-page";
 import { whiteboardEditorScript } from "./ui/whiteboard-editor-asset";
 import { readBody, readRawBody } from "./request-body";
+import { notifyIfAllowed, ntfyStatus, resolveNtfyRuntime } from "./notify/ntfy";
 
 export interface App {
   cfg: Config;
+  /** Deployment env defaults (env wins over connection vault for ntfy). */
+  deployment?: Config;
   auth: Authenticator;
   settings: SettingsStore;
   dailyBriefing: DailyBriefingService;
@@ -123,6 +126,7 @@ const icons = new Map<string, Buffer>();
 const icon = (name: string, size: number, maskable = false) => icons.get(name) ?? (icons.set(name, iconPng(size, maskable)), icons.get(name)!);
 
 export function createApp(app: App): Server {
+  const deployment = app.deployment ?? app.cfg;
   const integrationDeps = (): IntegrationDeps => ({
     cfg: app.cfg,
     notes: app.notes,
@@ -396,11 +400,30 @@ export function createApp(app: App): Server {
         return json(res, 200, { layout });
       }
 
+      if (get && path === "/api/notify/status") {
+        const runtime = resolveNtfyRuntime(deployment, app.cfg);
+        return json(res, 200, ntfyStatus(runtime));
+      }
+      if (req.method === "POST" && path === "/api/notify/test") {
+        if (!who.owner) return json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
+        const runtime = resolveNtfyRuntime(deployment, app.cfg);
+        if (!runtime.enabled) return json(res, 503, { error: "Phone notifications are not configured (set NTFY_TOPIC)." });
+        const ok = await notifyIfAllowed(runtime, {
+          title: "Test notification",
+          body: "If you see this on your phone, ntfy is working.",
+          priority: "default",
+          tags: ["test"],
+        }, new Date());
+        return json(res, ok ? 200 : 502, { ok });
+      }
+
       if (get && path === "/api/settings") {
         const principal = { owner: who.owner === true, who: who.who, email: who.email, serviceToken: who.serviceToken };
+        const ntfy = ntfyStatus(resolveNtfyRuntime(deployment, app.cfg));
         return json(res, 200, {
           settings: app.settings.get(),
           briefingProviders: { search: Boolean(app.cfg.braveSearchApiKey), summarizer: llmConfigured(app.cfg) },
+          ntfy,
           meta: {
             canManage: canManageSharedServerState(app.cfg, principal),
             signedInAs: who.who,

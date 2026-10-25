@@ -12,13 +12,14 @@ const providers = {
   github: { label: "GitHub", fields: ["githubToken"] },
   todoist: { label: "Todoist", fields: ["todoistApiToken"] },
   recallio: { label: "Recallio", fields: ["recallioUrl", "cfAccessClientId", "cfAccessClientSecret"] },
+  ntfy: { label: "Phone notifications (ntfy)", fields: ["ntfyUrl", "ntfyTopic", "ntfyToken"] },
 } as const;
 
 type Provider = keyof typeof providers;
 type Field = (typeof providers)[Provider]["fields"][number];
 interface Connection { disabled: boolean; values: Partial<Record<Field, string>>; updatedAt: string }
 type Data = Partial<Record<Provider, Connection>> & { secrets?: Record<string, string> };
-const urls: Field[] = ["llmBaseUrl", "recallioUrl"];
+const urls: Field[] = ["llmBaseUrl", "recallioUrl", "ntfyUrl"];
 const aad = Buffer.from("command-center:connections:v1");
 function record(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -189,20 +190,44 @@ export class ConnectionsStore {
 
   async test(id: Provider, request = safeFetch): Promise<{ ok: boolean; message: string }> {
     const cfg = this.config;
-    const required: Field[] = id === "recallio" ? ["recallioUrl"] : [...providers[id].fields];
+    const required: Field[] = id === "recallio" ? ["recallioUrl"] : id === "ntfy" ? ["ntfyTopic"] : [...providers[id].fields];
     if (required.some((field) => !cfg[field])) return { ok: false, message: "Connection is disabled or required fields are missing." };
-    let url: string, headers: Record<string, string>;
+    let url: string;
+    let headers: Record<string, string>;
+    let method = "GET";
+    let body: string | undefined;
     switch (id) {
       case "llm": url = `${cfg.llmBaseUrl}/models`; headers = { authorization: `Bearer ${cfg.llmApiKey}` }; break;
       case "brave": url = "https://api.search.brave.com/res/v1/web/search?q=connection%20test&count=1"; headers = { "X-Subscription-Token": cfg.braveSearchApiKey! }; break;
       case "github": url = "https://api.github.com/user"; headers = { authorization: `Bearer ${cfg.githubToken}` }; break;
       case "todoist": url = "https://api.todoist.com/api/v1/projects"; headers = { authorization: `Bearer ${cfg.todoistApiToken}` }; break;
       case "recallio": url = `${cfg.recallioUrl}/api/search?q=connection%20test`; headers = cfg.cfAccessClientId && cfg.cfAccessClientSecret ? { "cf-access-client-id": cfg.cfAccessClientId, "cf-access-client-secret": cfg.cfAccessClientSecret } : {}; break;
+      case "ntfy": {
+        const base = (cfg.ntfyUrl ?? "https://ntfy.sh").replace(/\/+$/, "");
+        const topic = cfg.ntfyTopic;
+        if (!topic) return { ok: false, message: "ntfy topic is required." };
+        url = `${base}/${encodeURIComponent(topic)}`;
+        method = "POST";
+        body = "Connection test";
+        headers = {
+          Title: "Connection test",
+          Priority: "low",
+          "content-type": "text/plain; charset=utf-8",
+          ...(cfg.ntfyToken ? { authorization: `Bearer ${cfg.ntfyToken}` } : {}),
+        };
+        break;
+      }
     }
     try {
-      const response = await request(url, { headers, maxRedirects: 0, maxBytes: 64_000, timeoutMs: 10_000 });
-      const ok = response.status >= 200 && response.status < 300 && response.contentType.includes("json");
-      return { ok, message: ok ? "Provider responded with JSON. This checks access, not every provider operation." : `Provider did not pass the access check (HTTP ${response.status}). Check credentials and endpoint.` };
+      const response = await request(url, { method, body, headers, maxRedirects: 0, maxBytes: 64_000, timeoutMs: 10_000 });
+      const ok = response.status >= 200 && response.status < 300
+        && (id === "ntfy" || response.contentType.includes("json"));
+      return {
+        ok,
+        message: ok
+          ? (id === "ntfy" ? "Notification accepted by the ntfy server." : "Provider responded with JSON. This checks access, not every provider operation.")
+          : `Provider did not pass the access check (HTTP ${response.status}). Check credentials and endpoint.`,
+      };
     } catch {
       // Provider bodies/errors can echo credentials; never expose them.
       return { ok: false, message: "Provider could not be reached safely. Check its public HTTPS endpoint and network access." };

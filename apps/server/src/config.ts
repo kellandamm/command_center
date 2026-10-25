@@ -66,6 +66,15 @@ export interface Config {
   shareLinksRateLimitPerMinute: number;
   /** Optional Excalidraw whiteboard page (`WHITEBOARD_ENABLED`, default off). */
   whiteboardEnabled: boolean;
+  /** ntfy server base URL (default https://ntfy.sh). */
+  ntfyUrl: string | null;
+  ntfyTopic: string | null;
+  ntfyToken: string | null;
+  ntfyReminderMinutes: number;
+  /** Local quiet hours window, e.g. `22-7` (uses TZ). */
+  ntfyQuietHours: string | null;
+  /** Public site origin for notification click links (e.g. https://home.example.com). */
+  appPublicUrl: string | null;
 }
 
 export interface LlmConfig {
@@ -215,6 +224,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ),
     shareLinksRateLimitPerMinute: Math.min(300, Math.max(1, Number(env.SHARE_LINKS_RATE_LIMIT_PER_MINUTE ?? 60) || 60)),
     whiteboardEnabled: truthy(env.WHITEBOARD_ENABLED),
+    ntfyUrl: blank(env.NTFY_URL)?.replace(/\/+$/, "") ?? null,
+    ntfyTopic: blank(env.NTFY_TOPIC),
+    ntfyToken: blank(env.NTFY_TOKEN),
+    ntfyReminderMinutes: Math.min(120, Math.max(1, Number(env.NTFY_REMINDER_MINUTES ?? 10) || 10)),
+    ntfyQuietHours: blank(env.NTFY_QUIET_HOURS),
+    appPublicUrl: blank(env.APP_PUBLIC_URL)?.replace(/\/+$/, "") ?? null,
   };
 }
 
