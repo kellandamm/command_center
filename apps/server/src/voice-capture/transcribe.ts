@@ -15,7 +15,7 @@ export function resolveTranscribeConfig(cfg: Config): TranscribeConfig | null {
   if (explicit) {
     return {
       url: explicit.endsWith("/audio/transcriptions") ? explicit : `${explicit}/audio/transcriptions`,
-      apiKey: cfg.transcribeApiKey ?? cfg.llmApiKey,
+      apiKey: cfg.transcribeApiKey,
       model: cfg.transcribeModel,
     };
   }

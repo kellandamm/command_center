@@ -6,3 +6,4 @@ export const VOICE_CAPTURE_TRANSCRIPTION_FAILED = "Transcription failed";
 export const VOICE_CAPTURE_PARSE_FAILED = "Could not parse voice capture";
 export const VOICE_CAPTURE_NOT_FOUND = "Voice capture not found";
 export const VOICE_CAPTURE_LLM_NOT_CONFIGURED = "Quick add is not configured";
+export const VOICE_CAPTURE_INBOX_FULL = "Voice capture inbox is full";

@@ -4,7 +4,10 @@ import { z } from "zod";
 import { ValidationError } from "../settings";
 import { readJson, writeFileAtomic } from "../store";
 import type { QuickAddItem } from "../quick-add/normalize";
+import { VOICE_CAPTURE_INBOX_FULL } from "./errors";
 import { VOICE_CAPTURE_TTL_MS } from "./limits";
+
+export const VOICE_CAPTURE_MAX_RECORDS = 200;
 
 const itemSchema = z.object({
   kind: z.enum(["task", "event"]),
@@ -26,15 +29,40 @@ const captureSchema = z.object({
 
 export type VoiceCaptureRecord = z.infer<typeof captureSchema>;
 
-const fileSchema = z.object({
-  captures: z.array(captureSchema).max(200),
+const looseFileSchema = z.object({
+  captures: z.array(captureSchema),
 });
 
-function parseFile(raw: unknown): { captures: VoiceCaptureRecord[] } {
-  if (raw === undefined || raw === null) return { captures: [] };
-  const result = fileSchema.safeParse(raw);
+export class VoiceCaptureInboxFullError extends Error {
+  constructor() {
+    super(VOICE_CAPTURE_INBOX_FULL);
+    this.name = "VoiceCaptureInboxFullError";
+  }
+}
+
+function mapItems(items: QuickAddItem[]): VoiceCaptureRecord["items"] {
+  return items.map((item) => ({
+    kind: item.kind,
+    title: item.title,
+    due: item.due,
+    start: item.start,
+    end: item.end,
+    durationMinutes: item.durationMinutes,
+    notes: item.notes,
+  }));
+}
+
+function normalizeOnLoad(captures: VoiceCaptureRecord[], now = Date.now()): VoiceCaptureRecord[] {
+  const active = captures.filter((row) => Date.parse(row.expiresAt) > now);
+  active.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return active.slice(0, VOICE_CAPTURE_MAX_RECORDS);
+}
+
+function parseFile(raw: unknown): VoiceCaptureRecord[] {
+  if (raw === undefined || raw === null) return [];
+  const result = looseFileSchema.safeParse(raw);
   if (!result.success) throw new ValidationError("Invalid voice-captures.json");
-  return result.data;
+  return normalizeOnLoad(result.data.captures);
 }
 
 function newId(): string {
@@ -57,7 +85,7 @@ export class VoiceCaptureStore {
     } catch {
       raw = undefined;
     }
-    const store = new VoiceCaptureStore(path, parseFile(raw).captures);
+    const store = new VoiceCaptureStore(path, parseFile(raw));
     await store.purgeExpired();
     return store;
   }
@@ -109,20 +137,23 @@ export class VoiceCaptureStore {
       createdAt: now.toISOString(),
       expiresAt: new Date(now.getTime() + VOICE_CAPTURE_TTL_MS).toISOString(),
       transcript,
-      items: items.map((item) => ({
-        kind: item.kind,
-        title: item.title,
-        due: item.due,
-        start: item.start,
-        end: item.end,
-        durationMinutes: item.durationMinutes,
-        notes: item.notes,
-      })),
+      items: mapItems(items),
     };
     await this.mutate(() => {
+      const active = this.active();
+      if (active.length >= VOICE_CAPTURE_MAX_RECORDS) throw new VoiceCaptureInboxFullError();
       this.captures.push(record);
     });
     return structuredClone(record);
+  }
+
+  async updateItems(id: string, items: QuickAddItem[]): Promise<boolean> {
+    return this.mutate(() => {
+      const row = this.captures.find((c) => c.id === id);
+      if (!row || Date.parse(row.expiresAt) <= Date.now()) return false;
+      row.items = mapItems(items);
+      return true;
+    });
   }
 
   async remove(id: string): Promise<boolean> {

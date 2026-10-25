@@ -3,15 +3,14 @@ import { readBody } from "../request-body";
 import type { Config } from "../config";
 import { llmConfigured } from "../config";
 import type { CalendarWorkspace } from "../calendar/workspace";
-import { OWNER_ACTION_FORBIDDEN } from "../owner-auth";
 import { ValidationError } from "../settings";
 import { commitQuickAddItems } from "../quick-add/commit";
-import { QUICK_ADD_COMMIT_OWNER_REQUIRED, QUICK_ADD_LLM_NOT_CONFIGURED, QUICK_ADD_TODOIST_NOT_CONFIGURED } from "../quick-add/errors";
+import { QUICK_ADD_COMMIT_OWNER_REQUIRED, QUICK_ADD_TODOIST_NOT_CONFIGURED } from "../quick-add/errors";
 import { parseQuickAddText } from "../quick-add/parse";
 import { parseQuickAddPayload } from "../quick-add/normalize";
 import { todoistConfigured } from "../config";
 import type { VoiceCaptureStore } from "./store";
-import { parseAudioRequestBody } from "./parse-body";
+import { assertAudioContentType, parseAudioRequestBody } from "./parse-body";
 import {
   VOICE_CAPTURE_LLM_NOT_CONFIGURED,
   VOICE_CAPTURE_NOT_FOUND,
@@ -19,6 +18,7 @@ import {
   VOICE_CAPTURE_TRANSCRIPTION_UNAVAILABLE,
   VOICE_CAPTURE_UNAUTHORIZED,
 } from "./errors";
+import { VoiceCaptureInboxFullError } from "./store";
 import { createTranscriber, transcriptionConfigured, TranscriptionNotConfiguredError, type Transcriber } from "./transcribe";
 
 export async function handleVoiceCaptureIngest(
@@ -45,6 +45,7 @@ export async function handleVoiceCaptureIngest(
     return;
   }
   try {
+    assertAudioContentType(req);
     const { audio, mime } = await parseAudioRequestBody(req);
     const transcribe = transcriber ?? createTranscriber(cfg);
     const transcript = await transcribe(audio, mime);
@@ -56,12 +57,12 @@ export async function handleVoiceCaptureIngest(
       json(400, { error: err.message });
       return;
     }
-    if (err instanceof TranscriptionNotConfiguredError) {
-      json(503, { error: VOICE_CAPTURE_TRANSCRIPTION_UNAVAILABLE });
+    if (err instanceof VoiceCaptureInboxFullError) {
+      json(507, { error: err.message });
       return;
     }
-    if (err instanceof Error && err.message === VOICE_CAPTURE_PARSE_FAILED) {
-      json(502, { error: VOICE_CAPTURE_PARSE_FAILED });
+    if (err instanceof TranscriptionNotConfiguredError) {
+      json(503, { error: VOICE_CAPTURE_TRANSCRIPTION_UNAVAILABLE });
       return;
     }
     if (err instanceof Error && (err.message.includes("Transcription") || err.name === "TimeoutError")) {
@@ -81,7 +82,6 @@ export async function handleVoiceCaptureOwnerRoutes(
   cfg: Config,
   calendar: CalendarWorkspace | undefined,
   store: VoiceCaptureStore,
-  canManage: boolean,
   owner: boolean,
   req: IncomingMessage,
   res: ServerResponse,
@@ -94,7 +94,7 @@ export async function handleVoiceCaptureOwnerRoutes(
     res.end(JSON.stringify(data));
     return true;
   };
-  if (!canManage) return json(403, { error: OWNER_ACTION_FORBIDDEN });
+  if (!owner) return json(403, { error: QUICK_ADD_COMMIT_OWNER_REQUIRED });
 
   if (path === "/api/voice-captures" && req.method === "GET") {
     await store.purgeExpired();
@@ -103,7 +103,6 @@ export async function handleVoiceCaptureOwnerRoutes(
 
   const confirmMatch = path.match(/^\/api\/voice-captures\/([^/]+)\/confirm$/);
   if (confirmMatch && req.method === "POST") {
-    if (!owner) return json(403, { error: QUICK_ADD_COMMIT_OWNER_REQUIRED });
     const id = decodeURIComponent(confirmMatch[1]!);
     const record = store.get(id);
     if (!record) return json(404, { error: VOICE_CAPTURE_NOT_FOUND });
@@ -114,8 +113,15 @@ export async function handleVoiceCaptureOwnerRoutes(
       if (parsedItems.some((item) => item.kind === "task") && !todoistConfigured(cfg)) {
         return json(503, { error: QUICK_ADD_TODOIST_NOT_CONFIGURED });
       }
-      const { results, failures } = await commitQuickAddItems(cfg, calendar, rawItems, {});
-      await store.remove(id);
+      const calendarId = typeof body.calendarId === "string" ? body.calendarId : undefined;
+      const { results, failures } = await commitQuickAddItems(cfg, calendar, rawItems, { calendarId });
+      if (failures.length === 0) {
+        await store.remove(id);
+      } else {
+        const failed = new Set(failures.map((f) => f.index));
+        const remaining = rawItems.filter((_, index) => failed.has(index));
+        await store.updateItems(id, parseQuickAddPayload({ items: remaining }));
+      }
       return json(200, { results, failures });
     } catch (err) {
       if (err instanceof ValidationError) return json(400, { error: err.message });

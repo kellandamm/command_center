@@ -9,43 +9,37 @@ export interface ParsedAudioBody {
   mime: string;
 }
 
-function parseMultipart(buffer: Buffer, contentType: string): ParsedAudioBody {
-  const boundaryMatch = /boundary=(?:"([^"]+)"|([^;\s]+))/i.exec(contentType);
-  const boundary = boundaryMatch?.[1] ?? boundaryMatch?.[2];
-  if (!boundary) throw new ValidationError(VOICE_CAPTURE_UNSUPPORTED_TYPE);
-  const delimiter = Buffer.from(`--${boundary}`);
-  const parts = splitMultipart(buffer, delimiter);
-  for (const part of parts) {
-    if (!part.length) continue;
-    const headerEnd = part.indexOf("\r\n\r\n");
-    if (headerEnd < 0) continue;
-    const headerText = part.subarray(0, headerEnd).toString("latin1");
-    if (!/content-disposition:\s*form-data/i.test(headerText)) continue;
-    const typeMatch = /content-type:\s*([^\r\n]+)/i.exec(headerText);
-    const mime = normalizeAudioMime(typeMatch?.[1]?.trim());
+/** Reject unsupported types before reading the request body. */
+export function assertAudioContentType(req: IncomingMessage): void {
+  const rawType = req.headers["content-type"] ?? "";
+  if (!rawType.trim()) throw new ValidationError(VOICE_CAPTURE_UNSUPPORTED_TYPE);
+  const lower = rawType.toLowerCase();
+  if (lower.includes("multipart/form-data")) {
+    if (!/boundary=/i.test(rawType)) throw new ValidationError(VOICE_CAPTURE_UNSUPPORTED_TYPE);
+    return;
+  }
+  if (!normalizeAudioMime(rawType)) throw new ValidationError(VOICE_CAPTURE_UNSUPPORTED_TYPE);
+}
+
+async function parseMultipartForm(buffer: Buffer, contentType: string): Promise<ParsedAudioBody> {
+  const request = new Request("http://voice-capture.local/upload", {
+    method: "POST",
+    headers: { "content-type": contentType },
+    body: Uint8Array.from(buffer),
+  });
+  const form = await request.formData();
+  for (const value of form.values()) {
+    if (!(value instanceof Blob) || value.size === 0) continue;
+    const mime = normalizeAudioMime(value.type);
     if (!mime) continue;
-    let body = part.subarray(headerEnd + 4);
-    if (body.subarray(-2).equals(Buffer.from("\r\n"))) body = body.subarray(0, -2);
-    return { audio: body, mime };
+    const audio = Buffer.from(await value.arrayBuffer());
+    return { audio, mime };
   }
   throw new ValidationError(VOICE_CAPTURE_UNSUPPORTED_TYPE);
 }
 
-function splitMultipart(buffer: Buffer, delimiter: Buffer): Buffer[] {
-  const out: Buffer[] = [];
-  let start = 0;
-  while (start < buffer.length) {
-    const idx = buffer.indexOf(delimiter, start);
-    if (idx < 0) break;
-    if (idx > start) out.push(buffer.subarray(start, idx));
-    start = idx + delimiter.length;
-    if (buffer.subarray(start, start + 2).equals(Buffer.from("--"))) break;
-    if (buffer.subarray(start, start + 2).equals(Buffer.from("\r\n"))) start += 2;
-  }
-  return out;
-}
-
 export async function parseAudioRequestBody(req: IncomingMessage): Promise<ParsedAudioBody> {
+  assertAudioContentType(req);
   const rawType = req.headers["content-type"] ?? "";
   const lower = rawType.toLowerCase();
   const buffer = await readRawBody(req, VOICE_CAPTURE_MAX_BYTES).catch((err) => {
@@ -57,10 +51,9 @@ export async function parseAudioRequestBody(req: IncomingMessage): Promise<Parse
   if (!buffer.length) throw new ValidationError(VOICE_CAPTURE_UNSUPPORTED_TYPE);
 
   if (lower.includes("multipart/form-data")) {
-    return parseMultipart(buffer, rawType);
+    return parseMultipartForm(buffer, rawType);
   }
 
-  const mime = normalizeAudioMime(rawType);
-  if (!mime) throw new ValidationError(VOICE_CAPTURE_UNSUPPORTED_TYPE);
+  const mime = normalizeAudioMime(rawType)!;
   return { audio: buffer, mime };
 }

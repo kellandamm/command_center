@@ -11,9 +11,11 @@ import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
 import { DailyBriefingService } from "../src/daily-briefing/service";
-import { VoiceCaptureStore } from "../src/voice-capture/store";
+import { QUICK_ADD_COMMIT_OWNER_REQUIRED } from "../src/quick-add/errors";
 import { VOICE_CAPTURE_TRANSCRIPTION_UNAVAILABLE, VOICE_CAPTURE_UNAUTHORIZED } from "../src/voice-capture/errors";
 import { VOICE_CAPTURE_MAX_BYTES } from "../src/voice-capture/limits";
+import { VOICE_CAPTURE_MAX_RECORDS, VoiceCaptureInboxFullError, VoiceCaptureStore } from "../src/voice-capture/store";
+import { resolveTranscribeConfig, transcribeWithConfig } from "../src/voice-capture/transcribe";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
 const ADMIN = "a".repeat(32);
@@ -98,6 +100,21 @@ async function captureToken(base: string, session: Record<string, string>) {
   return token;
 }
 
+function ownerHarnessAuth(ownerJwt = "owner-voice-session") {
+  return (cfg: Config) => makeAuthenticator(cfg, async (token) => {
+    if (token === ownerJwt) return { email: "owner@example.com" };
+    throw new Error("invalid session");
+  });
+}
+
+function ownerSessionHeaders(ownerJwt = "owner-voice-session") {
+  return {
+    "cf-access-jwt-assertion": ownerJwt,
+    "x-ah": "1",
+    "content-type": "application/json",
+  };
+}
+
 test("voice capture audio: auth required", async () => {
   const h = await openHarness();
   try {
@@ -145,7 +162,7 @@ test("voice capture audio: content-type and size limits", async () => {
 });
 
 test("voice capture audio: stubbed pipeline creates pending capture without external writes", async () => {
-  const h = await openHarness();
+  const h = await openHarness({ OWNER_EMAILS: "owner@example.com" }, ownerHarnessAuth());
   const originalFetch = globalThis.fetch;
   globalThis.fetch = stubFetch(originalFetch);
   let todoistPosts = 0;
@@ -174,8 +191,9 @@ test("voice capture audio: stubbed pipeline creates pending capture without exte
     assert.equal(todoistPosts, 0);
     assert.equal(h.calendar.store.events().length, beforeEvents);
 
-    const list = await (await fetch(`${h.base}/api/voice-captures`, { headers: h.session })).json() as { count: number };
-    assert.equal(list.count, 1);
+    const list = await fetch(`${h.base}/api/voice-captures`, { headers: ownerSessionHeaders() });
+    assert.equal(list.status, 200);
+    assert.equal(((await list.json()) as { count: number }).count, 1);
 
     const serialized = logSpy.map((row) => row.map(String).join(" ")).join("\n");
     assert.equal(serialized.includes(TRANSCRIPT_MARKER), false);
@@ -188,20 +206,35 @@ test("voice capture audio: stubbed pipeline creates pending capture without exte
   }
 });
 
+test("voice capture: admin token cannot list, read, or dismiss captures", async () => {
+  const h = await openHarness({ OWNER_EMAILS: "owner@example.com" }, ownerHarnessAuth());
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = stubFetch(originalFetch);
+  try {
+    const capture = await captureToken(h.base, h.session);
+    await fetch(`${h.base}/api/capture/audio`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${capture}`, "content-type": "audio/m4a" },
+      body: Buffer.from("x"),
+    });
+    const list = await fetch(`${h.base}/api/voice-captures`, { headers: h.session });
+    assert.equal(list.status, 403);
+    assert.equal((await list.json() as { error: string }).error, QUICK_ADD_COMMIT_OWNER_REQUIRED);
+    const summaries = await (await fetch(`${h.base}/api/voice-captures`, { headers: ownerSessionHeaders() })).json() as { captures: { id: string }[] };
+    const id = summaries.captures[0]!.id;
+    const get = await fetch(`${h.base}/api/voice-captures/${id}`, { headers: h.session });
+    assert.equal(get.status, 403);
+    const del = await fetch(`${h.base}/api/voice-captures/${id}`, { method: "DELETE", headers: h.session });
+    assert.equal(del.status, 403);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await h.close();
+  }
+});
+
 test("voice capture: confirm commits and dismiss removes", async () => {
-  const ownerJwt = "owner-voice-session";
-  const h = await openHarness(
-    { OWNER_EMAILS: "owner@example.com" },
-    (cfg) => makeAuthenticator(cfg, async (token) => {
-      if (token === ownerJwt) return { email: "owner@example.com" };
-      throw new Error("invalid session");
-    }),
-  );
-  const ownerSession = {
-    "cf-access-jwt-assertion": ownerJwt,
-    "x-ah": "1",
-    "content-type": "application/json",
-  };
+  const h = await openHarness({ OWNER_EMAILS: "owner@example.com" }, ownerHarnessAuth());
+  const ownerSession = ownerSessionHeaders();
   const originalFetch = globalThis.fetch;
   globalThis.fetch = stubFetch(originalFetch);
   try {
@@ -261,6 +294,114 @@ test("voice capture store: expired pending records are purged on open", async ()
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("voice capture: partial confirm keeps failed items for retry", async () => {
+  const h = await openHarness({ OWNER_EMAILS: "owner@example.com" }, ownerHarnessAuth());
+  const ownerSession = ownerSessionHeaders();
+  const originalFetch = globalThis.fetch;
+  let todoistCalls = 0;
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    if (url.includes("/audio/transcriptions")) {
+      return new Response(JSON.stringify({ text: TRANSCRIPT_MARKER }), { status: 200 });
+    }
+    if (url.includes("chat/completions")) {
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({ items: [{ kind: "task", title: "One" }, { kind: "task", title: "Two" }] }) } }],
+      }), { status: 200 });
+    }
+    if (url.includes("api.todoist.com/rest/v2/tasks") && init?.method === "POST") {
+      todoistCalls++;
+      if (todoistCalls === 1) {
+        return new Response(JSON.stringify({
+          id: "td-1", content: "One", description: "", priority: 1, due: null, url: "https://todoist.com/showTask?id=td-1",
+        }), { status: 200 });
+      }
+      return new Response("fail", { status: 500 });
+    }
+    return originalFetch(input, init);
+  };
+  try {
+    const capture = await captureToken(h.base, h.session);
+    const created = await fetch(`${h.base}/api/capture/audio`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${capture}`, "content-type": "audio/m4a" },
+      body: Buffer.from("x"),
+    });
+    const { id, items } = await created.json() as { id: string; items: unknown[] };
+    const confirm = await fetch(`${h.base}/api/voice-captures/${id}/confirm`, {
+      method: "POST",
+      headers: ownerSession,
+      body: JSON.stringify({ items }),
+    });
+    assert.equal(confirm.status, 200);
+    const body = await confirm.json() as { results: unknown[]; failures: { index: number }[] };
+    assert.equal(body.results.length, 1);
+    assert.equal(body.failures.length, 1);
+    const retry = await fetch(`${h.base}/api/voice-captures/${id}/confirm`, {
+      method: "POST",
+      headers: ownerSession,
+      body: JSON.stringify({ items: (await (await fetch(`${h.base}/api/voice-captures/${id}`, { headers: ownerSession })).json() as { items: unknown[] }).items }),
+    });
+    assert.notEqual(retry.status, 404);
+    const detail = await fetch(`${h.base}/api/voice-captures/${id}`, { headers: ownerSession });
+    assert.equal(detail.status, 200);
+    const detailBody = await detail.json() as { items: { title: string }[] };
+    assert.equal(detailBody.items.length, 1);
+    assert.equal(detailBody.items[0]!.title, "Two");
+  } finally {
+    globalThis.fetch = originalFetch;
+    await h.close();
+  }
+});
+
+test("voice capture store: create rejects at cap and open trims overflow", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-voice-cap-"));
+  try {
+    const store = await VoiceCaptureStore.open(dir);
+    for (let i = 0; i < VOICE_CAPTURE_MAX_RECORDS; i++) {
+      await store.create("t", [{ kind: "task", title: `Task ${i}` }]);
+    }
+    await assert.rejects(() => store.create("t", [{ kind: "task", title: "overflow" }]), VoiceCaptureInboxFullError);
+    const overflow: unknown[] = [];
+    for (let i = 0; i < VOICE_CAPTURE_MAX_RECORDS + 1; i++) {
+      overflow.push({
+        id: `cap${String(i).padStart(9, "0")}`,
+        createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString(),
+        expiresAt: new Date(Date.UTC(2030, 0, 1)).toISOString(),
+        transcript: "t",
+        items: [{ kind: "task", title: `T${i}` }],
+      });
+    }
+    await writeFile(join(dir, "voice-captures.json"), JSON.stringify({ captures: overflow }), "utf8");
+    const reopened = await VoiceCaptureStore.open(dir);
+    assert.equal(reopened.pendingCount(), VOICE_CAPTURE_MAX_RECORDS);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("transcribe: explicit TRANSCRIBE_URL without TRANSCRIBE_API_KEY sends no Authorization", async () => {
+  const cfg = loadConfig({
+    DATA_DIR: "/tmp/unused",
+    TRANSCRIBE_URL: "http://whisper.internal:8000/v1",
+    LLM_BASE_URL: "https://llm.example/v1",
+    LLM_API_KEY: "llm-secret",
+    LLM_MODEL: "model",
+  });
+  const tc = resolveTranscribeConfig(cfg);
+  assert.ok(tc);
+  assert.equal(tc!.apiKey, null);
+  let authHeader: string | undefined = "present";
+  await transcribeWithConfig(tc!, Buffer.from("x"), "audio/m4a", async (_url, init) => {
+    const headers = init?.headers;
+    if (headers && typeof headers === "object" && !Array.isArray(headers)) {
+      authHeader = (headers as Record<string, string>).authorization;
+    }
+    return new Response(JSON.stringify({ text: "ok" }), { status: 200 });
+  });
+  assert.equal(authHeader, undefined);
 });
 
 test("voice capture audio: transcription not configured returns 503", async () => {
