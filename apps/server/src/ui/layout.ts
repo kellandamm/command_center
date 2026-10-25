@@ -276,6 +276,14 @@ window.viewPreferencesReady=api("/api/settings").then(function(r){
   return prefs;
 }).catch(function(err){console.error("Could not load view preferences",err);return null});
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function ownerViewOnlyHint(meta){
+  if(!meta||meta.canManage!==false)return "";
+  var reason=meta.ownerReason,who=meta.signedInAs||"";
+  if(reason==="email-not-in-owner-emails")return "View-only: you're signed in as "+who+", which isn't in OWNER_EMAILS on this server. Add it to OWNER_EMAILS (comma-separated) and restart.";
+  if(reason==="no-email-claim")return "View-only: Cloudflare Access did not include an email for this session, so owner access cannot be verified. Sign in with an identity that provides an email claim.";
+  if(reason==="service-token")return "View-only: this session used a Cloudflare Access service token, which cannot verify owner access. Sign in with your user identity to manage shared settings.";
+  return "View-only: set OWNER_EMAILS and sign in as an owner to change schedules, topics, tabs, and view preferences on this server.";
+}
 ${opts.script ?? ""}
 </script></body></html>`;
 }

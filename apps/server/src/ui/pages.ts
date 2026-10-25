@@ -139,16 +139,18 @@ function renderDeploymentFeatures(meta){
   var ownerOn=!!(meta&&meta.ownerEmailsConfigured);
   addFeatureRow(list,"Whiteboard",!!features.whiteboardEnabled,"Set WHITEBOARD_ENABLED=true to enable the Whiteboard page and API.",null);
   addFeatureRow(list,"Share links",!!features.shareLinksEnabled,"Set SHARE_LINKS_ENABLED=true to enable note share links. Public share URLs also need the Cloudflare Access bypass in docs/share-links.md.",null);
+  addFeatureRow(list,"Encrypted API key storage",!!(meta&&meta.connectionsStorage),"Set CONNECTIONS_MASTER_KEY (64 hex chars, openssl rand -hex 32) and restart to save API keys in Service connections. Back it up: saved keys can't be decrypted without it.",null);
   addFeatureRow(list,"Owner-only shared settings",ownerOn,"OWNER_EMAILS is not set; any signed-in session including ADMIN_TOKEN can edit shared settings on this server.","OWNER_EMAILS is set; shared settings, dashboard layout writes, and capture tokens require an owner login or ADMIN_TOKEN.");
 }
-function setSettingsReadOnly(readOnly){
+function setSettingsReadOnly(meta){
+  var readOnly=!(meta&&meta.canManage!==false);
   var hint=document.getElementById("settings-manage-hint");
   ["views-save","tabs-save"].forEach(function(id){var el=document.getElementById(id);if(el)el.disabled=readOnly;});
   var schedule=document.getElementById("f-schedule");if(schedule)schedule.querySelectorAll("input,button").forEach(function(node){node.disabled=readOnly;});
   var topics=document.getElementById("f-topics");if(topics)topics.querySelectorAll("textarea,button").forEach(function(node){node.disabled=readOnly;});
   document.querySelectorAll("#tab-views [data-pref]").forEach(function(el){el.disabled=readOnly;});
   document.querySelectorAll("#tabs-editor .tab-vis,#tabs-editor .tab-label:not([disabled]),#tabs-editor .tab-up:not([disabled]),#tabs-editor .tab-down:not([disabled])").forEach(function(el){el.disabled=readOnly;});
-  if(readOnly){hint.hidden=false;hint.textContent="View-only: set OWNER_EMAILS and sign in as an owner to change schedules, topics, tabs, and view preferences on this server.";}
+  if(readOnly){hint.hidden=false;hint.textContent=ownerViewOnlyHint(meta)||"View-only: set OWNER_EMAILS and sign in as an owner to change schedules, topics, tabs, and view preferences on this server.";}
   else hint.hidden=true;
 }
 function loadSettings(){
@@ -163,9 +165,9 @@ function loadSettings(){
       ?"Brave Search and AI summarizer are ready."
       :"Connection setup needed: "+[!providers.search?"Brave Search (BRAVE_SEARCH_API_KEY)":"",!providers.summarizer?"AI summarizer (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL)":""].filter(Boolean).join("; ")+". Open service connections to configure keys, or use deployment environment variables.";
     renderDeploymentFeatures(r.meta||{});
-    var canManage=!(r.meta&&r.meta.canManage===false);
-    setSettingsReadOnly(!canManage);
-    document.getElementById("topics-save").disabled=!canManage;
+    var meta=r.meta||{};
+    setSettingsReadOnly(meta);
+    document.getElementById("topics-save").disabled=meta.canManage===false;
     renderTabsEditor();bindViewPreferences();
   });
 }
