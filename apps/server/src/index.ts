@@ -3,6 +3,7 @@ import { assertAuthConfigured, loadConfig } from "./config";
 import { makeAuthenticator } from "./auth";
 import { DailyBriefingService } from "./daily-briefing/service";
 import { createApp } from "./http";
+import { getMeetingSummaryQueue } from "./meetings/summary-queue";
 import { Scheduler } from "./scheduler";
 import { SettingsStore } from "./settings";
 import { NotesStore } from "./notes/store";
@@ -113,14 +114,19 @@ async function main() {
   });
   scheduler.start();
 
-  const shutdown = (sig: string) => {
+  const shutdown = async (sig: string) => {
     console.log(`${sig}: shutting down`);
     scheduler.stop();
+    await getMeetingSummaryQueue().shutdown();
     server.close();
     process.exit(0);
   };
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
-  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => {
+    void shutdown("SIGTERM");
+  });
+  process.on("SIGINT", () => {
+    void shutdown("SIGINT");
+  });
 }
 
 main().catch((err) => {
