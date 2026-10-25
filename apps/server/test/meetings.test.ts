@@ -16,7 +16,12 @@ import { createTestCfAccessJwt, TEST_CF_AUD, TEST_CF_TEAM } from "./cf-access-jw
 import { setIntegrationCfAccessVerifier } from "../src/mcp/auth";
 import { MEETING_IMPORT_MAX_BYTES, MEETING_TAG, SUMMARY_PENDING } from "../src/meetings/constants";
 import { findMeetingNoteBySourceId } from "../src/meetings/import-service";
-import { CHUNK_CHARS, MAX_TRANSCRIPT_CHUNKS, summarizeMeetingTranscript } from "../src/meetings/summarize";
+import {
+  CHUNK_CHARS,
+  MAX_TRANSCRIPT_CHUNKS,
+  mergeMeetingPartials,
+  summarizeMeetingTranscript,
+} from "../src/meetings/summarize";
 
 const ADMIN_TOKEN = "a".repeat(32);
 const IMPORT_TOKEN = "i".repeat(32);
@@ -48,7 +53,7 @@ async function harness(env: Record<string, string> = {}, owner = false) {
     ADMIN_TOKEN,
     MEETINGS_IMPORT_TOKEN: IMPORT_TOKEN,
     ALLOW_INSECURE_NO_AUTH: "1",
-    TZ: "America/Chicago",
+    TZ: "UTC",
     LLM_BASE_URL: "https://api.example/v1",
     LLM_API_KEY: "sk-test",
     LLM_MODEL: "test-model",
@@ -141,7 +146,7 @@ test("meetings import: validation, import token auth, sensitive flag, idempotenc
     assert.ok(note?.tags.includes(MEETING_TAG));
     assert.match(note!.content, /Alice said launch/);
     assert.doesNotMatch(note!.content, /^---/m);
-    assert.match(note!.content, /Recorded:/);
+    assert.match(note!.content, /Recorded:.*10:00 AM CT/);
     assert.doesNotMatch(note!.content, /2026-10-20T15:00:00\.000Z/);
     assert.ok(h.notes.listSpaces().some((s) => s.name === "Meetings"));
 
@@ -246,8 +251,85 @@ test("meetings import: rejects transcripts that exceed chunk cap before LLM", as
         overChunks,
         async () => new Response(JSON.stringify({ choices: [{ message: { content: "x" } }] }), { status: 200 }),
       ),
-    (err: Error) => err.message === "transcript too large",
+    (err: Error) => err.message === "too many chunks",
   );
+});
+
+test("meetings merge: oversized partials combine without stack overflow", async () => {
+  const partials = ["a".repeat(7000), "b".repeat(7000), "c".repeat(7000)];
+  const result = await mergeMeetingPartials(
+    { baseUrl: "https://api.example/v1", apiKey: "k", model: "m" },
+    partials,
+    async () =>
+      new Response(JSON.stringify({ choices: [{ message: { content: "merged-ok" } }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+  );
+  assert.equal(result, "merged-ok");
+});
+
+test("meetings import: sourceId lock uses normalized id", async () => {
+  const h = await harness();
+  try {
+    const originalFetch = globalThis.fetch;
+    withMockLlmFetch(async (input, init) => {
+      if (String(input).includes("api.example")) {
+        return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return originalFetch(input, init);
+    });
+    const body = { ...samplePayload, sourceId: "Plaud-Case-ABC", transcript: "one" };
+    assert.equal((await fetch(`${h.base}/api/meetings/import`, { method: "POST", headers: importAuthz, body: JSON.stringify(body) })).status, 201);
+    const second = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...body, sourceId: "plaud-case-abc", transcript: "two" }),
+    });
+    assert.equal(second.status, 200);
+    assert.equal(h.notes.listNotes().filter((n) => n.tags.some((t) => t.startsWith("plaud:"))).length, 1);
+    assert.match(h.notes.getNote((await second.json()).noteId)!.content, /two/);
+  } finally {
+    await h.close();
+  }
+});
+
+test("meetings summarize: refresh import version so re-import is allowed", async () => {
+  const h = await harness({}, true);
+  try {
+    const originalFetch = globalThis.fetch;
+    withMockLlmFetch(async (input, init) => {
+      if (String(input).includes("api.example")) {
+        return new Response(JSON.stringify({ choices: [{ message: { content: "New summary" } }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return originalFetch(input, init);
+    });
+    const imported = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-summarize-tag", transcript: "body" }),
+    });
+    const { noteId } = await imported.json();
+    const summarized = await fetch(`${h.base}/api/meetings/${encodeURIComponent(noteId)}/summarize`, {
+      method: "POST",
+      headers: sessionAuthz,
+    });
+    assert.equal(summarized.status, 200);
+    const reimport = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-summarize-tag", transcript: "body v2" }),
+    });
+    assert.equal(reimport.status, 200);
+  } finally {
+    await h.close();
+  }
 });
 
 test("meetings import: concurrent imports for same sourceId succeed once", async () => {

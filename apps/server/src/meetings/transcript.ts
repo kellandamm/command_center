@@ -1,5 +1,7 @@
 import { ValidationError } from "../settings";
 
+export const MEETINGS_DISPLAY_TZ = "America/Chicago";
+
 export interface TranscriptSegment {
   speaker?: string;
   startSec?: number;
@@ -43,25 +45,25 @@ function formatTimestamp(sec: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-export function formatRecordedAt(isoUtc: string, timeZone: string): string {
+export function formatRecordedAt(isoUtc: string): string {
   const date = new Date(isoUtc);
   if (!Number.isFinite(date.getTime())) return isoUtc;
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone,
+  const formatted = new Intl.DateTimeFormat("en-US", {
+    timeZone: MEETINGS_DISPLAY_TZ,
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
+  return `${formatted} CT`;
 }
 
 export function formatTranscriptBody(
   recordedAt: string,
-  timeZone: string,
   durationSec: number | undefined,
   participants: string[] | undefined,
   text: string,
   segments?: TranscriptSegment[],
 ): string {
-  const meta: string[] = [`Recorded: ${formatRecordedAt(recordedAt, timeZone)}`];
+  const meta: string[] = [`Recorded: ${formatRecordedAt(recordedAt)}`];
   if (durationSec !== undefined) meta.push(`Duration: ${Math.round(durationSec)}s`);
   if (participants?.length) meta.push(`Participants: ${participants.join(", ")}`);
   const lines: string[] = [...meta, ""];

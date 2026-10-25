@@ -1,5 +1,6 @@
 /** Max transcript bytes accepted on import (aligned with note body storage). */
 export const MEETING_IMPORT_MAX_BYTES = 190_000;
+export const NOTE_BODY_MAX_BYTES = 200_000;
 export const MEETINGS_SPACE_NAME = "Meetings";
 export const MEETING_TAG = "meeting";
 export const MEETING_IMPORT_VERSION_TAG_PREFIX = "meeting-import-ver:";
@@ -11,6 +12,16 @@ export function plaudSourceTag(sourceId: string): string {
   const normalized = sourceId.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   const id = normalized || "unknown";
   return `plaud:${id.slice(0, 120)}`;
+}
+
+/** Lock key for imports (normalized Plaud id). */
+export function meetingImportLockKey(sourceId: string): string {
+  return plaudSourceTag(sourceId);
+}
+
+export function plaudSourceIdFromTags(tags: string[]): string | null {
+  const tag = tags.find((item) => item.startsWith("plaud:"));
+  return tag ? tag.slice("plaud:".length) : null;
 }
 
 export function meetingImportVersionTag(version: number): string {

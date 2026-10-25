@@ -1,6 +1,6 @@
 const chains = new Map<string, Promise<unknown>>();
 
-/** Serialize meeting imports per Plaud sourceId (in-process). */
+/** Serialize meeting imports per normalized Plaud sourceId (single server process only). */
 export async function withMeetingImportLock<T>(sourceId: string, fn: () => Promise<T>): Promise<T> {
   const previous = chains.get(sourceId) ?? Promise.resolve();
   let release!: () => void;

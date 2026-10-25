@@ -9,14 +9,17 @@ import {
   MEETING_IMPORT_MAX_BYTES,
   MEETING_TAG,
   MEETINGS_SPACE_NAME,
+  meetingImportLockKey,
   meetingImportVersionTag,
+  NOTE_BODY_MAX_BYTES,
   parseMeetingImportVersion,
+  plaudSourceIdFromTags,
   plaudSourceTag,
   SUMMARY_PENDING,
   TRANSCRIPT_SECTION,
 } from "./constants";
 import { withMeetingImportLock } from "./import-lock";
-import { summarizeMeetingTranscript, transcriptChunkCount } from "./summarize";
+import { MAX_TRANSCRIPT_CHUNKS, summarizeMeetingTranscript, transcriptChunkCount } from "./summarize";
 import { formatTranscriptBody, parseTranscriptInput } from "./transcript";
 
 export interface MeetingImportPayload {
@@ -70,7 +73,7 @@ function validatePayload(raw: Record<string, unknown>): MeetingImportPayload {
 
   const { text, segments } = parseTranscriptInput(raw.transcript);
   if (Buffer.byteLength(text, "utf8") > MEETING_IMPORT_MAX_BYTES) throw new ValidationError("transcript too large");
-  if (transcriptChunkCount(text) > 20) throw new ValidationError("transcript too large");
+  if (transcriptChunkCount(text) > MAX_TRANSCRIPT_CHUNKS) throw new ValidationError("too many chunks");
 
   return {
     sourceId: raw.sourceId.trim(),
@@ -110,6 +113,13 @@ function noteEditedSinceImport(note: KnowledgeNote): boolean {
   return (note.version ?? 0) > importedVersion;
 }
 
+function assertNoteBodyFits(transcriptBlock: string): void {
+  const pending = buildMeetingNoteContent(SUMMARY_PENDING, transcriptBlock);
+  if (Buffer.byteLength(pending, "utf8") > NOTE_BODY_MAX_BYTES) {
+    throw new ValidationError("note too large");
+  }
+}
+
 async function persistImport(
   cfg: Config,
   notes: NotesStore,
@@ -119,12 +129,12 @@ async function persistImport(
   const parsed = parseTranscriptInput(payload.transcript);
   const transcriptBlock = formatTranscriptBody(
     payload.recordedAt,
-    cfg.tz,
     payload.durationSec,
     payload.participants,
     parsed.text,
     parsed.segments,
   );
+  assertNoteBodyFits(transcriptBlock);
 
   let summary = SUMMARY_PENDING;
   let summaryStatus: "ok" | "pending" = "pending";
@@ -134,22 +144,22 @@ async function persistImport(
       summary = await summarizeMeetingTranscript(llm, parsed.text, options.fetchFn);
       summaryStatus = "ok";
     } catch (err) {
-      if (err instanceof ValidationError && err.message === "transcript too large") throw err;
+      if (err instanceof ValidationError) throw err;
       summary = SUMMARY_PENDING;
       summaryStatus = "pending";
     }
   }
 
   const content = buildMeetingNoteContent(summary, transcriptBlock);
-  if (Buffer.byteLength(content, "utf8") > 200_000) throw new ValidationError("transcript too large");
+  if (Buffer.byteLength(content, "utf8") > NOTE_BODY_MAX_BYTES) throw new ValidationError("note too large");
 
   const spaceId = await ensureMeetingsSpaceId(notes);
   const existing = findMeetingNoteBySourceId(notes, payload.sourceId);
 
   if (existing) {
-    if (noteEditedSinceImport(existing)) throw new MeetingEditedLocallyError();
     for (let attempt = 0; attempt < 4; attempt++) {
       const current = notes.getNote(existing.id) ?? existing;
+      if (noteEditedSinceImport(current)) throw new MeetingEditedLocallyError();
       const importVersion = (current.version ?? 0) + 1;
       try {
         const note = await notes.updateNote(current.id, {
@@ -192,7 +202,7 @@ export async function importMeetingTranscript(
   options: { fetchFn?: FetchLike; skipSummary?: boolean } = {},
 ): Promise<MeetingImportResult> {
   const payload = validatePayload(raw);
-  return withMeetingImportLock(payload.sourceId, () => persistImport(cfg, notes, payload, options));
+  return withMeetingImportLock(meetingImportLockKey(payload.sourceId), () => persistImport(cfg, notes, payload, options));
 }
 
 export async function summarizeMeetingNote(
@@ -220,8 +230,11 @@ export async function summarizeMeetingNote(
   }
 
   const content = buildMeetingNoteContent(summary, transcriptBody);
+  const sourceKey = plaudSourceIdFromTags(note.tags);
+  const importVersion = (note.version ?? 0) + 1;
   const updated = await notes.updateNote(noteId, {
     content,
+    tags: sourceKey ? meetingTags(sourceKey, note.tags, importVersion) : note.tags,
     expectedVersion: note.version ?? 0,
   });
   if (!updated) throw new ValidationError("note not found");
