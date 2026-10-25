@@ -1,8 +1,6 @@
 import type { BoardStore } from "../board/store";
 import { DONE } from "../board/types";
 import type { CalendarWorkspace } from "../calendar/workspace";
-import { zonedParts } from "../calendar/store";
-import type { CalendarEvent } from "../calendar/parse-ics";
 import type { Config } from "../config";
 import { llmConfig, todoistConfigured } from "../config";
 import { dayKeyFromIso } from "../heatmap/counts";
@@ -19,6 +17,7 @@ import {
 } from "../todoist/client";
 
 export const SHUTDOWN_TZ = "America/Chicago";
+const MAX_CLIENT_REVIEW_BYTES = 24_000;
 
 export type CompletedTasksFetcher = (
   token: string,
@@ -39,7 +38,7 @@ export interface ShutdownReview {
   };
   unfinished: {
     todoist: { overdue: TodoistTask[]; today: TodoistTask[] };
-    blockedToday: Array<{ cardId: string; title: string; blockStart: string }>;
+    blockedToday: Array<{ title: string }>;
   };
   time: { calendarHours: number; blockedTaskHours: number };
   tomorrowPreview: {
@@ -47,6 +46,11 @@ export interface ShutdownReview {
     tasksDue: TodoistTask[];
   };
   llmEnabled: boolean;
+  errors: {
+    todoistCompleted?: string;
+    todoistOpen?: string;
+    calendar?: string;
+  };
 }
 
 function nextDayKey(day: string): string {
@@ -69,50 +73,39 @@ function hoursFromMs(ms: number): number {
   return Math.round((ms / 3_600_000) * 100) / 100;
 }
 
-function clipEventMsOnDay(event: CalendarEvent, day: string, tz: string): number {
-  if (!event.end) return 0;
+function durationMsOnDay(
+  spec: { start: Date | string; end: Date | string | null; allDay: boolean; timezone?: string },
+  day: string,
+  tz: string,
+): number {
+  if (!spec.end) return 0;
   const dayStart = slotInstant(day, "00:00", tz).getTime();
   const dayEnd = slotInstant(nextDayKey(day), "00:00", tz).getTime();
+  const zone = spec.timezone ?? tz;
   let startMs: number;
   let endMs: number;
-  if (event.allDay) {
-    startMs = slotInstant(event.start.toISOString().slice(0, 10), "00:00", tz).getTime();
-    const endDay = event.end.toISOString().slice(0, 10);
-    endMs = slotInstant(endDay, "00:00", tz).getTime();
+  if (spec.allDay) {
+    const startDay = typeof spec.start === "string" ? spec.start.slice(0, 10) : spec.start.toISOString().slice(0, 10);
+    const endDay = typeof spec.end === "string" ? spec.end.slice(0, 10) : spec.end.toISOString().slice(0, 10);
+    startMs = slotInstant(startDay, "00:00", zone).getTime();
+    endMs = slotInstant(endDay, "00:00", zone).getTime();
   } else {
-    startMs = event.start.getTime();
-    endMs = event.end.getTime();
-  }
-  const clipStart = Math.max(startMs, dayStart);
-  const clipEnd = Math.min(endMs, dayEnd);
-  return Math.max(0, clipEnd - clipStart);
-}
-
-function blockOnChicagoDay(block: { start: string; end: string; allDay: boolean; timezone: string }, day: string): boolean {
-  if (block.allDay) {
-    const startDay = block.start.slice(0, 10);
-    const endDay = block.end.slice(0, 10);
-    return startDay <= day && endDay > day;
-  }
-  const startDay = zonedParts(block.start, block.timezone).day;
-  const endDay = zonedParts(block.end, block.timezone).day;
-  return startDay === day || endDay === day || (startDay < day && endDay > day);
-}
-
-function blockDurationMsOnDay(block: { start: string; end: string; allDay: boolean; timezone: string }, day: string): number {
-  const dayStart = slotInstant(day, "00:00", SHUTDOWN_TZ).getTime();
-  const dayEnd = slotInstant(nextDayKey(day), "00:00", SHUTDOWN_TZ).getTime();
-  let startMs: number;
-  let endMs: number;
-  if (block.allDay) {
-    startMs = slotInstant(block.start.slice(0, 10), "00:00", block.timezone).getTime();
-    endMs = slotInstant(block.end.slice(0, 10), "00:00", block.timezone).getTime();
-  } else {
-    startMs = Date.parse(block.start);
-    endMs = Date.parse(block.end);
+    startMs = typeof spec.start === "string" ? Date.parse(spec.start) : spec.start.getTime();
+    endMs = typeof spec.end === "string" ? Date.parse(spec.end) : spec.end.getTime();
   }
   if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return 0;
   return Math.max(0, Math.min(endMs, dayEnd) - Math.max(startMs, dayStart));
+}
+
+export function parseClientShutdownReview(body: unknown): ShutdownReview | null {
+  if (!body || typeof body !== "object") return null;
+  const review = (body as { review?: unknown }).review;
+  if (!review || typeof review !== "object") return null;
+  if (Buffer.byteLength(JSON.stringify(review), "utf8") > MAX_CLIENT_REVIEW_BYTES) return null;
+  const r = review as ShutdownReview;
+  if (r.zone !== SHUTDOWN_TZ || !/^\d{4}-\d{2}-\d{2}$/.test(r.day) || !/^\d{4}-\d{2}-\d{2}$/.test(r.tomorrow)) return null;
+  if (!r.done || !r.unfinished || !r.time || !r.tomorrowPreview) return null;
+  return { ...r, errors: r.errors ?? {} };
 }
 
 export async function buildShutdownReview(opts: {
@@ -127,6 +120,7 @@ export async function buildShutdownReview(opts: {
   const day = dayKey(opts.now, SHUTDOWN_TZ);
   const tomorrow = nextDayKey(day);
   const { since } = dayRangeIso(day, SHUTDOWN_TZ);
+  const errors: ShutdownReview["errors"] = {};
 
   const doneBoard = opts.board
     .movesSince(since)
@@ -135,15 +129,20 @@ export async function buildShutdownReview(opts: {
 
   let doneTodoist: TodoistCompletedTask[] = [];
   let openTasks: TodoistTask[] = [];
-  if (todoistConfigured(opts.cfg) && opts.cfg.todoistApiToken) {
+  if (todoistConfigured(opts.cfg)) {
+    const token = opts.cfg.todoistApiToken!;
+    const range = dayRangeIso(day, SHUTDOWN_TZ);
+    const listCompleted = opts.listCompleted ?? listCompletedTasks;
     try {
-      const range = dayRangeIso(day, SHUTDOWN_TZ);
-      const listCompleted = opts.listCompleted ?? listCompletedTasks;
-      const completed = await listCompleted(opts.cfg.todoistApiToken, range.since, range.until, fetchFn);
-      doneTodoist = completed.filter((t) => completedOnChicagoDay(t.completedAt, day));
-      openTasks = await listTasks(opts.cfg.todoistApiToken, fetchFn);
+      doneTodoist = await listCompleted(token, range.since, range.until, fetchFn);
     } catch {
+      errors.todoistCompleted = "Couldn't load Todoist completed tasks.";
       doneTodoist = [];
+    }
+    try {
+      openTasks = await listTasks(token, fetchFn);
+    } catch {
+      errors.todoistOpen = "Couldn't load Todoist open tasks.";
       openTasks = [];
     }
   }
@@ -156,34 +155,43 @@ export async function buildShutdownReview(opts: {
   let blockedMs = 0;
   for (const block of planning?.blocks ?? []) {
     if (!block.taskId || block.enabled === false) continue;
-    if (!blockOnChicagoDay(block, day)) continue;
+    const ms = durationMsOnDay(block, day, SHUTDOWN_TZ);
+    if (ms <= 0) continue;
     const card = cardsById.get(block.taskId);
     if (!card || card.column === DONE) continue;
-    blockedToday.push({ cardId: block.taskId, title: card.title, blockStart: block.start });
-    blockedMs += blockDurationMsOnDay(block, day);
+    blockedToday.push({ title: card.title });
+    blockedMs += ms;
   }
 
   let calendarMs = 0;
   let tomorrowEvents: ShutdownReview["tomorrowPreview"]["events"] = [];
   if (opts.calendar) {
-    const rangeStart = slotInstant(day, "00:00", SHUTDOWN_TZ);
-    const rangeEnd = slotInstant(nextDayKey(tomorrow), "00:00", SHUTDOWN_TZ);
-    const snap = await opts.calendar.snapshot({ rangeStart, rangeEnd, limit: 500 });
-    for (const ev of snap.events) {
-      calendarMs += clipEventMsOnDay(ev, day, SHUTDOWN_TZ);
+    try {
+      const rangeStart = slotInstant(day, "00:00", SHUTDOWN_TZ);
+      const rangeEnd = slotInstant(nextDayKey(tomorrow), "00:00", SHUTDOWN_TZ);
+      const snap = await opts.calendar.snapshot({ rangeStart, rangeEnd, limit: 500 });
+      for (const ev of snap.events) {
+        calendarMs += durationMsOnDay(
+          { start: ev.start, end: ev.end, allDay: ev.allDay, timezone: SHUTDOWN_TZ },
+          day,
+          SHUTDOWN_TZ,
+        );
+      }
+      tomorrowEvents = snap.events
+        .filter((ev) => {
+          const key = ev.allDay ? ev.start.toISOString().slice(0, 10) : dayKey(ev.start, SHUTDOWN_TZ);
+          return key === tomorrow;
+        })
+        .sort((a, b) => a.start.getTime() - b.start.getTime())
+        .slice(0, 3)
+        .map((ev) => ({
+          summary: ev.summary,
+          start: ev.allDay ? ev.start.toISOString().slice(0, 10) : ev.start.toISOString(),
+          allDay: ev.allDay,
+        }));
+    } catch {
+      errors.calendar = "Couldn't load calendar.";
     }
-    tomorrowEvents = snap.events
-      .filter((ev) => {
-        const key = ev.allDay ? ev.start.toISOString().slice(0, 10) : dayKey(ev.start, SHUTDOWN_TZ);
-        return key === tomorrow;
-      })
-      .sort((a, b) => a.start.getTime() - b.start.getTime())
-      .slice(0, 3)
-      .map((ev) => ({
-        summary: ev.summary,
-        start: ev.allDay ? ev.start.toISOString().slice(0, 10) : ev.start.toISOString(),
-        allDay: ev.allDay,
-      }));
   }
 
   const tasksDueTomorrow = openTasks
@@ -201,6 +209,7 @@ export async function buildShutdownReview(opts: {
     time: { calendarHours: hoursFromMs(calendarMs), blockedTaskHours: hoursFromMs(blockedMs) },
     tomorrowPreview: { events: tomorrowEvents, tasksDue: tasksDueTomorrow },
     llmEnabled: Boolean(llmConfig(opts.cfg)),
+    errors,
   };
 }
 

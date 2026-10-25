@@ -144,6 +144,7 @@ html.dark .morning-briefing{--paper-ink:#f0ede3;--paper-muted:#b2aea3;--paper-ru
 .morning-kicker{display:flex;justify-content:space-between;gap:1rem;border-bottom:1px solid var(--paper-rule);padding:.25rem 0 .65rem;font-size:.68rem;letter-spacing:.16em;color:var(--paper-muted)}
 .morning-masthead h1{margin:.2em 0 0;font-family:Georgia,"Times New Roman",serif;font-size:clamp(3rem,8vw,7.25rem);font-weight:700;letter-spacing:-.065em;line-height:.98;color:var(--paper-ink)}
 .morning-deck{margin:.3rem 0 0;font-family:Georgia,"Times New Roman",serif;font-size:clamp(1rem,2vw,1.25rem);font-style:italic;color:var(--paper-muted)}
+[hidden]{display:none!important}
 .morning-mode{display:flex;gap:.35rem;margin:0 0 .75rem;font-family:ui-sans-serif,system-ui,sans-serif}
 .morning-mode button{border:1px solid var(--paper-rule);background:transparent;color:var(--paper-muted);padding:.35rem .75rem;min-height:2rem;font-size:.8rem;letter-spacing:.04em}
 .morning-mode button[aria-selected=true]{border-color:var(--paper-ink);color:var(--paper-ink);font-weight:600}

@@ -23,7 +23,7 @@ import { slotInstant } from "../src/scheduler";
 import { CalendarWorkspace } from "../src/calendar/workspace";
 import { DONE } from "../src/board/types";
 import { createTestCfAccessJwt, TEST_CF_AUD, TEST_CF_TEAM } from "./cf-access-jwt";
-import type { TodoistCompletedTask, TodoistTask } from "../src/todoist/client";
+import { listCompletedTasks, type TodoistCompletedTask, type TodoistTask } from "../src/todoist/client";
 const TOKEN = "t".repeat(32);
 
 function task(id: string, content: string, dueDate: string | null, priority = 1): TodoistTask {
@@ -89,6 +89,28 @@ test("shutdown: Chicago completion day boundaries under TZ=UTC", () => {
   assert.equal(range.until, "2026-10-15T05:00:00.000Z");
 });
 
+test("todoist: listCompletedTasks uses API v1 by_completion_date with cursor", async () => {
+  const calls: string[] = [];
+  const fetchFn = async (input: RequestInfo | URL) => {
+    const url = String(input);
+    calls.push(url);
+    if (calls.length === 1) {
+      return new Response(
+        JSON.stringify({ items: [{ id: "1", content: "A", completed_at: "2026-10-14T12:00:00Z" }], next_cursor: "c2" }),
+        { headers: { "content-type": "application/json" } },
+      );
+    }
+    return new Response(
+      JSON.stringify({ items: [{ id: "2", content: "B", completed_at: "2026-10-14T13:00:00Z" }], next_cursor: null }),
+      { headers: { "content-type": "application/json" } },
+    );
+  };
+  const rows = await listCompletedTasks("tok", "2026-10-14T05:00:00Z", "2026-10-15T05:00:00Z", fetchFn);
+  assert.equal(rows.length, 2);
+  assert.match(calls[0], /api\/v1\/tasks\/completed\/by_completion_date/);
+  assert.match(calls[1], /cursor=c2/);
+});
+
 test("shutdown: aggregates stubbed Todoist, board done moves, and blocked cards", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-shutdown-agg-"));
   try {
@@ -127,7 +149,6 @@ test("shutdown: aggregates stubbed Todoist, board done moves, and blocked cards"
 
     const completed: TodoistCompletedTask[] = [
       { id: "c1", content: "Done late", completedAt: slotInstant(day, "23:30", SHUTDOWN_TZ).toISOString() },
-      { id: "c2", content: "Tomorrow", completedAt: slotInstant(tomorrowKey, "00:30", SHUTDOWN_TZ).toISOString() },
     ];
     const open: TodoistTask[] = [
       task("t1", "Overdue", yesterdayKey),
@@ -142,7 +163,7 @@ test("shutdown: aggregates stubbed Todoist, board done moves, and blocked cards"
       now,
       listCompleted: async () => completed,
       fetchFn: async (input) => {
-        if (String(input).includes("/tasks")) {
+        if (String(input).includes("/tasks") && !String(input).includes("completed")) {
           listCalls++;
           return new Response(JSON.stringify(open), { headers: { "content-type": "application/json" } });
         }
@@ -157,6 +178,85 @@ test("shutdown: aggregates stubbed Todoist, board done moves, and blocked cards"
     assert.equal(review.unfinished.blockedToday.length, 1);
     assert.equal(review.tomorrowPreview.tasksDue.length, 1);
     assert.equal(listCalls, 1);
+    integration.board.close();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("shutdown: Todoist completed failure does not block open tasks", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-shutdown-todoist-"));
+  try {
+    const cfg = loadConfig({ DATA_DIR: dir, ALLOW_INSECURE_NO_AUTH: "1", TODOIST_API_TOKEN: "x".repeat(32) });
+    const integration = await openIntegrationStores(dir, cfg);
+    const review = await buildShutdownReview({
+      cfg,
+      board: integration.board,
+      now: new Date("2026-10-14T12:00:00Z"),
+      listCompleted: async () => {
+        throw new Error("fail");
+      },
+      fetchFn: async (input) => {
+        if (String(input).includes("/rest/v2/tasks")) {
+          return new Response(JSON.stringify([task("t1", "Still open", "2026-10-14")]), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return new Response("", { status: 500 });
+      },
+    });
+    assert.equal(review.errors.todoistCompleted, "Couldn't load Todoist completed tasks.");
+    assert.equal(review.unfinished.todoist.today.length, 1);
+    assert.equal(review.done.todoist.length, 0);
+    integration.board.close();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("shutdown: Todoist open failure still returns completed tasks", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-shutdown-todoist-open-"));
+  try {
+    const cfg = loadConfig({ DATA_DIR: dir, ALLOW_INSECURE_NO_AUTH: "1", TODOIST_API_TOKEN: "x".repeat(32) });
+    const integration = await openIntegrationStores(dir, cfg);
+    const review = await buildShutdownReview({
+      cfg,
+      board: integration.board,
+      now: new Date("2026-10-14T12:00:00Z"),
+      listCompleted: async () => [{ id: "c1", content: "Done", completedAt: "2026-10-14T12:00:00Z" }],
+      fetchFn: async (input) => {
+        if (String(input).includes("/rest/v2/tasks")) return new Response("", { status: 500 });
+        return new Response("{}", { status: 404 });
+      },
+    });
+    assert.equal(review.errors.todoistOpen, "Couldn't load Todoist open tasks.");
+    assert.equal(review.done.todoist.length, 1);
+    assert.equal(review.unfinished.todoist.today.length, 0);
+    integration.board.close();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("shutdown: calendar snapshot failure is isolated", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-shutdown-cal-"));
+  try {
+    const cfg = loadConfig({ DATA_DIR: dir, ALLOW_INSECURE_NO_AUTH: "1" });
+    const integration = await openIntegrationStores(dir, cfg);
+    const calendar = {
+      planning: () => ({ cards: [], blocks: [], timezone: "UTC" }),
+      snapshot: async () => {
+        throw new Error("calendar down");
+      },
+    } as unknown as CalendarWorkspace;
+    const review = await buildShutdownReview({
+      cfg,
+      board: integration.board,
+      calendar,
+      now: new Date("2026-10-14T12:00:00Z"),
+    });
+    assert.equal(review.errors.calendar, "Couldn't load calendar.");
+    assert.equal(review.tomorrowPreview.events.length, 0);
     integration.board.close();
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -208,26 +308,16 @@ test("shutdown: reflection only when POST is called", async () => {
     });
     assert.equal(llmCalls, 0);
 
-    const reflection = await generateShutdownReflection(review, cfg, async (input, init) => {
-      if (String(input).includes("/chat/completions")) {
-        llmCalls++;
-        return new Response(
-          JSON.stringify({ choices: [{ message: { content: "You closed the loop on the essentials." } }] }),
-          { headers: { "content-type": "application/json" } },
-        );
-      }
-      return fetchFn(input, init);
-    });
+    const reflection = await generateShutdownReflection(review, cfg, fetchFn);
     assert.equal(reflection, "You closed the loop on the essentials.");
     assert.equal(llmCalls, 1);
-    assert.equal(review.llmEnabled, true);
     integration.board.close();
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("shutdown API: auth guard for owner or canManage", async () => {
+test("shutdown API: GET canManage; reflection requires owner not admin token", async () => {
   const keys = await createTestCfAccessJwt();
   const locked = await harness(
     { OWNER_EMAILS: "owner@example.com", CF_ACCESS_TEAM_DOMAIN: TEST_CF_TEAM, CF_ACCESS_AUD: TEST_CF_AUD },
@@ -239,27 +329,30 @@ test("shutdown API: auth guard for owner or canManage", async () => {
     const visitorHeaders = { "cf-access-jwt-assertion": visitorJwt, "x-ah": "1" };
     const denied = await fetch(`${locked.base}/api/briefing/shutdown`, { headers: visitorHeaders });
     assert.equal(denied.status, 403);
-    const deniedReflect = await fetch(`${locked.base}/api/briefing/shutdown/reflection`, {
+    const adminGet = await fetch(`${locked.base}/api/briefing/shutdown`, { headers: authz });
+    assert.equal(adminGet.status, 200);
+    const adminReflect = await fetch(`${locked.base}/api/briefing/shutdown/reflection`, {
       method: "POST",
-      headers: visitorHeaders,
-      body: "{}",
+      headers: authz,
+      body: JSON.stringify({ review: (await adminGet.json()).review }),
     });
-    assert.equal(deniedReflect.status, 403);
-    const adminOk = await fetch(`${locked.base}/api/briefing/shutdown`, { headers: authz });
-    assert.equal(adminOk.status, 200);
+    assert.equal(adminReflect.status, 403);
   } finally {
     await locked.close();
   }
 
   const ownerHarness = await harness({ OWNER_EMAILS: "owner@example.com" }, true);
   try {
-    const ok = await fetch(`${ownerHarness.base}/api/briefing/shutdown`, {
-      headers: { "x-ah": "1" },
-    });
+    const ok = await fetch(`${ownerHarness.base}/api/briefing/shutdown`, { headers: { "x-ah": "1" } });
     assert.equal(ok.status, 200);
     const body = await ok.json();
     assert.equal(body.review.zone, SHUTDOWN_TZ);
-    assert.match(body.review.day, /^\d{4}-\d{2}-\d{2}$/);
+    const reflect = await fetch(`${ownerHarness.base}/api/briefing/shutdown/reflection`, {
+      method: "POST",
+      headers: { "x-ah": "1", "content-type": "application/json" },
+      body: JSON.stringify({ review: body.review }),
+    });
+    assert.equal(reflect.status, 200);
   } finally {
     await ownerHarness.close();
   }

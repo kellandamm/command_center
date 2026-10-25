@@ -1,7 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { DailyBriefingService } from "./daily-briefing/service";
 import { handleDailyBriefingRoutes } from "./daily-briefing/routes";
-import { handleBriefingRoutes } from "./briefing/routes";
 import { llmConfigured, type Config } from "./config";
 import { accessJwtFromRequest } from "./cf-access";
 import { recallioConfigured } from "./recallio/client";
@@ -436,13 +435,12 @@ export function createApp(app: App): Server {
       if (path.startsWith("/api/x-bookmarks")) {
         if (await handleXBookmarkApiRoutes(app.xBookmarks, req, res, path, readBody)) return;
       }
-      if (await handleDailyBriefingRoutes(app, app.dailyBriefing, req, res, path)) return;
-      if (await handleBriefingRoutes(app, req, res, path, {
+      if (await handleDailyBriefingRoutes(app, app.dailyBriefing, req, res, path, {
         owner: who.owner === true,
         who: who.who,
         email: who.email,
         serviceToken: who.serviceToken,
-      })) return;
+      }, readBody)) return;
       if (path.startsWith("/api/board") || path.startsWith("/api/wins")) {
         const bodyForApi = get ? undefined : await readBody(req);
         if (await handleBoardRoutes(app.board, app.hobieQueue, app.wins, app.cfg, req, res, path, bodyForApi)) return;

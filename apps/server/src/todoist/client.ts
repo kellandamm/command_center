@@ -19,7 +19,7 @@ export interface TodoistTask {
 export type TodoistFetch = typeof fetch;
 
 const API = "https://api.todoist.com/rest/v2";
-const SYNC_API = "https://api.todoist.com/sync/v9";
+const API_V1 = "https://api.todoist.com/api/v1";
 
 export interface TodoistCompletedTask {
   id: string;
@@ -40,27 +40,33 @@ async function readError(res: Response): Promise<string> {
   }
 }
 
-/** Completed tasks in `[since, until)` (ISO instants). Uses Sync API v9 — stub-friendly in tests. */
+/** Completed tasks in `[since, until)` (ISO instants). API v1 by_completion_date — stub-friendly in tests. */
 export async function listCompletedTasks(
   token: string,
   since: string,
   until: string,
   fetchFn: TodoistFetch = fetch,
 ): Promise<TodoistCompletedTask[]> {
-  const res = await fetchFn(`${SYNC_API}/completed/get_all`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify({ since, until, limit: 200, offset: 0 }),
-  });
-  if (!res.ok) throw new Error(await readError(res));
-  const body = (await res.json()) as { items?: Array<{ completed_at?: string; item?: { id?: string; content?: string } }> };
   const out: TodoistCompletedTask[] = [];
-  for (const row of body.items ?? []) {
-    const id = row.item?.id;
-    const content = row.item?.content;
-    const completedAt = row.completed_at;
-    if (!id || !content || !completedAt) continue;
-    out.push({ id, content, completedAt });
+  let cursor: string | undefined;
+  for (;;) {
+    const params = new URLSearchParams({ since, until, limit: "200" });
+    if (cursor) params.set("cursor", cursor);
+    const res = await fetchFn(`${API_V1}/tasks/completed/by_completion_date?${params}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(await readError(res));
+    const body = (await res.json()) as {
+      items?: Array<{ id?: string; content?: string; completed_at?: string }>;
+      next_cursor?: string | null;
+    };
+    for (const row of body.items ?? []) {
+      if (row.id && row.content && row.completed_at) {
+        out.push({ id: row.id, content: row.content, completedAt: row.completed_at });
+      }
+    }
+    cursor = body.next_cursor ?? undefined;
+    if (!cursor) break;
   }
   return out;
 }

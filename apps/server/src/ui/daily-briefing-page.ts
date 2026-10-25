@@ -144,34 +144,45 @@ window.viewPreferencesReady.then(function(prefs){
   ["weather","calendar","topics"].forEach(function(key){if(sections[key]===false)document.getElementById("db-"+key).hidden=true});
 });
 initDays();
-var shutdownLoaded=false;
+var shutdownLoaded=false,shutdownReview=null;
+var CHICAGO_TZ="America/Chicago";
 function shutdownError(message){
   var el=document.getElementById("db-shutdown-error");el.textContent=message;el.hidden=!message;
 }
+function formatChicago(iso,allDay){
+  if(allDay)return iso+" (all day)";
+  return new Date(iso).toLocaleString(undefined,{timeZone:CHICAGO_TZ,month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
+}
 function renderShutdown(r){
+  shutdownReview=r;
   var body=document.getElementById("db-shutdown-body");
   var meta=document.getElementById("db-shutdown-meta");
   if(!r){body.innerHTML='<p class="dim">No shutdown data.</p>';return;}
-  meta.textContent="Shutdown review for "+esc(r.day)+" ("+esc(r.zone)+") · generated "+new Date(r.generatedAt).toLocaleString();
+  var errs=r.errors||{};
+  meta.textContent="Shutdown review for "+esc(r.day)+" ("+esc(r.zone)+") · generated "+formatChicago(r.generatedAt,false);
   var doneTodoist=(r.done.todoist||[]).map(function(t){return '<li><strong>'+esc(t.content)+'</strong><span class="dim"> · Todoist</span></li>';}).join("");
   var doneBoard=(r.done.board||[]).map(function(b){return '<li><strong>'+esc(b.title)+'</strong><span class="dim"> · Board</span></li>';}).join("");
+  var doneEmpty=!doneTodoist&&!doneBoard;
+  var doneNote=errs.todoistCompleted?'<li class="bad">'+esc(errs.todoistCompleted)+'</li>':'';
   var openTodoist=(r.unfinished.todoist.overdue||[]).concat(r.unfinished.todoist.today||[]).map(function(t){
     return '<li><strong>'+esc(t.content)+'</strong><span class="dim"> · Todoist</span></li>';
   }).join("");
   var blocked=(r.unfinished.blockedToday||[]).map(function(b){
     return '<li><strong>'+esc(b.title)+'</strong><span class="dim"> · blocked today</span></li>';
   }).join("");
+  var openEmpty=!openTodoist&&!blocked;
+  var openNote=errs.todoistOpen?'<li class="bad">'+esc(errs.todoistOpen)+'</li>':'';
   var tomorrowEv=(r.tomorrowPreview.events||[]).map(function(ev){
-    var when=ev.allDay?ev.start+" (all day)":new Date(ev.start).toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
-    return '<li><strong>'+esc(ev.summary)+'</strong><br><span class="dim">'+esc(when)+'</span></li>';
+    return '<li><strong>'+esc(ev.summary)+'</strong><br><span class="dim">'+esc(formatChicago(ev.start,ev.allDay))+'</span></li>';
   }).join("");
   var tomorrowTasks=(r.tomorrowPreview.tasksDue||[]).map(function(t){
     return '<li><strong>'+esc(t.content)+'</strong><span class="dim"> · due tomorrow</span></li>';
   }).join("");
+  var calNote=errs.calendar?'<p class="bad">'+esc(errs.calendar)+'</p>':"";
   body.innerHTML=
-    '<section class="shutdown-section"><h2>Done today</h2><ul>'+(doneTodoist||doneBoard?doneTodoist+doneBoard:'<li class="dim">Nothing recorded yet.</li>')+'</ul></section>'
-    +'<section class="shutdown-section"><h2>Planned but not done</h2><ul>'+(openTodoist||blocked?openTodoist+blocked:'<li class="dim">All clear.</li>')+'</ul></section>'
-    +'<section class="shutdown-section"><h2>Time</h2><p>Calendar <strong>'+esc(String(r.time.calendarHours))+'</strong> h · Blocked tasks <strong>'+esc(String(r.time.blockedTaskHours))+'</strong> h</p></section>'
+    '<section class="shutdown-section"><h2>Done today</h2><ul>'+doneNote+(doneEmpty&&!errs.todoistCompleted?'<li class="dim">Nothing recorded yet.</li>':doneTodoist+doneBoard)+'</ul></section>'
+    +'<section class="shutdown-section"><h2>Planned but not done</h2><ul>'+openNote+(openEmpty&&!errs.todoistOpen?'<li class="dim">All clear.</li>':openTodoist+blocked)+'</ul></section>'
+    +'<section class="shutdown-section"><h2>Time</h2>'+calNote+'<p>Calendar <strong>'+esc(String(r.time.calendarHours))+'</strong> h · Blocked tasks <strong>'+esc(String(r.time.blockedTaskHours))+'</strong> h</p></section>'
     +'<section class="shutdown-section"><h2>Tomorrow</h2><h3 class="dim" style="font-size:.85rem;margin:.5rem 0 0">First events</h3><ul>'+(tomorrowEv||'<li class="dim">No events loaded.</li>')+'</ul>'
     +'<h3 class="dim" style="font-size:.85rem;margin:.75rem 0 0">Tasks due</h3><ul>'+(tomorrowTasks||'<li class="dim">None due tomorrow.</li>')+'</ul></section>';
   var reflectBtn=document.getElementById("db-shutdown-reflect");
@@ -204,7 +215,8 @@ document.getElementById("db-shutdown-refresh").onclick=function(){loadShutdown(t
 document.getElementById("db-shutdown-reflect").onclick=function(){
   var btn=this,box=document.getElementById("db-shutdown-reflection");
   btn.disabled=true;box.hidden=true;shutdownError("");
-  api("/api/briefing/shutdown/reflection","POST",{}).then(function(data){
+  if(!shutdownReview){shutdownError("Reload the shutdown review first.");btn.disabled=false;return;}
+  api("/api/briefing/shutdown/reflection","POST",{review:shutdownReview}).then(function(data){
     if(data.reflection){box.textContent=data.reflection;box.hidden=false;}
     else if(!data.llmEnabled)shutdownError("LLM is not configured on the server.");
     else shutdownError("Could not generate a reflection right now.");
