@@ -25,7 +25,7 @@ function llmItemsJson() {
   return JSON.stringify({
     items: [
       { kind: "task", title: "Call dentist", due: "2026-10-26T09:00" },
-      { kind: "task", title: "Lunch with Sam", due: "2026-10-31T12:00" },
+      { kind: "event", title: "Lunch with Sam", start: "2026-10-31T12:00", end: "2026-10-31T13:00" },
     ],
   });
 }
@@ -255,14 +255,16 @@ test("voice capture: confirm commits and dismiss removes", async () => {
       body: Buffer.from("audio-bytes"),
     });
     const { id, items } = await created.json() as { id: string; items: unknown[] };
+    const cal = await h.calendar.create({ kind: "native", name: "Personal" });
     const confirm = await fetch(`${h.base}/api/voice-captures/${id}/confirm`, {
       method: "POST",
       headers: ownerSession,
-      body: JSON.stringify({ items }),
+      body: JSON.stringify({ items, calendarId: cal.id }),
     });
     assert.equal(confirm.status, 200);
     const data = await confirm.json() as { results: unknown[] };
     assert.equal(data.results.length, 2);
+    assert.equal(h.calendar.store.events().length, 1);
 
     const gone = await fetch(`${h.base}/api/voice-captures/${id}`, { headers: ownerSession });
     assert.equal(gone.status, 404);
