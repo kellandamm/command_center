@@ -163,7 +163,7 @@ test("Read Later and Agent: compact density, folders, tags, pagination, and work
     await page.waitForSelector("#agent-queue article");
     await screenshot(page, "agent-queue-mobile.png");
     await page.getByRole("button", { name: "Mark done: Read the research" }).click();
-    await page.waitForSelector("#agent-queue .workspace-empty");
+    await page.waitForSelector("#agent-queue .ui-empty");
     await page.setViewportSize({ width: 1440, height: 1000 });
     queueDone = false;
     await page.locator("#queue-refresh").click();
