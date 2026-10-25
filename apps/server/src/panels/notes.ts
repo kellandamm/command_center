@@ -16,7 +16,7 @@ import { readNotesZip } from "../notes/zip-read";
 import { buildNotesZipExport } from "../notes/zip-export";
 import { OWNER_ACTION_FORBIDDEN } from "../owner-auth";
 import { meetingNotesForLlmContext, noteCitationHref } from "../meetings/qa";
-import { summarizeMeetingNote } from "../meetings/import-service";
+import { MeetingEditedLocallyError, summarizeMeetingNote } from "../meetings/import-service";
 import { button, panelCard } from "../ui/components";
 import type { PanelModule } from "./types";
 
@@ -282,6 +282,7 @@ export const notesPanel: PanelModule = {
         const note = await summarizeMeetingNote(ctx.cfg, ctx.notes, id);
         json(200, { note });
       } catch (err) {
+        if (err instanceof MeetingEditedLocallyError) return error(409, "edited locally"), true;
         if (err instanceof ValidationError) {
           const message = err.message === "LLM is not configured" ? "LLM is not configured" : "summarization failed";
           return error(err.message === "note not found" ? 404 : 400, message), true;

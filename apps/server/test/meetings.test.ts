@@ -16,12 +16,32 @@ import { createTestCfAccessJwt, TEST_CF_AUD, TEST_CF_TEAM } from "./cf-access-jw
 import { setIntegrationCfAccessVerifier } from "../src/mcp/auth";
 import { MEETING_IMPORT_MAX_BYTES, MEETING_TAG, SUMMARY_PENDING } from "../src/meetings/constants";
 import { findMeetingNoteBySourceId } from "../src/meetings/import-service";
-import {
-  CHUNK_CHARS,
-  MAX_TRANSCRIPT_CHUNKS,
-  mergeMeetingPartials,
-  summarizeMeetingTranscript,
-} from "../src/meetings/summarize";
+import { CHUNK_CHARS, mergeMeetingPartials, summarizeMeetingTranscript } from "../src/meetings/summarize";
+
+const llmStub = { baseUrl: "https://api.example/v1", apiKey: "k", model: "m" };
+
+async function assertMergePreservesPartials(partialCount: number): Promise<void> {
+  const partials = Array.from({ length: partialCount }, (_, index) => `[[partial-${index}]]${"x".repeat(7000)}`);
+  const mergeBodies: string[] = [];
+  let calls = 0;
+  const maxCalls = partialCount + Math.ceil(Math.log2(partialCount)) + 2;
+  await mergeMeetingPartials(llmStub, partials, async (_input, init) => {
+    calls += 1;
+    const body = String(init?.body ?? "");
+    if (body.includes("Merge partial")) mergeBodies.push(body);
+    return new Response(JSON.stringify({ choices: [{ message: { content: "z".repeat(7000) } }] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  assert.ok(calls <= maxCalls, `expected <= ${maxCalls} LLM calls, got ${calls}`);
+  for (let index = 0; index < partialCount; index++) {
+    assert.ok(
+      mergeBodies.some((body) => body.includes(`[[partial-${index}]]`)),
+      `partial ${index} never reached a merge prompt`,
+    );
+  }
+}
 
 const ADMIN_TOKEN = "a".repeat(32);
 const IMPORT_TOKEN = "i".repeat(32);
@@ -216,57 +236,28 @@ test("meetings import: LLM failure stores summary pending", async () => {
   }
 });
 
-test("meetings import: hierarchical summarization uses batched merge for many chunks", async () => {
-  const chunkCount = MAX_TRANSCRIPT_CHUNKS;
-  const longText = "segment ".repeat(Math.ceil((CHUNK_CHARS * chunkCount) / "segment ".length));
-  assert.ok(longText.length > CHUNK_CHARS * (chunkCount - 1));
+test("meetings merge: 3 oversized partials shrink and merge with bounded LLM calls", async () => {
+  await assertMergePreservesPartials(3);
+});
 
+test("meetings merge: 20 oversized partials shrink and merge with bounded LLM calls", async () => {
+  await assertMergePreservesPartials(20);
+});
+
+test("meetings import: long transcript uses chunk plus merge passes", async () => {
+  const longText = "segment ".repeat(Math.ceil((CHUNK_CHARS * 3) / "segment ".length));
   let llmCalls = 0;
-  const fetchFn = async (_input: unknown, init?: RequestInit) => {
+  const summary = await summarizeMeetingTranscript(llmStub, longText, async (_input, init) => {
     llmCalls += 1;
     const body = String(init?.body ?? "");
-    const isChunk = body.includes("transcript excerpt");
-    const content = isChunk ? `partial-${llmCalls}` : `merged-${llmCalls}`;
+    const content = body.includes("transcript excerpt") ? `[[chunk-${llmCalls}]]${"s".repeat(7000)}` : "z".repeat(7000);
     return new Response(JSON.stringify({ choices: [{ message: { content } }] }), {
       status: 200,
       headers: { "content-type": "application/json" },
     });
-  };
-
-  const summary = await summarizeMeetingTranscript(
-    { baseUrl: "https://api.example/v1", apiKey: "k", model: "m" },
-    longText,
-    fetchFn,
-  );
-  assert.ok(llmCalls > chunkCount && llmCalls <= chunkCount + 10);
-  assert.match(summary, /merged-/);
-});
-
-test("meetings import: rejects transcripts that exceed chunk cap before LLM", async () => {
-  const overChunks = "a".repeat(CHUNK_CHARS * (MAX_TRANSCRIPT_CHUNKS + 1));
-  await assert.rejects(
-    () =>
-      summarizeMeetingTranscript(
-        { baseUrl: "https://api.example/v1", apiKey: "k", model: "m" },
-        overChunks,
-        async () => new Response(JSON.stringify({ choices: [{ message: { content: "x" } }] }), { status: 200 }),
-      ),
-    (err: Error) => err.message === "too many chunks",
-  );
-});
-
-test("meetings merge: oversized partials combine without stack overflow", async () => {
-  const partials = ["a".repeat(7000), "b".repeat(7000), "c".repeat(7000)];
-  const result = await mergeMeetingPartials(
-    { baseUrl: "https://api.example/v1", apiKey: "k", model: "m" },
-    partials,
-    async () =>
-      new Response(JSON.stringify({ choices: [{ message: { content: "merged-ok" } }] }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-  );
-  assert.equal(result, "merged-ok");
+  });
+  assert.ok(llmCalls >= 4 && llmCalls <= 10);
+  assert.ok(summary.length > 0);
 });
 
 test("meetings import: sourceId lock uses normalized id", async () => {
@@ -327,6 +318,47 @@ test("meetings summarize: refresh import version so re-import is allowed", async
       body: JSON.stringify({ ...samplePayload, sourceId: "plaud-summarize-tag", transcript: "body v2" }),
     });
     assert.equal(reimport.status, 200);
+  } finally {
+    await h.close();
+  }
+});
+
+test("meetings summarize: does not clear edit guard after local edit", async () => {
+  const h = await harness({}, true);
+  try {
+    const originalFetch = globalThis.fetch;
+    withMockLlmFetch(async (input, init) => {
+      if (String(input).includes("api.example")) {
+        return new Response(JSON.stringify({ choices: [{ message: { content: "Summarized again" } }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return originalFetch(input, init);
+    });
+    const imported = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-edit-summarize", transcript: "original" }),
+    });
+    const { noteId } = await imported.json();
+    const note = h.notes.getNote(noteId)!;
+    await h.notes.updateNote(noteId, { content: `${note.content}\n\nUser edit kept.`, expectedVersion: note.version ?? 0 });
+
+    const summarized = await fetch(`${h.base}/api/meetings/${encodeURIComponent(noteId)}/summarize`, {
+      method: "POST",
+      headers: sessionAuthz,
+    });
+    assert.equal(summarized.status, 200);
+
+    const reimport = await fetch(`${h.base}/api/meetings/import`, {
+      method: "POST",
+      headers: importAuthz,
+      body: JSON.stringify({ ...samplePayload, sourceId: "plaud-edit-summarize", transcript: "overwrite attempt" }),
+    });
+    assert.equal(reimport.status, 409);
+    assert.match(h.notes.getNote(noteId)!.content, /User edit kept/);
+    assert.doesNotMatch(h.notes.getNote(noteId)!.content, /overwrite attempt/);
   } finally {
     await h.close();
   }

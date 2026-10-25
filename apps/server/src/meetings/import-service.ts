@@ -19,7 +19,7 @@ import {
   TRANSCRIPT_SECTION,
 } from "./constants";
 import { withMeetingImportLock } from "./import-lock";
-import { MAX_TRANSCRIPT_CHUNKS, summarizeMeetingTranscript, transcriptChunkCount } from "./summarize";
+import { summarizeMeetingTranscript } from "./summarize";
 import { formatTranscriptBody, parseTranscriptInput } from "./transcript";
 
 export interface MeetingImportPayload {
@@ -73,7 +73,6 @@ function validatePayload(raw: Record<string, unknown>): MeetingImportPayload {
 
   const { text, segments } = parseTranscriptInput(raw.transcript);
   if (Buffer.byteLength(text, "utf8") > MEETING_IMPORT_MAX_BYTES) throw new ValidationError("transcript too large");
-  if (transcriptChunkCount(text) > MAX_TRANSCRIPT_CHUNKS) throw new ValidationError("too many chunks");
 
   return {
     sourceId: raw.sourceId.trim(),
@@ -231,12 +230,19 @@ export async function summarizeMeetingNote(
 
   const content = buildMeetingNoteContent(summary, transcriptBody);
   const sourceKey = plaudSourceIdFromTags(note.tags);
+  const importedVersion = parseMeetingImportVersion(note.tags);
+  const syncedWithImport = importedVersion !== null && (note.version ?? 0) === importedVersion;
   const importVersion = (note.version ?? 0) + 1;
-  const updated = await notes.updateNote(noteId, {
-    content,
-    tags: sourceKey ? meetingTags(sourceKey, note.tags, importVersion) : note.tags,
-    expectedVersion: note.version ?? 0,
-  });
-  if (!updated) throw new ValidationError("note not found");
-  return updated;
+  try {
+    const updated = await notes.updateNote(noteId, {
+      content,
+      tags: sourceKey && syncedWithImport ? meetingTags(sourceKey, note.tags, importVersion) : note.tags,
+      expectedVersion: note.version ?? 0,
+    });
+    if (!updated) throw new ValidationError("note not found");
+    return updated;
+  } catch (err) {
+    if (err instanceof NoteConflictError) throw new MeetingEditedLocallyError();
+    throw err;
+  }
 }
