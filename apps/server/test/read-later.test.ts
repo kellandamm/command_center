@@ -65,6 +65,26 @@ test("read later: scoped capture token saves pages and nothing else", async () =
   }
 });
 
+test("read later: capture truncates oversized UTF-8 excerpts instead of rejecting", async () => {
+  const h = await harness();
+  try {
+    const { token } = await (await fetch(`${h.base}/api/capture/access`, { method: "POST", headers: admin })).json() as { token: string };
+    const oversized = "漢".repeat(8_000);
+    assert.ok(Buffer.byteLength(oversized, "utf8") > 20_000);
+    const response = await fetch(`${h.base}/api/capture`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ url: "https://example.com/long", title: "Long", excerpt: oversized }),
+    });
+    assert.equal(response.status, 201);
+    const body = await response.json() as { source: { excerpt: string } };
+    assert.ok(Buffer.byteLength(body.source.excerpt, "utf8") <= 20_000);
+    assert.doesNotMatch(body.source.excerpt, /\uFFFD/);
+  } finally {
+    await h.close();
+  }
+});
+
 test("read later: pages, redirects, and extension download", async () => {
   const h = await harness();
   try {

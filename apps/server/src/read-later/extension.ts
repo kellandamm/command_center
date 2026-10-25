@@ -1,8 +1,9 @@
+import { EXCERPT_MAX_UTF8_BYTES, truncateUtf8ToBytesExtensionSource } from "../utf8-byte-limit";
 
 const manifest = {
   manifest_version: 3,
   name: "Command Center Capture",
-  version: "1.0.0",
+  version: "1.0.1",
   description: "Save the page you are reading to Command Center, and optionally summarize it.",
   action: { default_title: "Save to Command Center", default_popup: "popup.html" },
   options_page: "options.html",
@@ -23,10 +24,12 @@ const popupHtml = `<!doctype html><meta charset="utf-8"><title>Save</title><styl
 
 const popupJs = `const status = document.getElementById("status");
 const say = (text) => { status.textContent = text; };
+${truncateUtf8ToBytesExtensionSource}
 function pageText() {
   const selected = String(getSelection() || "").trim();
   const root = document.querySelector("article") || document.querySelector("main") || document.body;
-  return (selected || (root && root.innerText) || "").replace(/\\n{3,}/g, "\\n\\n").trim().slice(0, 20000);
+  const raw = (selected || (root && root.innerText) || "").replace(/\\n{3,}/g, "\\n\\n").trim();
+  return truncateUtf8ToBytes(raw, ${EXCERPT_MAX_UTF8_BYTES}, "…");
 }
 async function capture(summarize) {
   const { server, token } = await chrome.storage.local.get(["server", "token"]);
@@ -73,4 +76,4 @@ export const captureExtensionFiles: Array<{ name: string; data: Buffer }> = [
   ["options.html", optionsHtml],
   ["options.js", optionsJs],
 ].map(([name, text]) => ({ name: name!, data: Buffer.from(text!, "utf8") }));
-
+

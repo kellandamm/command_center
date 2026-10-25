@@ -162,7 +162,7 @@ test("quick-add commit: writes tasks and native events via stubs", async () => {
     let todoistBody = "";
     const fetchFn: typeof fetch = async (input, init) => {
       const url = String(input);
-      if (url.includes("api.todoist.com/rest/v2/tasks")) {
+      if (url.includes("api.todoist.com/api/v1/tasks") && !url.includes("/close")) {
         todoistBody = String(init?.body ?? "");
         return new Response(JSON.stringify({
           id: "td-1",
@@ -170,7 +170,6 @@ test("quick-add commit: writes tasks and native events via stubs", async () => {
           description: "",
           priority: 1,
           due: null,
-          url: "https://todoist.com/showTask?id=td-1",
         }), { status: 200 });
       }
       throw new Error(`unexpected fetch ${url}`);

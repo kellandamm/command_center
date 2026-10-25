@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ValidationError } from "../settings";
 import { writeFileAtomic } from "../store";
+import { EXCERPT_MAX_UTF8_BYTES, truncateUtf8ToBytes } from "../utf8-byte-limit";
 import { isNoteSensitive, redactNoteForCatalog } from "./sensitive";
 import { buildZipNotesFromEntries, type ZipImportReport } from "./zip-import";
 import type { ZipReadResult } from "./zip-read";
@@ -76,12 +77,19 @@ interface KnowledgeData {
 
 const emptyData = (): KnowledgeData => ({ notes: [], sources: [], spaces: [] });
 
-function text(value: unknown, field: string, max: number, required = false): string {
+function text(value: unknown, field: string, max: number, required = false, truncateOversized = false): string {
   if (typeof value !== "string") throw new ValidationError(`${field} must be text`);
   const result = value.trim();
   if (required && !result) throw new ValidationError(`${field} is required`);
-  if (Buffer.byteLength(result, "utf8") > max) throw new ValidationError(`${field} exceeds ${max} bytes`);
+  if (Buffer.byteLength(result, "utf8") > max) {
+    if (truncateOversized) return truncateUtf8ToBytes(result, max);
+    throw new ValidationError(`${field} exceeds ${max} bytes`);
+  }
   return result;
+}
+
+function sourceExcerpt(value: unknown, field = "excerpt"): string {
+  return text(value, field, EXCERPT_MAX_UTF8_BYTES, false, true);
 }
 
 function markdownContent(value: unknown): string {
@@ -420,7 +428,7 @@ export class NotesStore {
   async createSource(input: Record<string, unknown>): Promise<KnowledgeSource> {
     const url = optionalUrl(input.url, "url");
     const title = text(input.title ?? (url ? new URL(url).hostname : ""), "title", 240, true);
-    const excerpt = text(input.excerpt ?? "", "excerpt", 20_000);
+    const excerpt = sourceExcerpt(input.excerpt ?? "");
     return this.updateData(() => {
       const now = new Date().toISOString();
       const source: KnowledgeSource = {
@@ -439,7 +447,7 @@ export class NotesStore {
     normalized.hash = "";
     if (normalized.username || normalized.password) throw new ValidationError("URL credentials are not allowed");
     const title = text(input.title ?? normalized.hostname, "title", 240, true);
-    const excerpt = text(input.excerpt ?? "", "excerpt", 20_000);
+    const excerpt = sourceExcerpt(input.excerpt ?? "");
     return this.updateData(() => {
       const existing = this.data.sources.find((source) => source.url === normalized.href);
       if (existing) return { source: existing, duplicate: true };
@@ -498,7 +506,7 @@ export class NotesStore {
         source.url = optionalUrl(input.url, "url");
       }
       if (input.excerpt !== undefined) {
-        const excerpt = text(input.excerpt, "excerpt", 20_000);
+        const excerpt = sourceExcerpt(input.excerpt);
         if (excerpt !== source.excerpt) {
           delete source.summary;
           delete source.summaryModel;
@@ -717,7 +725,7 @@ export class NotesStore {
           id,
           title: text(item.title, "source title", 240, true),
           url: optionalUrl(item.url, "source url"),
-          excerpt: text(item.excerpt ?? "", "source excerpt", 20_000),
+          excerpt: sourceExcerpt(item.excerpt ?? ""),
           summary: item.summary === undefined ? undefined : text(item.summary, "source summary", 20_000),
           summaryModel: item.summaryModel === undefined ? undefined : text(item.summaryModel, "summary model", 240),
           summarizedAt: item.summarizedAt === undefined ? undefined : text(item.summarizedAt, "summary date", 100),
