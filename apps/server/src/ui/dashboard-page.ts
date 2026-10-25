@@ -16,6 +16,7 @@ import { weatherDashboardScript } from "../panels/weather";
 import { dashboardGridCss, dashboardGridScript } from "./dashboard-grid";
 import { page, type NavLink } from "./layout";
 import { quickAddCss, quickAddScript } from "./quick-add";
+import { voiceInboxScript } from "./voice-inbox";
 
 export const dashboardPanelCss = `
 .tasks-chips{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.35rem}
@@ -93,6 +94,10 @@ export function dashboardPage(nav?: NavLink[]): string {
   <div class="quick-add-preview quick-add-dropdown" hidden></div>
 </div>
 </div>
+<div id="voice-inbox" class="voice-inbox" aria-label="Voice inbox">
+  <div class="voice-inbox-header"><strong>Voice inbox</strong><span class="voice-inbox-badge" hidden>0</span></div>
+  <div class="voice-inbox-panel" hidden><ul class="voice-inbox-list"></ul></div>
+</div>
 <div class="dashboard-toolbar row">
   <button type="button" class="ghost" id="dashboard-reset-layout">Reset layout</button>
   <a class="ghost" id="dashboard-export-layout" href="/api/dashboard-layout/export.json">Export layout</a>
@@ -115,7 +120,9 @@ document.getElementById("dashboard-import-layout")?.addEventListener("change",fu
 });
 ${PANEL_SCRIPTS.map((fn) => fn()).join("\n")}
 ${quickAddScript}
-mountQuickAdd("dashboard-quick-add");
+var dashboardQuickAdd=mountQuickAdd("dashboard-quick-add",{onVoiceCommitted:function(){if(window.__voiceInboxRefresh)window.__voiceInboxRefresh();}});
+${voiceInboxScript}
+window.__voiceInboxRefresh=(mountVoiceInbox(dashboardQuickAdd)||{}).refresh;
 `,
   });
 }

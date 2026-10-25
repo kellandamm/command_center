@@ -18,6 +18,7 @@ import type { Server } from "node:http";
 import { XBookmarksStore } from "../src/read-later/x-bookmarks-store";
 import { XBookmarksService } from "../src/read-later/x-bookmarks-service";
 import { ShareLinksStore } from "../src/share-links/store";
+import { VoiceCaptureStore } from "../src/voice-capture/store";
 
 export async function closeIntegrationServer(
   server: Server,
@@ -62,5 +63,6 @@ export async function openIntegrationStores(dataDir: string, cfg?: Config) {
     focusSessions: await FocusSessionsStore.open(dataDir),
     shareLinks: await ShareLinksStore.open(dataDir),
     whiteboard: await WhiteboardStore.open(dataDir),
+    voiceCaptures: await VoiceCaptureStore.open(dataDir),
   };
 }
