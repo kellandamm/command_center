@@ -13,6 +13,11 @@ export const quickAddCss = `
 .quick-add-item label{font-size:.75rem;color:var(--muted-foreground)}
 .quick-add-actions{display:flex;gap:.35rem;flex-wrap:wrap;padding:.5rem .65rem;border-top:1px solid var(--border);background:var(--card);flex-shrink:0}
 .quick-add-status:empty{display:none}
+.voice-inbox{margin-bottom:1rem;max-width:36rem}
+.voice-inbox-header{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.voice-inbox-badge{font-size:.75rem;font-weight:600;padding:.1rem .45rem;border-radius:999px;background:var(--primary);color:var(--primary-foreground)}
+.voice-inbox-list{list-style:none;margin:.35rem 0 0;padding:0;display:flex;flex-direction:column;gap:.35rem}
+.voice-inbox-item{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.35rem .5rem;border:1px solid var(--border);border-radius:calc(var(--radius) - 2px)}
 `;
 
 export const quickAddScript = `
@@ -96,15 +101,21 @@ function mountQuickAdd(rootId,opts){
     var actions=document.createElement("div");actions.className="quick-add-actions";
     var confirm=document.createElement("button");confirm.type="button";confirm.textContent="Confirm";
     var cancel=document.createElement("button");cancel.type="button";cancel.className="ghost";cancel.textContent="Cancel";
-    cancel.onclick=function(){items=[];setStatus("");setPreviewOpen(false);if(opts&&opts.onCancel)opts.onCancel();};
+    cancel.onclick=function(){items=[];setStatus("");setPreviewOpen(false);if(opts)opts.voiceCaptureId=null;if(opts&&opts.onCancel)opts.onCancel();};
     confirm.onclick=function(){
       confirm.disabled=true;
       renderPreview("Saving…");
-      api("/api/quick-add/commit","POST",{items:items,calendarId:opts&&opts.calendarId||undefined}).then(function(data){
+      var captureId=opts&&opts.voiceCaptureId;
+      var commit=captureId
+        ?api("/api/voice-captures/"+encodeURIComponent(captureId)+"/confirm","POST",{items:items})
+        :api("/api/quick-add/commit","POST",{items:items,calendarId:opts&&opts.calendarId||undefined});
+      commit.then(function(data){
         var failed=new Set((data.failures||[]).map(function(f){return f.index;}));
         items=items.filter(function(_,i){return failed.has(i);});
         var done=!items.length;
+        if(done&&captureId&&opts)opts.voiceCaptureId=null;
         if(data.results&&data.results.length&&opts&&opts.onCommitted)opts.onCommitted(data.results,opts.context||{},done);
+        if(done&&opts&&opts.onVoiceCommitted)opts.onVoiceCommitted();
         if(done){setPreviewOpen(false);setStatus((data.results&&data.results.length)?"Added.":"");if(input)input.value="";if(input)input.focus();}
         else{renderPreview("Some items could not be saved. Fix and retry.");}
       }).catch(function(err){renderPreview(err.message||"Could not save");}).finally(function(){confirm.disabled=false;});
@@ -127,11 +138,17 @@ function mountQuickAdd(rootId,opts){
     var text=input&&input.value.trim();if(!text){setStatus("Type something first.",true);return;}
     parseText(text);
   });
+  function openPreview(nextItems,hint,captureId){
+    if(opts&&captureId)opts.voiceCaptureId=captureId;
+    items=(nextItems||[]).map(function(item){item._tz="America/Chicago";return item;});
+    setStatus("");
+    renderPreview(hint||"Review and confirm.");
+  }
   return {parseSelection:function(text,context){
     if(!text||!text.trim()){setStatus("Select text first.",true);return Promise.resolve();}
     opts=Object.assign({},opts||{},context?{context:context}:{});
     if(input)input.value=text.trim();
     return parseText(text.trim());
-  },clear:function(){items=[];setStatus("");setPreviewOpen(false);if(input)input.value="";}};
+  },openPreview:openPreview,clear:function(){items=[];setStatus("");setPreviewOpen(false);if(input)input.value="";}};
 }
 `;

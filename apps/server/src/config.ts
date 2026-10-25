@@ -13,6 +13,10 @@ export interface Config {
   llmBaseUrl: string | null;
   llmApiKey: string | null;
   llmModel: string | null;
+  /** OpenAI-compatible POST /audio/transcriptions base or full URL (env-only; no SSRF guard). */
+  transcribeUrl: string | null;
+  transcribeApiKey: string | null;
+  transcribeModel: string;
   braveSearchApiKey: string | null;
   githubToken: string | null;
   /** GitHub login for the activity panel (open issues/PRs and public events). */
@@ -193,6 +197,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     llmBaseUrl: blank(env.LLM_BASE_URL),
     llmApiKey: blank(env.LLM_API_KEY),
     llmModel: blank(env.LLM_MODEL),
+    transcribeUrl: blank(env.TRANSCRIBE_URL),
+    transcribeApiKey: blank(env.TRANSCRIBE_API_KEY),
+    transcribeModel: blank(env.TRANSCRIBE_MODEL) ?? "whisper-1",
     braveSearchApiKey: blank(env.BRAVE_SEARCH_API_KEY),
     githubToken: blank(env.GITHUB_TOKEN),
     githubUsername: blank(env.GITHUB_USERNAME) ?? "kellandamm",

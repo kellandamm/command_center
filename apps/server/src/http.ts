@@ -69,6 +69,8 @@ import type { CalendarWorkspace } from "./calendar/workspace";
 import { CalendarConflictError } from "./calendar/store";
 import { handleCalendarRoutes } from "./calendar/routes";
 import { handleQuickAddRoutes } from "./quick-add/routes";
+import type { VoiceCaptureStore } from "./voice-capture/store";
+import { handleVoiceCaptureIngest, handleVoiceCaptureOwnerRoutes, voiceCaptureUnauthorized } from "./voice-capture/routes";
 import { exportCalendar } from "./calendar/export";
 import { calendarSettingsPage } from "./ui/calendar-settings-page";
 import { calendarEventPage } from "./ui/calendar-event-page";
@@ -109,6 +111,7 @@ export interface App {
   connections?: ConnectionsStore;
   calendar?: CalendarWorkspace;
   shareLinks: ShareLinksStore;
+  voiceCaptures: VoiceCaptureStore;
 }
 
 const SECURITY: Record<string, string> = {
@@ -237,6 +240,16 @@ export function createApp(app: App): Server {
         return;
       }
 
+      if (method === "POST" && path === "/api/capture/audio") {
+        const token = bearerToken(req);
+        if (!token || !(await captureAccess.accepts(token))) {
+          voiceCaptureUnauthorized(res);
+          return;
+        }
+        await handleVoiceCaptureIngest(app.cfg, app.voiceCaptures, req, res);
+        return;
+      }
+
       if (await handleSharePublicRoutes(app.cfg, app.shareLinks, shareLinkRateLimiter, req, res, path)) return;
 
       const getEarly = method === "GET" || method === "HEAD";
@@ -261,6 +274,16 @@ export function createApp(app: App): Server {
         app.cfg,
         app.calendar,
         canManageSharedServerState(app.cfg, { owner: who.owner === true, who: who.who }),
+        who.owner === true,
+        req,
+        res,
+        path,
+        readBody,
+      )) return;
+      if (await handleVoiceCaptureOwnerRoutes(
+        app.cfg,
+        app.calendar,
+        app.voiceCaptures,
         who.owner === true,
         req,
         res,
