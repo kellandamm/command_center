@@ -3,6 +3,7 @@ import { readBody } from "../request-body";
 import type { Config } from "../config";
 import { llmConfigured } from "../config";
 import type { CalendarWorkspace } from "../calendar/workspace";
+import type { BoardStore } from "../board/store";
 import { ValidationError } from "../settings";
 import { commitQuickAddItems } from "../quick-add/commit";
 import { QUICK_ADD_COMMIT_OWNER_REQUIRED, QUICK_ADD_TODOIST_NOT_CONFIGURED } from "../quick-add/errors";
@@ -87,6 +88,7 @@ export async function handleVoiceCaptureOwnerRoutes(
   res: ServerResponse,
   path: string,
   readJsonBody: (req: IncomingMessage) => Promise<unknown> = (r) => readBody(r, 64_000),
+  board?: BoardStore,
 ): Promise<boolean> {
   if (!path.startsWith("/api/voice-captures")) return false;
   const json = (status: number, data: unknown) => {
@@ -98,7 +100,7 @@ export async function handleVoiceCaptureOwnerRoutes(
 
   if (path === "/api/voice-captures" && req.method === "GET") {
     await store.purgeExpired();
-    return json(200, { captures: store.listSummaries(), count: store.pendingCount() });
+    return json(200, { captures: store.listSummaries(), count: store.pendingCount(), timezone: cfg.tz });
   }
 
   const confirmMatch = path.match(/^\/api\/voice-captures\/([^/]+)\/confirm$/);
@@ -108,13 +110,22 @@ export async function handleVoiceCaptureOwnerRoutes(
     if (!record) return json(404, { error: VOICE_CAPTURE_NOT_FOUND });
     try {
       const body = (await readJsonBody(req)) as Record<string, unknown>;
-      const rawItems = Array.isArray(body.items) ? body.items : record.items;
+      const rawItems = Array.isArray(body.items) ? body.items.map((raw, index) => {
+        if (!raw || typeof raw !== "object") throw new ValidationError("Invalid capture item");
+        const item = raw as Record<string, unknown>;
+        const pending = item.operationId ? record.items.find((entry) => entry.operationId === item.operationId) : record.items[index];
+        if (!pending) throw new ValidationError("Capture changed. Reload it before confirming.");
+        for (const key of ["version", "source", "timezone"] as const) {
+          if (item[key] !== undefined && item[key] !== pending[key]) throw new ValidationError("Capture source/timezone cannot be changed. Dismiss it and parse a new capture instead.");
+        }
+        return { ...item, version: pending.version, source: pending.source, timezone: pending.timezone, operationId: pending.operationId };
+      }) : record.items;
       const parsedItems = parseQuickAddPayload({ items: rawItems });
-      if (parsedItems.some((item) => item.kind === "task") && !todoistConfigured(cfg)) {
+      if (parsedItems.some((item) => item.kind === "task" && item.source !== "board") && !todoistConfigured(cfg)) {
         return json(503, { error: QUICK_ADD_TODOIST_NOT_CONFIGURED });
       }
       const calendarId = typeof body.calendarId === "string" ? body.calendarId : undefined;
-      const { results, failures } = await commitQuickAddItems(cfg, calendar, rawItems, { calendarId });
+      const { results, failures } = await commitQuickAddItems(cfg, calendar, rawItems, { calendarId, board });
       if (failures.length === 0) {
         await store.remove(id);
       } else {

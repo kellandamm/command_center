@@ -23,6 +23,7 @@ import { dayKey } from "../src/store";
 import { slotInstant } from "../src/scheduler";
 import { CalendarWorkspace } from "../src/calendar/workspace";
 import { DONE } from "../src/board/types";
+import { BoardStore } from "../src/board/store";
 import { createTestCfAccessJwt, TEST_CF_AUD, TEST_CF_TEAM } from "./cf-access-jwt";
 import { listCompletedTasks, type TodoistCompletedTask, type TodoistTask } from "../src/todoist/client";
 const TOKEN = "t".repeat(32);
@@ -125,7 +126,7 @@ test("shutdown: aggregates stubbed Todoist, board done moves, and blocked cards"
     const integration = await openIntegrationStores(dir, cfg);
     const calendar = await CalendarWorkspace.open(cfg, undefined, { notes, board: integration.board });
     const now = new Date();
-    const day = dayKey(now, SHUTDOWN_TZ);
+    const day = dayKey(now, cfg.tz);
     const tomorrow = new Date(`${day}T12:00:00Z`);
     tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
     const tomorrowKey = tomorrow.toISOString().slice(0, 10);
@@ -149,7 +150,7 @@ test("shutdown: aggregates stubbed Todoist, board done moves, and blocked cards"
     });
 
     const completed: TodoistCompletedTask[] = [
-      { id: "c1", content: "Done late", completedAt: slotInstant(day, "23:30", SHUTDOWN_TZ).toISOString() },
+      { id: "c1", content: "Done late", completedAt: slotInstant(day, "23:30", cfg.tz).toISOString() },
     ];
     const open: TodoistTask[] = [
       task("t1", "Overdue", yesterdayKey),
@@ -189,6 +190,7 @@ test("shutdown: aggregates stubbed Todoist, board done moves, and blocked cards"
     assert.equal(review.tomorrowPreview.tasksDue.length, 1);
     assert.equal(listCalls, 1);
     integration.board.close();
+    integration.wins.close();
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -224,6 +226,7 @@ test("shutdown: Todoist completed failure does not block open tasks", async () =
     assert.equal(review.unfinished.todoist.today.length, 1);
     assert.equal(review.done.todoist.length, 0);
     integration.board.close();
+    integration.wins.close();
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -250,6 +253,7 @@ test("shutdown: Todoist open failure still returns completed tasks", async () =>
     assert.equal(review.done.todoist.length, 1);
     assert.equal(review.unfinished.todoist.today.length, 0);
     integration.board.close();
+    integration.wins.close();
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -293,6 +297,7 @@ test("shutdown: calendar planning failure is isolated", async () => {
     });
     assert.equal(review.errors.calendar, "Couldn't load calendar.");
     integration.board.close();
+    integration.wins.close();
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -318,6 +323,7 @@ test("shutdown: calendar snapshot failure is isolated", async () => {
     assert.equal(review.errors.calendar, "Couldn't load calendar.");
     assert.equal(review.tomorrowPreview.events.length, 0);
     integration.board.close();
+    integration.wins.close();
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -383,6 +389,7 @@ test("shutdown: reflection only when POST is called", async () => {
     assert.equal(reflection, "You closed the loop on the essentials.");
     assert.equal(llmCalls, 1);
     integration.board.close();
+    integration.wins.close();
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -407,6 +414,7 @@ test("shutdown API: GET canManage; reflection requires owner not admin token", a
       headers: authz,
       body: JSON.stringify({ review: (await adminGet.json()).review }),
     });
+
     assert.equal(adminReflect.status, 403);
   } finally {
     await locked.close();
@@ -417,7 +425,7 @@ test("shutdown API: GET canManage; reflection requires owner not admin token", a
     const ok = await fetch(`${ownerHarness.base}/api/briefing/shutdown`, { headers: { "x-ah": "1" } });
     assert.equal(ok.status, 200);
     const body = await ok.json();
-    assert.equal(body.review.zone, SHUTDOWN_TZ);
+    assert.equal(body.review.zone, "UTC");
     const reflect = await fetch(`${ownerHarness.base}/api/briefing/shutdown/reflection`, {
       method: "POST",
       headers: { "x-ah": "1", "content-type": "application/json" },
@@ -434,3 +442,63 @@ test("shutdown API: GET canManage; reflection requires owner not admin token", a
     await ownerHarness.close();
   }
 });
+
+test("shutdown native tasks: due/scheduled union, completion dedup, disjoint time totals and date-only tomorrow", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "cc-shutdown-native-"));
+      const board = BoardStore.open(dir);
+      try {
+        const cfg = loadConfig({ DATA_DIR: dir, ALLOW_INSECURE_NO_AUTH: "1", TZ: "Asia/Tokyo" });
+        const now = new Date(), day = dayKey(now, cfg.tz);
+        const tomorrowDate = new Date(day + "T12:00:00Z"); tomorrowDate.setUTCDate(tomorrowDate.getUTCDate() + 1);
+        const tomorrow = tomorrowDate.toISOString().slice(0, 10);
+        const notes = await NotesStore.open(dir);
+        const calendar = await CalendarWorkspace.open(cfg, undefined, { notes, board });
+        const native = await calendar.create({ kind: "native", name: "Plan" });
+        const due = board.create({ title: "Due and scheduled", dueDate: day });
+        const done = board.create({ title: "Done once", dueDate: day });
+        await board.move(done.id, DONE); await board.move(done.id, "Backlog"); await board.move(done.id, DONE);
+        const reopened = board.create({ title: "Reopened" });
+        await board.move(reopened.id, DONE); await board.move(reopened.id, "Backlog");
+        const tomorrowTask = board.create({ title: "Tomorrow", dueDate: tomorrow });
+        for (const hour of ["09", "11"]) await calendar.saveEvent({ calendarId: native.id, summary: "Task block", timezone: cfg.tz, allDay: false, localStart: `${day}T${hour}:00`, durationMinutes: 60, taskId: due.id, expectedTaskVersion: due.version });
+        await calendar.saveEvent({ calendarId: native.id, summary: "Meeting", timezone: cfg.tz, allDay: false, localStart: `${day}T15:00`, durationMinutes: 60 });
+        await calendar.saveEvent({ calendarId: native.id, summary: "Tomorrow date", timezone: cfg.tz, allDay: true, start: tomorrow, end: new Date(tomorrowDate.getTime() + 86_400_000).toISOString().slice(0, 10) });
+        const review = await buildShutdownReview({ cfg, board, calendar, now });
+        assert.equal(review.zone, cfg.tz);
+        assert.deepEqual(review.done.board.map((task) => task.cardId), [done.id]);
+        assert.equal(review.unfinished.blockedToday.length, 1);
+        assert.equal(review.unfinished.blockedToday[0]?.cardId, due.id);
+        assert.equal(review.unfinished.blockedToday[0]?.scheduled, true);
+        assert.equal(review.time.calendarHours, 1);
+        assert.equal(review.time.blockedTaskHours, 2);
+        assert.equal(review.tomorrowPreview.nativeTasksDue[0]?.cardId, tomorrowTask.id);
+        assert.ok(review.tomorrowPreview.events.some((event) => event.start === tomorrow && event.allDay));
+        const reflection = parseClientShutdownReview({ review }, cfg.tz);
+        assert.equal(reflection?.openCount, 1);
+        assert.equal(reflection?.tomorrowTasksDue, 1);
+      } finally { board.close(); await rm(dir, { recursive: true, force: true }); }
+    });
+
+    test("shutdown windows are exclusive local days across DST, including 23/25-hour all-day dates", async () => {
+      assert.equal((Date.parse(dayRangeIso("2026-03-08", "America/Los_Angeles").until) - Date.parse(dayRangeIso("2026-03-08", "America/Los_Angeles").since)) / 3_600_000, 23);
+      assert.equal((Date.parse(dayRangeIso("2026-11-01", "America/Los_Angeles").until) - Date.parse(dayRangeIso("2026-11-01", "America/Los_Angeles").since)) / 3_600_000, 25);
+      const dir = await mkdtemp(join(tmpdir(), "cc-shutdown-dst-")), board = BoardStore.open(dir);
+      try {
+        const cfg = loadConfig({ DATA_DIR: dir, ALLOW_INSECURE_NO_AUTH: "1", TZ: "America/Los_Angeles", TODOIST_API_TOKEN: "mock" });
+        const notes = await NotesStore.open(dir), calendar = await CalendarWorkspace.open(cfg, undefined, { notes, board });
+        const native = await calendar.create({ kind: "native", name: "Dates" });
+        await calendar.saveEvent({ calendarId: native.id, summary: "DST date", timezone: cfg.tz, allDay: true, start: "2026-11-01", end: "2026-11-02" });
+        const range = dayRangeIso("2026-11-01", cfg.tz);
+        const review = await buildShutdownReview({ cfg, board, calendar, now: new Date("2026-11-01T20:00:00Z"),
+          listCompleted: async (_token, since, until) => {
+            assert.deepEqual({ since, until }, range);
+            return [{ id: "included", content: "Start inclusive", completedAt: since }, { id: "excluded", content: "End exclusive", completedAt: until }];
+          },
+          fetchFn: async () => new Response(JSON.stringify({ results: [], next_cursor: null })),
+        });
+        assert.equal(review.time.calendarHours, 25);
+        assert.deepEqual(review.done.todoist.map((task) => task.id), ["included"]);
+        assert.equal(review.tomorrowPreview.events.length, 0);
+        assert.ok(parseClientShutdownReview({ review }, cfg.tz));
+      } finally { board.close(); await rm(dir, { recursive: true, force: true }); }
+    });

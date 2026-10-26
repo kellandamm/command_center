@@ -286,7 +286,7 @@ export class CalendarStore {
         if (end <= rangeStart) continue;
         result.push({
           uid: `${event.id}:${key}`, eventId: event.id, calendarId: event.calendarId, summary: event.summary,
-          start: at, end, allDay: event.allDay, location: event.location, description: event.description,
+          start: at, end, allDay: event.allDay, timezone: event.timezone, location: event.location, description: event.description,
           readOnly: false, version: event.version, recurrence: event.recurrence,
           url: event.noteId ? `/notes?note=${encodeURIComponent(event.noteId)}` : undefined,
         });

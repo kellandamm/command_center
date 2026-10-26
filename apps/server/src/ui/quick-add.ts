@@ -28,6 +28,12 @@ function mountQuickAdd(rootId,opts){
   var status=root.querySelector(".quick-add-status");
   var items=[];
   var previewOpen=false;
+  var saving=false;
+  function displayTime(value,tz){
+    if(!value||!/(Z|[+-]\\d{2}:\\d{2})$/.test(value))return value||"";
+    var p=Object.fromEntries(new Intl.DateTimeFormat("en-CA",{timeZone:tz,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(new Date(value)).map(function(p){return[p.type,p.value];}));
+    return p.year+"-"+p.month+"-"+p.day+"T"+p.hour+":"+p.minute;
+  }
   function setStatus(msg,isError){if(status){status.textContent=msg||"";status.hidden=!!previewOpen&&!isError;}}
   function wallParts(wall){
     var m=/^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2})$/.exec(wall||"");
@@ -60,19 +66,20 @@ function mountQuickAdd(rootId,opts){
     var list=document.createElement("ul");
     items.forEach(function(item,index){
       if(item.kind==="event"&&item.start&&item.end&&!item._durationMin){
-        var d=wallDeltaMin(item.start,item.end);if(d!=null&&d>0)item._durationMin=d;
+        var d=wallDeltaMin(displayTime(item.start,item._tz),displayTime(item.end,item._tz));if(d!=null&&d>0)item._durationMin=d;
       }
       var row=document.createElement("li");row.className="quick-add-item";
-      var kind=document.createElement("p");kind.className="quick-add-kind";kind.textContent=item.kind==="task"?"Task":"Event";
+      var kind=document.createElement("p");kind.className="quick-add-kind";kind.textContent=item.kind==="task"?(item.source==="board"?"Native Board task (date-only deadline)":"External Todoist task"+(!item.version?" — legacy preview":"")):"Calendar event";
       row.appendChild(kind);
       var titleLabel=document.createElement("label");titleLabel.textContent="Title";
-      var titleInput=document.createElement("input");titleInput.value=item.title||"";
+      var titleInput=document.createElement("input");titleInput.value=item.title||"";titleInput.disabled=saving;
       titleInput.oninput=function(){items[index].title=titleInput.value;};
       row.appendChild(titleLabel);row.appendChild(titleInput);
       var whenLabel=document.createElement("label");
-      whenLabel.textContent=item.kind==="task"?"Due (local "+item._tz+")":"Start (local "+item._tz+")";
+      whenLabel.textContent=item.kind==="task"?"Due (local "+item._tz+")":"Start (local "+item._tz+"; repeated wall times use earlier occurrence unless an explicit offset is kept)";
       var whenInput=document.createElement("input");
-      whenInput.value=item.kind==="task"?(item.due||""):(item.start||"");
+      whenInput.disabled=saving;
+      whenInput.value=displayTime(item.kind==="task"?item.due:item.start,item._tz);
       whenInput.placeholder="YYYY-MM-DD or YYYY-MM-DDTHH:mm";
       var endInput=null;
       whenInput.oninput=function(){
@@ -87,7 +94,7 @@ function mountQuickAdd(rootId,opts){
       row.appendChild(whenLabel);row.appendChild(whenInput);
       if(item.kind==="event"){
         var endLabel=document.createElement("label");endLabel.textContent="End (local)";
-        endInput=document.createElement("input");endInput.value=item.end||"";endInput.placeholder="YYYY-MM-DDTHH:mm";
+        endInput=document.createElement("input");endInput.disabled=saving;endInput.value=displayTime(item.end,item._tz);endInput.placeholder="YYYY-MM-DDTHH:mm";
         endInput.oninput=function(){
           items[index].end=endInput.value;
           var d=wallDeltaMin(items[index].start,items[index].end);
@@ -99,10 +106,13 @@ function mountQuickAdd(rootId,opts){
     });
     scroll.appendChild(list);preview.appendChild(scroll);
     var actions=document.createElement("div");actions.className="quick-add-actions";
-    var confirm=document.createElement("button");confirm.type="button";confirm.textContent="Confirm";
+    var confirm=document.createElement("button");confirm.type="button";confirm.textContent="Confirm";confirm.disabled=saving;
     var cancel=document.createElement("button");cancel.type="button";cancel.className="ghost";cancel.textContent="Cancel";
+    cancel.disabled=saving;
     cancel.onclick=function(){items=[];setStatus("");setPreviewOpen(false);if(opts)opts.voiceCaptureId=null;if(opts&&opts.onCancel)opts.onCancel();};
     confirm.onclick=function(){
+      if(saving)return;
+      saving=true;
       confirm.disabled=true;
       renderPreview("Saving…");
       var captureId=opts&&opts.voiceCaptureId;
@@ -110,23 +120,25 @@ function mountQuickAdd(rootId,opts){
         ?api("/api/voice-captures/"+encodeURIComponent(captureId)+"/confirm","POST",{items:items})
         :api("/api/quick-add/commit","POST",{items:items,calendarId:opts&&opts.calendarId||undefined});
       commit.then(function(data){
+        saving=false;
         var failed=new Set((data.failures||[]).map(function(f){return f.index;}));
         items=items.filter(function(_,i){return failed.has(i);});
         var done=!items.length;
         if(done&&captureId&&opts)opts.voiceCaptureId=null;
         if(data.results&&data.results.length&&opts&&opts.onCommitted)opts.onCommitted(data.results,opts.context||{},done);
         if(done&&opts&&opts.onVoiceCommitted)opts.onVoiceCommitted();
-        if(done){setPreviewOpen(false);setStatus((data.results&&data.results.length)?"Added.":"");if(input)input.value="";if(input)input.focus();}
-        else{renderPreview("Some items could not be saved. Fix and retry.");}
-      }).catch(function(err){renderPreview(err.message||"Could not save");}).finally(function(){confirm.disabled=false;});
+        if(done){setPreviewOpen(false);setStatus((data.results&&data.results.length)?"Added. ":"");(data.results||[]).forEach(function(r){var a=document.createElement("a");a.href=r.url;a.textContent=r.title+" ("+(r.source||"legacy external")+")";status.appendChild(a);status.appendChild(document.createTextNode(" "));});if(input)input.value="";if(input)input.focus();}
+        else{renderPreview("Some items could not be saved. "+(data.failures||[]).map(function(f){return f.title+": "+f.error;}).join(" ")+" Fix and retry.");}
+      }).catch(function(err){saving=false;renderPreview(err.message||"Could not save");});
     };
     actions.append(confirm,cancel);preview.appendChild(actions);
     if(status)status.hidden=true;
   }
   function parseText(text){
+    if(saving)return Promise.resolve();
     setStatus("Parsing…");
     return api("/api/quick-add/parse","POST",{text:text}).then(function(data){
-      items=(data.items||[]).map(function(item){item._tz="America/Chicago";return item;});
+      items=(data.items||[]).map(function(item){item._tz=item.timezone||"America/Chicago";return item;});
       setStatus("");
       renderPreview(items.length?"Review and confirm.":"Nothing to add.");
     }).catch(function(err){setStatus(err.message||"Parse failed",true);});
@@ -139,8 +151,9 @@ function mountQuickAdd(rootId,opts){
     parseText(text);
   });
   function openPreview(nextItems,hint,captureId){
+    if(saving){setStatus("Wait for the current save before opening another preview.",true);return;}
     if(opts&&captureId)opts.voiceCaptureId=captureId;
-    items=(nextItems||[]).map(function(item){item._tz="America/Chicago";return item;});
+    items=(nextItems||[]).map(function(item){item._tz=item.timezone||"America/Chicago";return item;});
     setStatus("");
     renderPreview(hint||"Review and confirm.");
   }

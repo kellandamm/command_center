@@ -69,7 +69,7 @@ async function openHarness(
     await closeIntegrationServer(server, integration);
     await rm(dir, { recursive: true, force: true });
   };
-  return { base, headers, cfg, calendar, notes, close };
+  return { base, headers, cfg, calendar, notes, board: integration.board, focusSessions: integration.focusSessions, close };
 }
 
 test("quick-add normalize: accepts tasks and events with Chicago-local times", () => {
@@ -87,7 +87,7 @@ test("quick-add normalize: accepts tasks and events with Chicago-local times", (
 
 test("quick-add normalize: zone-less wall times map to Chicago under process TZ=UTC", () => {
   const cwd = join(fileURLToPath(new URL(".", import.meta.url)), "..");
-  const run = spawnSync("pnpm", ["exec", "tsx", "test/quick-add-tz-utc.child.ts"], {
+  const run = spawnSync(process.execPath, [fileURLToPath(new URL("../node_modules/tsx/dist/cli.mjs", import.meta.url)), "test/quick-add-tz-utc.child.ts"], {
     cwd,
     env: { ...process.env, TZ: "UTC" },
     encoding: "utf8",
@@ -98,10 +98,12 @@ test("quick-add normalize: zone-less wall times map to Chicago under process TZ=
 test("quick-add normalize: rejects malformed payloads", () => {
   assert.throws(() => parseQuickAddPayload({ items: [{ kind: "task", title: "" }] }), /title/i);
   assert.throws(() => parseQuickAddPayload({ items: [{ kind: "event", title: "X", due: "2026-10-26" }] }), /start\/end, not due/i);
+  assert.throws(() => normalizeQuickAddItem({ kind: "event", title: "Gap", start: "2026-03-08T02:30:00" }), /does not exist/i);
+  assert.throws(() => normalizeQuickAddItem({ kind: "event", title: "Invalid", start: "2026-10-26T12:00garbage" }), /Invalid date or time/i);
   assert.throws(() => extractJsonObject("not json at all"), /JSON/i);
 });
 
-test("quick-add parse: uses stubbed LLM and America/Chicago context", async () => {
+test("quick-add parse: uses configured UTC context and native Board identity", async () => {
   const cfg = loadConfig({
     DATA_DIR: "/tmp/qa",
     LLM_BASE_URL: "https://llm.example/v1",
@@ -116,12 +118,14 @@ test("quick-add parse: uses stubbed LLM and America/Chicago context", async () =
     complete: async (_llm, messages) => {
       seenUser = messages.find((m) => m.role === "user")?.content ?? "";
       return JSON.stringify({
-        items: [{ kind: "task", title: "Call mom", due: "2026-10-26T20:00:00.000Z" }],
+        items: [{ kind: "task", title: "Call mom", due: "2026-10-26" }],
       });
     },
   });
   assert.equal(items[0]?.title, "Call mom");
-  assert.match(seenUser, /America\/Chicago/);
+  assert.match(seenUser, /UTC/);
+  assert.equal(items[0]?.source, "board");
+  assert.equal(items[0]?.timezone, "UTC");
   assert.match(seenUser, /2026-10-25T19:00:00.000Z/);
 });
 
@@ -141,6 +145,7 @@ test("quick-add parse route never writes to Todoist or calendar", async () => {
   };
   try {
     const beforeEvents = h.calendar.store.events().length;
+    const beforeTasks = h.board.list().length;
     const res = await fetch(`${h.base}/api/quick-add/parse`, {
       method: "POST",
       headers: h.headers,
@@ -149,6 +154,7 @@ test("quick-add parse route never writes to Todoist or calendar", async () => {
     assert.equal(res.status, 200);
     assert.equal(todoistPosts, 0);
     assert.equal(h.calendar.store.events().length, beforeEvents);
+    assert.equal(h.board.list().length, beforeTasks);
   } finally {
     globalThis.fetch = originalFetch;
     await h.close();
@@ -299,4 +305,102 @@ test("appendMarkerAfterLineScript matches the TypeScript implementation", () => 
 
 test("commitItemError: passes through ValidationError messages", () => {
   assert.equal(commitItemError(new ValidationError("Choose a connected Google calendar")), "Choose a connected Google calendar");
+});
+
+test("native capture: Board identity, owner/CSRF boundaries, Focus source and retry receipts", async () => {
+  const h = await openHarness({ TODOIST_API_TOKEN: "", TZ: "Asia/Tokyo" }, async () => ({ ok: true, who: "owner@example.com", owner: true }));
+  try {
+    const item = { version: 2, kind: "task", source: "board", timezone: "Asia/Tokyo", operationId: "native-task-operation", title: "Native capture", due: "2026-10-27" };
+    const post = (items: unknown[], headers: Record<string, string> = h.headers) => fetch(`${h.base}/api/quick-add/commit`, { method: "POST", headers, body: JSON.stringify({ items }) });
+    const csrf = await post([item], { ...h.headers, origin: "https://untrusted.example" });
+    assert.equal(csrf.status, 403);
+    assert.equal(h.board.list().length, 0);
+    const first = await post([item]);
+    assert.equal(first.status, 200);
+    const body = await first.json() as { results: Array<{ id: string; url: string; source: string }> };
+    const result = body.results[0]!;
+    assert.equal(result.source, "board");
+    assert.equal(result.url, `/calendar/event?task=${result.id}`);
+    assert.equal(h.board.get(result.id)?.dueDate, item.due);
+    assert.ok(h.calendar.planning().cards.some((card) => card.id === result.id));
+    assert.equal((await fetch(h.base + result.url, { headers: h.headers })).status, 200);
+    const repeat = await (await post([item])).json();
+    assert.equal(repeat.results[0].id, result.id);
+    assert.equal(h.board.list().length, 1);
+    const picker = await (await fetch(h.base + "/api/dashboard/focus/tasks", { headers: h.headers })).json();
+    assert.ok(picker.tasks.some((task: { id: string; source: string }) => task.id === result.id && task.source === "board"));
+    const focus = await fetch(h.base + "/api/focus/sessions", { method: "POST", headers: h.headers, body: JSON.stringify({ startedAt: "2026-10-24T15:00:00.000Z", endedAt: "2026-10-24T15:25:00.000Z", taskId: result.id, taskSource: "board" }) });
+    assert.equal(focus.status, 201);
+    assert.equal(h.focusSessions.list()[0]?.taskSource, "board");
+    assert.equal(h.board.get(result.id)?.column, "Backlog");
+    assert.equal(h.calendar.store.events().length, 0);
+    const heat = await (await fetch(h.base + "/api/dashboard/heatmap", { headers: h.headers })).json() as { days: Array<{ date: string; count: number }> };
+    assert.equal(heat.days.find((day) => day.date === "2026-10-25")?.count, 1);
+    assert.equal(heat.days.find((day) => day.date === "2026-10-24")?.count, 0);
+  } finally { await h.close(); }
+});
+
+test("native partial retries reuse saved tasks and event instants across workspace TZ changes", async () => {
+  const h = await openHarness({ TZ: "UTC" });
+  try {
+    const task = { version: 2, kind: "task", source: "board", timezone: "America/Los_Angeles", operationId: "partial-native-task", title: "Keep task" };
+    const event = { version: 2, kind: "event", timezone: "America/Los_Angeles", operationId: "partial-native-event", title: "Repeated hour", start: "2026-11-01T01:30:00-08:00", durationMinutes: 30 };
+    const first = await commitQuickAddItems(h.cfg, h.calendar, [task, event], { board: h.board });
+    assert.equal(first.results.length, 1);
+    assert.equal(first.failures[0]?.index, 1);
+    await h.calendar.create({ kind: "native", name: "Local" });
+    const retry = await commitQuickAddItems(h.cfg, h.calendar, [task, event], { board: h.board });
+    assert.equal(retry.results.length, 2);
+    assert.equal(h.board.list().length, 1);
+    assert.equal(h.calendar.store.events()[0]?.start, "2026-11-01T09:30:00.000Z");
+    assert.equal(h.calendar.store.events()[0]?.end, "2026-11-01T10:00:00.000Z");
+    assert.match(retry.results[1]!.url, /^\/calendar\/event\?event=/);
+    await commitQuickAddItems(h.cfg, h.calendar, [task, event], { board: h.board });
+    assert.equal(h.calendar.store.events().length, 1);
+  } finally { await h.close(); }
+});
+
+test("configured natural-language event timezone is carried through prompt, preview and commit", async () => {
+  for (const timezone of ["UTC", "Asia/Tokyo", "America/Los_Angeles"]) {
+    const h = await openHarness({ TZ: timezone });
+    try {
+      let prompt = "";
+      const items = await parseQuickAddText(h.cfg, "meeting tomorrow", { complete: async (_cfg, messages) => {
+        prompt = messages.map((m) => m.content).join(" ");
+        return JSON.stringify({ items: [{ kind: "event", title: "Meeting", start: "2026-10-27T09:00", durationMinutes: 60 }] });
+      } });
+      assert.ok(prompt.includes(timezone));
+      assert.equal(items[0]?.timezone, timezone);
+      await h.calendar.create({ kind: "native", name: "Local" });
+      await commitQuickAddItems(h.cfg, h.calendar, items);
+      assert.equal(h.calendar.store.events()[0]?.start, localMinuteToIso("2026-10-27T09:00", timezone));
+    } finally { await h.close(); }
+  }
+  assert.throws(() => normalizeQuickAddItem({ version: 2, operationId: "dst-gap-operation", timezone: "America/Los_Angeles", kind: "event", title: "Gap", start: "2026-03-08T02:30", durationMinutes: 30 }), /does not exist/);
+  assert.throws(() => normalizeQuickAddItem({ kind: "task", title: "Invalid", due: "2026-02-30" }), /Invalid due/);
+  assert.equal(localMinuteToIso("2026-11-01T01:30", "America/Los_Angeles"), "2026-11-01T08:30:00.000Z");
+});
+
+test("explicit external Todoist operations keep their source/timezone and uncertain writes are not retried", async () => {
+  const h = await openHarness({ TZ: "UTC" });
+  try {
+    const item = { version: 2, source: "todoist", timezone: "Asia/Tokyo", operationId: "external-explicit-operation", kind: "task", title: "External", due: "2026-10-27T09:00" };
+    let calls = 0, payload = "";
+    const fetchFn: typeof fetch = async (_input, init) => {
+      calls++; payload = String(init?.body);
+      return new Response(JSON.stringify({ id: "external-1", content: "External", description: "", priority: 1, due: null }));
+    };
+    const result = await commitQuickAddItems(h.cfg, h.calendar, [item], { fetchFn, board: h.board });
+    assert.equal(result.results[0]?.source, "todoist");
+    assert.match(payload, /2026-10-27T00:00:00.000Z/);
+    await commitQuickAddItems(h.cfg, h.calendar, [item], { fetchFn });
+    assert.equal(calls, 1);
+    assert.equal(h.board.list().length, 0);
+    const uncertain = { ...item, operationId: "external-uncertain-operation" };
+    let uncertainCalls = 0;
+    const failure: typeof fetch = async () => { uncertainCalls++; throw new Error("Connection lost after write"); };
+    await assert.rejects(commitQuickAddItems(h.cfg, h.calendar, [uncertain], { fetchFn: failure }));
+    await assert.rejects(commitQuickAddItems(h.cfg, h.calendar, [uncertain], { fetchFn: failure }), /uncertain outcome/);
+    assert.equal(uncertainCalls, 1);
+  } finally { await h.close(); }
 });

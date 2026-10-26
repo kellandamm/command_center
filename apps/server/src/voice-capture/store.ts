@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { z } from "zod";
 import { ValidationError } from "../settings";
@@ -10,6 +10,10 @@ import { VOICE_CAPTURE_TTL_MS } from "./limits";
 export const VOICE_CAPTURE_MAX_RECORDS = 200;
 
 const itemSchema = z.object({
+  version: z.literal(2).optional(),
+  source: z.enum(["board", "todoist"]).optional(),
+  timezone: z.string().optional(),
+  operationId: z.string().optional(),
   kind: z.enum(["task", "event"]),
   title: z.string(),
   due: z.string().optional(),
@@ -42,6 +46,10 @@ export class VoiceCaptureInboxFullError extends Error {
 
 function mapItems(items: QuickAddItem[]): VoiceCaptureRecord["items"] {
   return items.map((item) => ({
+    version: item.version,
+    source: item.source,
+    timezone: item.timezone,
+    operationId: item.operationId ?? randomUUID(),
     kind: item.kind,
     title: item.title,
     due: item.due,
@@ -54,6 +62,7 @@ function mapItems(items: QuickAddItem[]): VoiceCaptureRecord["items"] {
 
 function normalizeOnLoad(captures: VoiceCaptureRecord[], now = Date.now()): VoiceCaptureRecord[] {
   const active = captures.filter((row) => Date.parse(row.expiresAt) > now);
+  for (const row of active) row.items = mapItems(row.items);
   active.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return active.slice(0, VOICE_CAPTURE_MAX_RECORDS);
 }

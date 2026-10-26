@@ -77,7 +77,7 @@ export interface Config {
   ntfyTopic: string | null;
   ntfyToken: string | null;
   ntfyReminderMinutes: number;
-  /** Local quiet hours window in America/Chicago, e.g. `22-7`. */
+  /** Local quiet hours window in workspace TZ, e.g. `22-7`. */
   ntfyQuietHours: string | null;
   /** Optional daily Attention coach nudge (`NTFY_COACH=1`). */
   ntfyCoach: boolean;

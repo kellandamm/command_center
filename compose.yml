@@ -6,6 +6,7 @@ services:
     init: true
     environment:
       TZ: ${TZ:-UTC}
+      NTFY_QUIET_HOURS: ${NTFY_QUIET_HOURS:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-}

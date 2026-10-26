@@ -73,7 +73,7 @@ test("focus: owner-only POST logs sessions and heatmap sees them", async () => {
 
     const tasks = await fetch(`${base}/api/dashboard/focus/tasks`, { headers: { authorization: `Bearer ${TOKEN}` } });
     const taskBody = await tasks.json();
-    assert.equal(taskBody.configured, false);
+    assert.equal(taskBody.configured, true);
   } finally {
     await closeIntegrationServer(server, integration);
     await rm(dir, { recursive: true, force: true });

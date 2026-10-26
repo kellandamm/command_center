@@ -6,6 +6,7 @@ export interface CalendarEvent {
   start: Date;
   end: Date | null;
   allDay: boolean;
+  timezone?: string;
   location: string | null;
   description?: string | null;
   url?: string | null;

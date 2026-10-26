@@ -967,7 +967,7 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
       if(!results.length||!ctx||!ctx.lineText)return;
       var body=$("knowledge-body");
       results.forEach(function(r){
-        var marker="["+(r.kind==="task"?"task":"event")+"]("+r.url+")";
+        var marker="["+(r.kind==="task"?(r.source==="board"?"native task":"Todoist task"):"event")+"]("+r.url+")";
         body.value=appendMarkerAfterLine(body.value,ctx.lineText,marker);
       });
       setMode("source");changed();saveNote().catch(showError);

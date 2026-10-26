@@ -31,7 +31,7 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 | `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` | Cloudflare Access JWT on every request (`Cf-Access-Jwt-Assertion`). Set both or neither. `CF_ACCESS_AUD` may be a comma-separated list when multiple Access applications protect the same hostname. |
 | `ADMIN_TOKEN` | ≥ 24 chars. `Authorization: Bearer …`, or `/?token=…` once (HttpOnly cookie; needs HTTPS). |
 | `ALLOW_INSECURE_NO_AUTH=1` | Localhost only. Without any auth setting the server refuses to start. |
-| `TZ` | Calendar dates, briefing day boundary, and settings times use this zone. |
+| `TZ` | Workspace IANA timezone (default `UTC`). Calendar, new natural-language/voice previews, Focus day grouping, Shutdown day windows, and ntfy quiet hours/daily nudges use this zone, not the browser zone. |
 | `HOST_PORT` | Compose publish port on loopback. |
 | `DATA_DIR` | Default `/data` (Docker volume). |
 | `DOCKER_SOCKET` | Optional. Unix path to the Docker Engine API socket (e.g. `/var/run/docker.sock`). When set and readable, the **Server health** panel lists containers (read-only). When unset, host CPU/memory/disk still work; the container section explains that Docker is not configured. |
@@ -181,6 +181,16 @@ Back up the volume to keep Board, Wins, briefings, and personal knowledge. The N
 ### Daily Briefing and removed integrations
 
 Settings controls the daily briefing time (default `06:00`, using `TZ`). Daily Briefing contains weather, calendar, and a keyword digest. Todoist, GitHub activity, and Agent board/wins sections are no longer generated or displayed in briefings; the separate Agent workflows remain unchanged.
+
+### Native tasks, capture, and timezone compatibility
+
+New natural-language quick add, Notes selection capture, and voice captures create **native Board cards** in Backlog. Calendar planning, Notes/voice confirmation links, and Focus use that same Board ID; no second task list is created. Board deadlines are date-only: use a calendar event for a specific time. Preview is write-free and shows the interpreted IANA timezone and native/external source before confirmation. Focus records time only; it neither completes a task nor reserves calendar time nor queues agent work. Shutdown counts each currently completed native card once and unions due/overdue and scheduled native tasks by Board ID. Native task blocks are reported separately from other calendar events, not added into both time totals.
+
+Todoist remains an optional **external** integration (panel, MCP actions, explicitly Todoist quick-add payloads, Focus picker, Shutdown). Nothing migrates or deletes existing external tasks or Notes links. Unversioned saved quick-add/voice items retain their original **Todoist / America/Chicago** interpretation; new version-2 items carry explicit source, timezone, and operation ID. Persisted explicit timezone/UTC values are not reinterpreted when `TZ` changes. Existing Focus records/local timers without a source remain Todoist records. Pending voice records receive retry IDs without changing their source or times.
+
+Versioned confirmations record an intent and successful result in `quick-add-receipts.json` so retrying the same item reuses its result, including partial-success retries. Back up this file with the other data; do not remove it while pending previews exist. This is a receipt journal, not a task store. A process/disk failure or provider error can leave an uncertain outcome: retries of that operation are refused rather than risking a duplicate. Inspect Board/calendar or the external provider before parsing a new preview. There is no distributed exactly-once guarantee.
+
+`NTFY_QUIET_HOURS` now follows workspace `TZ` rather than the former unconditional Chicago zone. For installations intentionally using Chicago, set `TZ=America/Chicago`; for other workspaces, review the configured local quiet window on upgrade. Digest bypass and reminder dedup keys are unchanged. Date-only deadlines and exclusive all-day ends stay dates; UTC timestamps stay instants. Nonexistent DST wall times are rejected; an offset-free repeated hour selects the earlier occurrence, while an explicit offset preserves its instant.
 
 In **Settings → Briefing topics**, enter one keyword or phrase per line (up to 10, each 120 characters). Topics are shared server settings, saved in `settings.json`. Clear the field to disable keyword lookups. Set `BRAVE_SEARCH_API_KEY` and the three `LLM_*` variables in the deployment environment, then recreate the container (for Compose, `docker compose up -d`). Settings reports whether those providers are configured without exposing keys.
 
