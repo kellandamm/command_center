@@ -84,16 +84,35 @@ test("ntfy: env topic wins over vault topic", () => {
   assert.equal(resolveNtfyConfig(deployment, vault).topic, "from-env");
 });
 
-test("quiet hours: America/Chicago regardless of server TZ", () => {
+test("quiet hours: configured workspace zone, not unconditional Chicago", () => {
   const window = parseQuietHours("22-7")!;
   const cfg = loadConfig({ ADMIN_TOKEN: TOKEN, NTFY_TOPIC: "t", NTFY_QUIET_HOURS: "22-7", TZ: "UTC" });
   const resolved = resolveNtfyConfig(cfg, cfg);
   const eveningChicago = new Date("2026-10-26T02:30:00.000Z"); // 21:30 CDT Oct 25
-  assert.equal(inQuietHours(eveningChicago, window), false);
-  assert.equal(shouldSendDuringQuietHours(resolved, eveningChicago), true);
+  assert.equal(inQuietHours(eveningChicago, window, "America/Chicago"), false);
+  assert.equal(shouldSendDuringQuietHours(resolved, eveningChicago), false);
   const morningQuiet = new Date("2026-11-01T12:30:00.000Z"); // 06:30 CST Nov 1
-  assert.equal(inQuietHours(morningQuiet, window), true);
-  assert.equal(shouldSendDuringQuietHours(resolved, morningQuiet), false);
+  assert.equal(inQuietHours(morningQuiet, window, "America/Chicago"), true);
+  assert.equal(shouldSendDuringQuietHours(resolved, morningQuiet), true);
+});
+
+test("ntfy coach dedup follows workspace days; quiet hours and DST are checked with mocked outbound", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-ntfy-workspace-"));
+  const cfg = loadConfig({ DATA_DIR: dir, ADMIN_TOKEN: TOKEN, TZ: "Asia/Tokyo", NTFY_TOPIC: "mock", NTFY_COACH: "1", NTFY_QUIET_HOURS: "22-7" });
+  const integration = await openIntegrationStores(dir, cfg);
+  try {
+    const notes = await NotesStore.open(dir), sent = await NtfySentSet.open(dir);
+    integration.board.create({ title: "Due native task", dueDate: "2026-10-26" });
+    let calls = 0; stubTransport(() => { calls++; });
+    const deps = { deployment: cfg, effective: cfg, ...integration, notes, sent, now: new Date("2026-10-26T12:00:00Z") };
+    await runNtfyTick(deps); await runNtfyTick(deps);
+    assert.equal(calls, 1);
+    await runNtfyTick({ ...deps, now: new Date("2026-10-26T15:01:00Z") });
+    assert.equal(calls, 1, "new local day, but quiet hours must suppress it");
+    await runNtfyTick({ ...deps, now: new Date("2026-10-26T22:00:00Z") });
+    assert.equal(calls, 2, "new Tokyo day sends once at quiet-hours end, even on same UTC day");
+    for (const instant of ["2026-11-01T08:30:00Z", "2026-11-01T09:30:00Z"]) assert.equal(inQuietHours(new Date(instant), parseQuietHours("1-2")!, "America/Los_Angeles"), true);
+  } finally { integration.board.close(); integration.wins.close(); await rm(dir, { recursive: true, force: true }); }
 });
 
 test("briefing digest ignores quiet hours", async () => {

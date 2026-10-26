@@ -1,5 +1,5 @@
 import { ValidationError } from "../settings";
-import { calendarLocalInstant, zonedParts } from "../calendar/store";
+import { calendarLocalInstant, validDay, zonedParts } from "../calendar/store";
 
 export const QUICK_ADD_TZ = "America/Chicago";
 export const MAX_QUICK_ADD_ITEMS = 10;
@@ -9,6 +9,10 @@ const MAX_QUICK_ADD_NOTES = 2_000;
 export type QuickAddKind = "task" | "event";
 
 export interface QuickAddItem {
+  version?: 2;
+  source?: "board" | "todoist";
+  timezone?: string;
+  operationId?: string;
   kind: QuickAddKind;
   title: string;
   due?: string;
@@ -23,6 +27,7 @@ export interface QuickAddCommitItem extends QuickAddItem {
 }
 
 export interface QuickAddCommitResult {
+  source?: "board" | "todoist" | "native" | "google";
   kind: QuickAddKind;
   title: string;
   url: string;
@@ -68,7 +73,7 @@ function optionalNotes(value: unknown): string | undefined {
 
 function parseInstant(value: string): Date {
   const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) throw new ValidationError("Invalid date or time");
+  if (!validDay(value.slice(0, 10)) || !Number.isFinite(parsed.getTime())) throw new ValidationError("Invalid date or time");
   return parsed;
 }
 
@@ -83,18 +88,22 @@ export function localMinuteToIso(local: string, tz: string): string {
   return instant.toISOString();
 }
 
-/** Normalize a date/time string to Chicago wall (YYYY-MM-DD or YYYY-MM-DDTHH:mm) or UTC ISO for offset/Z inputs. */
+/** Unversioned previews retain the original Chicago interpretation. Offset inputs retain their instant. */
 export function normalizeQuickAddTime(value: string, tz: string = QUICK_ADD_TZ): string {
   const trimmed = value.trim();
   if (DATE_ONLY.test(trimmed)) {
-    if (!Number.isFinite(Date.parse(`${trimmed}T12:00:00Z`))) throw new ValidationError("Invalid due date");
+    if (!validDay(trimmed)) throw new ValidationError("Invalid due date");
     return trimmed;
   }
-  if (LOCAL_MINUTE.test(trimmed)) return trimmed;
-  if (HAS_TZ.test(trimmed)) return toLocalMinute(parseInstant(trimmed), tz);
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(trimmed)) {
+  if (LOCAL_MINUTE.test(trimmed)) {
+    localMinuteToIso(trimmed, tz);
+    return trimmed;
+  }
+  if (HAS_TZ.test(trimmed)) return parseInstant(trimmed).toISOString();
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:[0-5]\d(?:\.\d+)?$/.test(trimmed)) {
     const local = trimmed.slice(0, 16);
-    if (LOCAL_MINUTE.test(local)) return local;
+    localMinuteToIso(local, tz);
+    return local;
   }
   throw new ValidationError("Invalid date or time");
 }
@@ -105,13 +114,13 @@ function instantMs(value: string, tz: string): number {
   return Date.parse(value);
 }
 
-function normalizeDue(value: unknown): string | undefined {
+function normalizeDue(value: unknown, tz: string): string | undefined {
   if (value === undefined || value === null || value === "") return undefined;
   if (typeof value !== "string") throw new ValidationError("Due must be an ISO date or datetime");
-  return normalizeQuickAddTime(value, QUICK_ADD_TZ);
+  return normalizeQuickAddTime(value, tz);
 }
 
-function normalizeEventTimes(body: Record<string, unknown>): { start?: string; end?: string; durationMinutes?: number } {
+function normalizeEventTimes(body: Record<string, unknown>, tz: string): { start?: string; end?: string; durationMinutes?: number } {
   let start = body.start;
   let end = body.end;
   let durationMinutes = body.durationMinutes;
@@ -122,15 +131,15 @@ function normalizeEventTimes(body: Record<string, unknown>): { start?: string; e
   } else {
     durationMinutes = undefined;
   }
-  const normalizedStart = start === undefined || start === null || start === "" ? undefined : normalizeDue(String(start));
-  let normalizedEnd = end === undefined || end === null || end === "" ? undefined : normalizeDue(String(end));
+  const normalizedStart = start === undefined || start === null || start === "" ? undefined : normalizeDue(String(start), tz);
+  let normalizedEnd = end === undefined || end === null || end === "" ? undefined : normalizeDue(String(end), tz);
   if (normalizedStart && durationMinutes && !normalizedEnd) {
-    const baseMs = instantMs(normalizedStart, QUICK_ADD_TZ);
-    normalizedEnd = toLocalMinute(new Date(baseMs + Number(durationMinutes) * 60_000), QUICK_ADD_TZ);
+    const baseMs = instantMs(normalizedStart, tz);
+    normalizedEnd = new Date(baseMs + Number(durationMinutes) * 60_000).toISOString();
   }
   if (normalizedStart && normalizedEnd) {
-    const from = instantMs(normalizedStart, QUICK_ADD_TZ);
-    const to = instantMs(normalizedEnd, QUICK_ADD_TZ);
+    const from = instantMs(normalizedStart, tz);
+    const to = instantMs(normalizedEnd, tz);
     if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) throw new ValidationError("Event end must follow start");
   }
   return {
@@ -144,18 +153,38 @@ export function normalizeQuickAddItem(raw: unknown): QuickAddItem {
   const body = object(raw);
   const kind = body.kind;
   if (kind !== "task" && kind !== "event") throw new ValidationError("Item kind must be task or event");
+  if (body.version !== undefined && body.version !== 2) throw new ValidationError("Unsupported quick-add version");
+  if (body.source !== undefined && body.source !== "board" && body.source !== "todoist") throw new ValidationError("Unknown task source");
+  if (body.source === "board" && body.version !== 2) throw new ValidationError("Native tasks require a version 2 preview");
+  if (body.version === 2 && (typeof body.timezone !== "string" || (kind === "task" && !body.source))) throw new ValidationError("Version 2 previews require timezone and task source");
+  const timezone = body.timezone === undefined ? QUICK_ADD_TZ : body.timezone;
+  if (typeof timezone !== "string" || /^[+-]/.test(timezone)) throw new ValidationError("Timezone must be a valid IANA zone");
+  try { new Intl.DateTimeFormat("en-US", { timeZone: timezone }); }
+  catch { throw new ValidationError("Timezone must be a valid IANA zone"); }
+  if (body.operationId !== undefined && (typeof body.operationId !== "string" || !/^[a-zA-Z0-9-]{8,100}$/.test(body.operationId))) throw new ValidationError("Invalid quick-add operation id");
+  if (body.version === 2 && !body.operationId) throw new ValidationError("Version 2 previews require an operation id");
+  const metadata = {
+    ...(body.version === 2 ? { version: 2 as const } : {}),
+    ...(body.source ? { source: body.source as "board" | "todoist" } : {}),
+    ...(body.timezone !== undefined ? { timezone } : {}),
+    ...(body.operationId ? { operationId: String(body.operationId) } : {}),
+  };
   const title = titleText(body.title);
   const notes = optionalNotes(body.notes);
   if (kind === "task") {
-    const due = normalizeDue(body.due);
+    const due = normalizeDue(body.due, timezone);
+    if (body.source === "board" && due && !DATE_ONLY.test(due)) throw new ValidationError("Native Board deadlines are date-only. Use a calendar event for a specific time.");
+    if (body.source === "board" && title.length > 200) throw new ValidationError("Board task titles must be at most 200 characters");
     if (body.start !== undefined || body.end !== undefined || body.durationMinutes !== undefined) {
       throw new ValidationError("Tasks cannot include event times");
     }
-    return { kind, title, due, notes };
+    return { ...metadata, kind, title, due, notes };
   }
-  const times = normalizeEventTimes(body);
+  const times = normalizeEventTimes(body, timezone);
+  if (body.version === 2 && !times.start) throw new ValidationError("Events need a start date or time before confirmation");
+  if (body.version === 2 && times.start && DATE_ONLY.test(times.start) && (times.durationMinutes || (times.end && !DATE_ONLY.test(times.end)))) throw new ValidationError("All-day events use date-only exclusive start/end dates, not a timed duration");
   if (body.due !== undefined && body.due !== null && body.due !== "") throw new ValidationError("Events use start/end, not due");
-  return { kind, title, ...times, notes };
+  return { ...metadata, kind, title, ...times, notes };
 }
 
 export function parseQuickAddPayload(value: unknown): QuickAddItem[] {
@@ -181,10 +210,10 @@ export function extractJsonObject(text: string): unknown {
   }
 }
 
-export function taskDueForTodoist(due?: string): { dueDate?: string; dueDatetime?: string } {
+export function taskDueForTodoist(due?: string, tz: string = QUICK_ADD_TZ): { dueDate?: string; dueDatetime?: string } {
   if (!due) return {};
   if (DATE_ONLY.test(due)) return { dueDate: due };
-  if (LOCAL_MINUTE.test(due)) return { dueDatetime: localMinuteToIso(due, QUICK_ADD_TZ) };
+  if (LOCAL_MINUTE.test(due)) return { dueDatetime: localMinuteToIso(due, tz) };
   return { dueDatetime: due };
 }
 
@@ -232,6 +261,12 @@ export function eventPayloadFromItem(item: QuickAddItem, calendarId: string, tim
     return base;
   }
   base.allDay = false;
+  if ((item.start && HAS_TZ.test(item.start)) || (item.end && HAS_TZ.test(item.end))) {
+    base.start = item.start && HAS_TZ.test(item.start) ? parseInstant(item.start).toISOString() : localMinuteToIso(walls.start, timezone);
+    base.end = item.end && HAS_TZ.test(item.end) ? parseInstant(item.end).toISOString() : walls.end ? localMinuteToIso(walls.end, timezone) : undefined;
+    if (!base.end) throw new ValidationError("Timed events need an end time or duration");
+    return base;
+  }
   const startLocal = walls.start;
   let endLocal = walls.end;
   if (!endLocal) throw new ValidationError("Timed events need an end time or duration");
@@ -241,7 +276,5 @@ export function eventPayloadFromItem(item: QuickAddItem, calendarId: string, tim
 }
 
 export function previewFieldsForItem(item: QuickAddItem): QuickAddItem {
-  const walls = wallTimesForItem(item, QUICK_ADD_TZ);
-  if (item.kind === "task") return { ...item, due: walls.due ?? item.due };
-  return { ...item, start: walls.start ?? item.start, end: walls.end ?? item.end };
+  return { ...item };
 }

@@ -1,11 +1,12 @@
 import type { BoardStore } from "../board/store";
 import { DONE } from "../board/types";
 import type { CalendarWorkspace } from "../calendar/workspace";
+import { calendarLocalInstant, validDay } from "../calendar/store";
+import { ValidationError } from "../settings";
 import type { Config } from "../config";
 import { llmConfig, todoistConfigured } from "../config";
 import { dayKeyFromIso } from "../heatmap/counts";
 import { chatCompletion, type FetchLike } from "../llm/provider";
-import { slotInstant } from "../scheduler";
 import { dayKey } from "../store";
 import {
   listCompletedTasks,
@@ -24,7 +25,7 @@ const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export interface ShutdownReflectionSource {
   day: string;
-  zone: typeof SHUTDOWN_TZ;
+  zone: string;
   doneTodoist: number;
   doneBoard: number;
   openCount: number;
@@ -42,7 +43,7 @@ export type CompletedTasksFetcher = (
 ) => Promise<TodoistCompletedTask[]>;
 
 export interface ShutdownReview {
-  zone: typeof SHUTDOWN_TZ;
+  zone: string;
   day: string;
   tomorrow: string;
   generatedAt: string;
@@ -53,12 +54,13 @@ export interface ShutdownReview {
   };
   unfinished: {
     todoist: { overdue: TodoistTask[]; today: TodoistTask[] };
-    blockedToday: Array<{ title: string }>;
+    blockedToday: Array<{ cardId: string; title: string; dueDate: string | null; scheduled: boolean }>;
   };
   time: { calendarHours: number; blockedTaskHours: number };
   tomorrowPreview: {
     events: Array<{ summary: string; start: string; allDay: boolean }>;
     tasksDue: TodoistTask[];
+    nativeTasksDue: Array<{ cardId: string; title: string; dueDate: string | null }>;
   };
   llmEnabled: boolean;
   errors: {
@@ -75,9 +77,11 @@ function nextDayKey(day: string): string {
 }
 
 export function dayRangeIso(day: string, tz: string): { since: string; until: string } {
-  const since = slotInstant(day, "00:00", tz).toISOString();
-  const until = slotInstant(nextDayKey(day), "00:00", tz).toISOString();
-  return { since, until };
+  if (!validDay(day)) throw new ValidationError("Invalid review day");
+  const since = calendarLocalInstant(day, "00:00", tz);
+  const until = calendarLocalInstant(nextDayKey(day), "00:00", tz);
+  if (!since || !until) throw new ValidationError("The selected day boundary does not exist in this timezone");
+  return { since: since.toISOString(), until: until.toISOString() };
 }
 
 export function completedOnChicagoDay(completedAt: string, day: string): boolean {
@@ -94,16 +98,19 @@ function durationMsOnDay(
   tz: string,
 ): number {
   if (!spec.end) return 0;
-  const dayStart = slotInstant(day, "00:00", tz).getTime();
-  const dayEnd = slotInstant(nextDayKey(day), "00:00", tz).getTime();
+  const range = dayRangeIso(day, tz);
+  const dayStart = Date.parse(range.since);
+  const dayEnd = Date.parse(range.until);
   const zone = spec.timezone ?? tz;
   let startMs: number;
   let endMs: number;
   if (spec.allDay) {
     const startDay = typeof spec.start === "string" ? spec.start.slice(0, 10) : spec.start.toISOString().slice(0, 10);
     const endDay = typeof spec.end === "string" ? spec.end.slice(0, 10) : spec.end.toISOString().slice(0, 10);
-    startMs = slotInstant(startDay, "00:00", zone).getTime();
-    endMs = slotInstant(endDay, "00:00", zone).getTime();
+    const start = calendarLocalInstant(startDay, "00:00", zone), end = calendarLocalInstant(endDay, "00:00", zone);
+    if (!start || !end) throw new ValidationError("The selected all-day boundary does not exist in this timezone");
+    startMs = start.getTime();
+    endMs = end.getTime();
   } else {
     startMs = typeof spec.start === "string" ? Date.parse(spec.start) : spec.start.getTime();
     endMs = typeof spec.end === "string" ? Date.parse(spec.end) : spec.end.getTime();
@@ -120,7 +127,7 @@ function capReflectionStr(value: unknown): string | null {
 }
 
 function validReflectionHours(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 24) return null;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 24_000) return null;
   return value;
 }
 
@@ -161,13 +168,13 @@ function parseTomorrowEventRow(row: unknown): boolean {
 }
 
 /** Validates client POST body; returns counts-only source safe for the LLM prompt. */
-export function parseClientShutdownReview(body: unknown): ShutdownReflectionSource | null {
+export function parseClientShutdownReview(body: unknown, timezone: string = SHUTDOWN_TZ): ShutdownReflectionSource | null {
   if (!body || typeof body !== "object") return null;
   const review = (body as { review?: unknown }).review;
   if (!review || typeof review !== "object") return null;
   if (Buffer.byteLength(JSON.stringify(review), "utf8") > MAX_CLIENT_REVIEW_BYTES) return null;
   const r = review as Record<string, unknown>;
-  if (r.zone !== SHUTDOWN_TZ || !DAY_RE.test(String(r.day ?? "")) || !DAY_RE.test(String(r.tomorrow ?? ""))) return null;
+  if (r.zone !== timezone || !DAY_RE.test(String(r.day ?? "")) || !DAY_RE.test(String(r.tomorrow ?? ""))) return null;
   if (typeof r.generatedAt !== "string" || typeof r.todoistConfigured !== "boolean" || typeof r.llmEnabled !== "boolean") return null;
   const done = r.done;
   const unfinished = r.unfinished;
@@ -189,18 +196,19 @@ export function parseClientShutdownReview(body: unknown): ShutdownReflectionSour
   if (calendarHours === null || blockedHours === null) return null;
   const events = parseReflectionArray((tomorrowPreview as { events?: unknown }).events, parseTomorrowEventRow);
   const tasksDue = parseReflectionArray((tomorrowPreview as { tasksDue?: unknown }).tasksDue, parseOpenTaskRow);
-  if (events === null || tasksDue === null) return null;
+  const nativeTasksDue = parseReflectionArray((tomorrowPreview as { nativeTasksDue?: unknown }).nativeTasksDue ?? [], parseDoneBoardRow);
+  if (events === null || tasksDue === null || nativeTasksDue === null) return null;
   if (r.errors !== undefined && (typeof r.errors !== "object" || r.errors === null)) return null;
   return {
     day: String(r.day),
-    zone: SHUTDOWN_TZ,
+    zone: timezone,
     doneTodoist,
     doneBoard,
     openCount: overdue + today + blocked,
     calendarHours,
     blockedHours,
     tomorrowEvents: events,
-    tomorrowTasksDue: tasksDue,
+    tomorrowTasksDue: tasksDue + nativeTasksDue,
   };
 }
 
@@ -213,24 +221,33 @@ export async function buildShutdownReview(opts: {
   fetchFn?: FetchLike;
 }): Promise<ShutdownReview> {
   const fetchFn = opts.fetchFn ?? fetch;
-  const day = dayKey(opts.now, SHUTDOWN_TZ);
+  const tz = opts.cfg.tz;
+  const day = dayKey(opts.now, tz);
   const tomorrow = nextDayKey(day);
-  const { since } = dayRangeIso(day, SHUTDOWN_TZ);
+  const { since, until } = dayRangeIso(day, tz);
   const errors: ShutdownReview["errors"] = {};
+  const cards = opts.board.list();
+  const cardsById = new Map(cards.map((card) => [card.id, card]));
+  const seenDone = new Set<string>();
 
   const doneBoard = opts.board
     .movesSince(since)
-    .filter((m) => m.toCol === DONE && dayKeyFromIso(m.at, SHUTDOWN_TZ) === day)
+    .filter((m) => {
+      if (m.toCol !== DONE || cardsById.get(m.cardId)?.column !== DONE || dayKeyFromIso(m.at, tz) !== day || seenDone.has(m.cardId)) return false;
+      seenDone.add(m.cardId);
+      return true;
+    })
     .map((m) => ({ cardId: m.cardId, title: m.title, at: m.at }));
 
   let doneTodoist: TodoistCompletedTask[] = [];
   let openTasks: TodoistTask[] = [];
   if (todoistConfigured(opts.cfg)) {
     const token = opts.cfg.todoistApiToken!;
-    const range = dayRangeIso(day, SHUTDOWN_TZ);
+    const range = dayRangeIso(day, tz);
     const listCompleted = opts.listCompleted ?? listCompletedTasks;
     try {
-      doneTodoist = await listCompleted(token, range.since, range.until, fetchFn);
+      const completed = await listCompleted(token, range.since, range.until, fetchFn);
+      doneTodoist = [...new Map(completed.filter((task) => Date.parse(task.completedAt) >= Date.parse(since) && Date.parse(task.completedAt) < Date.parse(until)).map((task) => [task.id, task])).values()];
     } catch {
       errors.todoistCompleted = "Couldn't load Todoist completed tasks.";
       doneTodoist = [];
@@ -243,43 +260,35 @@ export async function buildShutdownReview(opts: {
     }
   }
 
-  const { overdue, today } = partitionTodayAndOverdue(openTasks, opts.now, SHUTDOWN_TZ);
+  const { overdue, today } = partitionTodayAndOverdue(openTasks, opts.now, tz);
 
-  const blockedToday: ShutdownReview["unfinished"]["blockedToday"] = [];
+  const planned = new Map<string, ShutdownReview["unfinished"]["blockedToday"][number]>();
+  for (const card of cards) {
+    if (card.column !== DONE && card.dueDate && card.dueDate <= day) planned.set(card.id, { cardId: card.id, title: card.title, dueDate: card.dueDate, scheduled: false });
+  }
   let blockedMs = 0;
   let calendarMs = 0;
   let tomorrowEvents: ShutdownReview["tomorrowPreview"]["events"] = [];
   if (opts.calendar) {
     try {
-      const planning = opts.calendar.planning();
-      const cardsById = new Map(planning.cards.map((c) => [c.id, c]));
-      for (const block of planning.blocks) {
-        if (!block.taskId || block.enabled === false) continue;
-        const ms = durationMsOnDay(block, day, SHUTDOWN_TZ);
-        if (ms <= 0) continue;
-        const card = cardsById.get(block.taskId);
-        if (!card || card.column === DONE) continue;
-        blockedToday.push({ title: card.title });
-        blockedMs += ms;
-      }
-    } catch {
-      errors.calendar = "Couldn't load calendar.";
-    }
-    try {
-      const rangeStart = slotInstant(day, "00:00", SHUTDOWN_TZ);
-      const rangeEnd = slotInstant(nextDayKey(tomorrow), "00:00", SHUTDOWN_TZ);
+      const rangeStart = new Date(since);
+      const rangeEnd = new Date(dayRangeIso(tomorrow, tz).until);
       const snap = await opts.calendar.snapshot({ rangeStart, rangeEnd, limit: 500 });
+      const blocksById = new Map(opts.calendar.planning().blocks.map((block) => [block.id, block]));
+      if (snap.truncated || snap.feeds.some((feed) => !feed.ok)) errors.calendar = "Calendar review is incomplete: a feed is unavailable or results are limited.";
       for (const ev of snap.events) {
-        calendarMs += durationMsOnDay(
-          { start: ev.start, end: ev.end, allDay: ev.allDay, timezone: SHUTDOWN_TZ },
-          day,
-          SHUTDOWN_TZ,
-        );
+        const block = ev.eventId ? blocksById.get(ev.eventId) : undefined;
+        const ms = durationMsOnDay({ start: ev.start, end: ev.end, allDay: ev.allDay, timezone: ev.timezone ?? block?.timezone ?? tz }, day, tz);
+        if (block?.taskId) {
+          blockedMs += ms;
+          const card = cardsById.get(block.taskId);
+          if (ms > 0 && card && card.column !== DONE) planned.set(card.id, { cardId: card.id, title: card.title, dueDate: card.dueDate, scheduled: true });
+        } else calendarMs += ms;
       }
       tomorrowEvents = snap.events
         .filter((ev) => {
-          const key = ev.allDay ? ev.start.toISOString().slice(0, 10) : dayKey(ev.start, SHUTDOWN_TZ);
-          return key === tomorrow;
+          return durationMsOnDay({ start: ev.start, end: ev.end, allDay: ev.allDay, timezone: ev.timezone ?? (ev.eventId ? blocksById.get(ev.eventId)?.timezone : tz) }, tomorrow, tz) > 0
+            || (!ev.end && dayKey(ev.start, tz) === tomorrow);
         })
         .sort((a, b) => a.start.getTime() - b.start.getTime())
         .slice(0, 3)
@@ -294,19 +303,19 @@ export async function buildShutdownReview(opts: {
   }
 
   const tasksDueTomorrow = openTasks
-    .filter((t) => taskDueDay(t, SHUTDOWN_TZ) === tomorrow)
+    .filter((t) => taskDueDay(t, tz) === tomorrow)
     .sort((a, b) => b.priority - a.priority || a.content.localeCompare(b.content));
 
   return {
-    zone: SHUTDOWN_TZ,
+    zone: tz,
     day,
     tomorrow,
     generatedAt: opts.now.toISOString(),
     todoistConfigured: todoistConfigured(opts.cfg),
     done: { todoist: doneTodoist, board: doneBoard },
-    unfinished: { todoist: { overdue, today }, blockedToday },
+    unfinished: { todoist: { overdue, today }, blockedToday: [...planned.values()] },
     time: { calendarHours: hoursFromMs(calendarMs), blockedTaskHours: hoursFromMs(blockedMs) },
-    tomorrowPreview: { events: tomorrowEvents, tasksDue: tasksDueTomorrow },
+    tomorrowPreview: { events: tomorrowEvents, tasksDue: tasksDueTomorrow, nativeTasksDue: cards.filter((card) => card.column !== DONE && card.dueDate === tomorrow).map((card) => ({ cardId: card.id, title: card.title, dueDate: card.dueDate })) },
     llmEnabled: Boolean(llmConfig(opts.cfg)),
     errors,
   };

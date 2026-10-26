@@ -12,7 +12,6 @@ import { briefingDigestLines } from "./briefing-digest";
 import { notify, notifyIfAllowed, resolveNtfyConfig, type NtfyResolved } from "./ntfy";
 import { NtfySentSet, PENDING_DIGEST_MAX_MS } from "./sent-set";
 import type { CalendarEvent } from "../calendar/parse-ics";
-import { NTFY_QUIET_TZ } from "./quiet-hours";
 
 export const NTFY_MAX_SENDS_PER_TICK = 10;
 
@@ -149,13 +148,13 @@ async function runCoachNudge(deps: NtfyTickDeps, budget: { remaining: number }):
   const cfg = resolveNtfyConfig(deps.deployment, deps.effective);
   if (!cfg.coachEnabled || !cfg.enabled || budget.remaining <= 0) return;
   if (!deps.board || !deps.notes || !deps.wins || !deps.attention) return;
-  const today = dayKey(deps.now, NTFY_QUIET_TZ);
+  const today = dayKey(deps.now, deps.effective.tz);
   const key = coachKey(today);
   if (deps.sent.has(key)) return;
   const snap = deps.attention.snapshot();
   const sections = composeAttentionSections({
     todayYmd: today,
-    tz: NTFY_QUIET_TZ,
+    tz: deps.effective.tz,
     nowMs: deps.now.getTime(),
     cards: deps.board.list(),
     notes: deps.notes.listNotes().filter((n) => !isNoteSensitive(n)),

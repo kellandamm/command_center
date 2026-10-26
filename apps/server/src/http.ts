@@ -284,6 +284,7 @@ export function createApp(app: App): Server {
         res,
         path,
         readBody,
+        app.board,
       )) return;
       if (await handleVoiceCaptureOwnerRoutes(
         app.cfg,
@@ -294,6 +295,7 @@ export function createApp(app: App): Server {
         res,
         path,
         readBody,
+        app.board,
       )) return;
       if (app.calendar && await handleCalendarRoutes(app.calendar, req, res, path, who.owner === true, readBody)) return;
       if (path === "/api/connections" || path.startsWith("/api/connections/")) {

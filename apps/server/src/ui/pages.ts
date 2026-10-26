@@ -23,7 +23,7 @@ export function settingsPage(nav?: NavLink[]): string {
 <button type="button" id="ntfy-test" disabled>Send test notification</button>
 <span id="ntfy-test-status" class="dim" role="status"></span>
 </div>
-<p class="dim">Configure <code>NTFY_TOPIC</code> on the server (or save credentials under Service connections). Subscribe to the same topic in the ntfy app on your phone. The morning briefing digest is sent even during quiet hours; reminders and other alerts follow <code>NTFY_QUIET_HOURS</code> (America/Chicago).</p>
+<p class="dim">Configure <code>NTFY_TOPIC</code> on the server (or save credentials under Service connections). Subscribe to the same topic in the ntfy app on your phone. The morning briefing digest is sent even during quiet hours; reminders and other alerts follow <code>NTFY_QUIET_HOURS</code> in the configured workspace <code>TZ</code>.</p>
 <p id="ntfy-owner-hint" class="dim" role="status" hidden>Owner sign-in required to send a test notification.</p>
 </section>
 <div class="settings-tabs" role="tablist">

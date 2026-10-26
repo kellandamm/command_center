@@ -4,7 +4,7 @@ function mountVoiceInbox(quickAddApi){
   var list=root.querySelector(".voice-inbox-list");
   var badge=root.querySelector(".voice-inbox-badge");
   var section=root.querySelector(".voice-inbox-panel");
-  function render(rows){
+  function render(rows,timezone){
     var count=rows.length;
     if(badge){badge.textContent=String(count);badge.hidden=!count;}
     if(section)section.hidden=!count;
@@ -13,7 +13,7 @@ function mountVoiceInbox(quickAddApi){
     rows.forEach(function(row){
       var li=document.createElement("li");li.className="voice-inbox-item";
       var meta=document.createElement("span");
-      meta.textContent=row.itemCount+" item"+(row.itemCount===1?"":"s")+" · "+new Date(row.createdAt).toLocaleString();
+      meta.textContent=row.itemCount+" item"+(row.itemCount===1?"":"s")+" · "+new Date(row.createdAt).toLocaleString(undefined,{timeZone:timezone})+" · "+timezone;
       var review=document.createElement("button");review.type="button";review.className="ghost";review.textContent="Review";
       review.onclick=function(){
         api("/api/voice-captures/"+encodeURIComponent(row.id)).then(function(data){
@@ -28,7 +28,7 @@ function mountVoiceInbox(quickAddApi){
     });
   }
   function refresh(){
-    return api("/api/voice-captures").then(function(data){render(data.captures||[]);}).catch(function(){render([]);});
+    return api("/api/voice-captures").then(function(data){render(data.captures||[],data.timezone);}).catch(function(err){if(badge)badge.hidden=true;if(section)section.hidden=false;if(list)list.textContent="Voice inbox unavailable: "+err.message;});
   }
   refresh();
   return {refresh:refresh};

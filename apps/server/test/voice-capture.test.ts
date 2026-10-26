@@ -24,7 +24,7 @@ const TRANSCRIPT_MARKER = "voice-capture-secret-transcript-xyzzy";
 function llmItemsJson() {
   return JSON.stringify({
     items: [
-      { kind: "task", title: "Call dentist", due: "2026-10-26T09:00" },
+      { kind: "task", title: "Call dentist", due: "2026-10-26" },
       { kind: "event", title: "Lunch with Sam", start: "2026-10-31T12:00", end: "2026-10-31T13:00" },
     ],
   });
@@ -101,7 +101,7 @@ async function openHarness(env: Record<string, string> = {}, authFor?: (cfg: Con
     await closeIntegrationServer(server, integration);
     await rm(dir, { recursive: true, force: true });
   };
-  return { base, session, cfg, calendar, dir, close };
+  return { base, session, cfg, calendar, dir, captures: integration.voiceCaptures, board: integration.board, close };
 }
 
 async function captureToken(base: string, session: Record<string, string>) {
@@ -262,8 +262,12 @@ test("voice capture: confirm commits and dismiss removes", async () => {
       body: JSON.stringify({ items, calendarId: cal.id }),
     });
     assert.equal(confirm.status, 200);
-    const data = await confirm.json() as { results: unknown[] };
+    const data = await confirm.json() as { results: Array<{ kind: string; source: string; id: string; url: string }> };
     assert.equal(data.results.length, 2);
+    const native = data.results.find((result) => result.kind === "task")!;
+    assert.equal(native.source, "board");
+    assert.equal(native.url, `/calendar/event?task=${native.id}`);
+    assert.ok(h.board.get(native.id));
     assert.equal(h.calendar.store.events().length, 1);
 
     const gone = await fetch(`${h.base}/api/voice-captures/${id}`, { headers: ownerSession });
@@ -306,7 +310,21 @@ test("voice capture store: expired pending records are purged on open", async ()
   }
 });
 
-test("voice capture: partial confirm keeps failed items for retry", async () => {
+test("voice capture store reload preserves native metadata and leaves legacy source/timezone unchanged", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-voice-provenance-"));
+  try {
+    const store = await VoiceCaptureStore.open(dir);
+    const native = await store.create("Native", [{ version: 2, source: "board", timezone: "Asia/Tokyo", operationId: "native-voice-operation", kind: "task", title: "Native", due: "2030-06-10" }]);
+    const legacy = await store.create("Legacy", [{ kind: "task", title: "Old Todoist", due: "2030-06-10T09:00" }]);
+    const reloaded = await VoiceCaptureStore.open(dir);
+    assert.deepEqual(reloaded.get(native.id)?.items, native.items);
+    assert.equal(reloaded.get(legacy.id)?.items[0]?.source, undefined);
+    assert.equal(reloaded.get(legacy.id)?.items[0]?.timezone, undefined);
+    assert.equal(reloaded.get(legacy.id)?.items[0]?.operationId, legacy.items[0]?.operationId);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("voice capture: legacy Todoist partial confirm keeps failed items for retry", async () => {
   const h = await openHarness({ OWNER_EMAILS: "owner@example.com" }, ownerHarnessAuth());
   const ownerSession = ownerSessionHeaders();
   const originalFetch = globalThis.fetch;
@@ -331,13 +349,7 @@ test("voice capture: partial confirm keeps failed items for retry", async () => 
     return originalFetch(input, init);
   };
   try {
-    const capture = await captureToken(h.base, h.session);
-    const created = await fetch(`${h.base}/api/capture/audio`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${capture}`, "content-type": "audio/m4a" },
-      body: Buffer.from("x"),
-    });
-    const { id, items } = await created.json() as { id: string; items: unknown[] };
+    const { id, items } = await h.captures.create("Legacy capture", [{ kind: "task", title: "One" }, { kind: "task", title: "Two" }]);
     const confirm = await fetch(`${h.base}/api/voice-captures/${id}/confirm`, {
       method: "POST",
       headers: ownerSession,

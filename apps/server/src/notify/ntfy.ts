@@ -20,6 +20,7 @@ export interface NtfyResolved {
   token: string | null;
   reminderMinutes: number;
   quietHours: ReturnType<typeof parseQuietHours>;
+  timezone: string;
   publicBaseUrl: string | null;
   coachEnabled: boolean;
   /** When set, this exact origin may be reached without public DNS checks (env-only). */
@@ -114,6 +115,7 @@ export function resolveNtfyConfig(deployment: Config, effective: Config = deploy
     token: token ?? null,
     reminderMinutes: deployment.ntfyReminderMinutes,
     quietHours: parseQuietHours(deployment.ntfyQuietHours),
+    timezone: effective.tz,
     publicBaseUrl: deployment.appPublicUrl,
     coachEnabled: deployment.ntfyCoach,
     envOrigin,
@@ -129,7 +131,7 @@ export function ntfyStatus(cfg: NtfyResolved): { enabled: boolean; topicMasked: 
 
 export function shouldSendDuringQuietHours(cfg: NtfyResolved, now: Date): boolean {
   if (!cfg.quietHours) return true;
-  return !inQuietHours(now, cfg.quietHours);
+  return !inQuietHours(now, cfg.quietHours, cfg.timezone);
 }
 
 export async function notify(cfg: NtfyResolved, input: NotifyInput): Promise<boolean> {

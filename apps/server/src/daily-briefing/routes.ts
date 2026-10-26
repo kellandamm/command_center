@@ -59,7 +59,7 @@ export async function handleDailyBriefingRoutes(
       }
       throw err;
     }
-    const source = parseClientShutdownReview(body);
+    const source = parseClientShutdownReview(body, app.cfg.tz);
     if (!source) {
       json(res, 400, { error: "Invalid shutdown review payload." });
       return true;

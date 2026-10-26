@@ -16,13 +16,13 @@ import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
 const TOKEN = "b".repeat(32);
 
-test("dashboard quick add previews and commits through stubbed APIs", { timeout: 120_000 }, async () => {
+test("legacy quick-add previews retain external Todoist and Chicago provenance in a Tokyo workspace", { timeout: 120_000 }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-quick-add-browser-"));
   const cfg = loadConfig({
     DATA_DIR: dir,
     ADMIN_TOKEN: TOKEN,
     ALLOW_INSECURE_NO_AUTH: "1",
-    TZ: "America/Chicago",
+    TZ: "Asia/Tokyo",
     LLM_BASE_URL: "https://llm.example/v1",
     LLM_API_KEY: "key",
     LLM_MODEL: "model",
@@ -45,7 +45,7 @@ test("dashboard quick add previews and commits through stubbed APIs", { timeout:
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL });
   let commitCalled = false;
   let context: Awaited<ReturnType<typeof browser.newContext>> | undefined;
   try {
@@ -77,6 +77,8 @@ test("dashboard quick add previews and commits through stubbed APIs", { timeout:
     await page.fill("#dashboard-quick-add .quick-add-input", "call mom tomorrow 3pm");
     await page.keyboard.press("Enter");
     await page.waitForSelector("#dashboard-quick-add .quick-add-preview:not([hidden])", { timeout: 10_000 });
+    assert.match(await page.locator("#dashboard-quick-add .quick-add-preview").innerText(), /External Todoist task.*legacy preview/);
+    assert.match(await page.locator("#dashboard-quick-add .quick-add-preview").innerText(), /America\/Chicago/);
     const commitResponse = page.waitForResponse((res) => res.url().includes("/api/quick-add/commit") && res.request().method() === "POST");
     await page.getByRole("button", { name: "Confirm" }).click();
     const res = await commitResponse;

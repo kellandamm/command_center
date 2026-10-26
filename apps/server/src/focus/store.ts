@@ -16,6 +16,7 @@ const sessionSchema = z.object({
   endedAt: z.string().min(1),
   durationMs: z.number().int().positive(),
   taskId: z.string().min(1).max(MAX_TASK_ID_LEN),
+  taskSource: z.enum(["board", "todoist"]).optional(),
   taskTitle: z.string().max(MAX_TASK_TITLE_LEN).optional(),
 });
 
@@ -54,7 +55,8 @@ export function validateFocusSessionInput(input: Record<string, unknown>): Omit<
     if (typeof input.taskTitle !== "string") throw new ValidationError("taskTitle must be text");
     taskTitle = input.taskTitle.trim().slice(0, MAX_TASK_TITLE_LEN) || undefined;
   }
-  return { startedAt, endedAt, durationMs, taskId, taskTitle };
+  if (input.taskSource !== undefined && input.taskSource !== "board" && input.taskSource !== "todoist") throw new ValidationError("Unknown focus task source");
+  return { startedAt, endedAt, durationMs, taskId, taskTitle, taskSource: input.taskSource ?? "todoist" };
 }
 
 function parseFile(raw: unknown): { sessions: FocusSession[] } {

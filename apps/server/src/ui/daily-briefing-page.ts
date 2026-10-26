@@ -30,7 +30,7 @@ export function dailyBriefingPage(nav?: NavLink[]): string {
     </aside>
   </div>
   <div id="db-shutdown-view" role="tabpanel" hidden>
-    <p class="dim" id="db-shutdown-meta">End-of-day review in America/Chicago.</p>
+    <p class="dim" id="db-shutdown-meta">End-of-day review in the configured workspace timezone.</p>
     <div id="db-shutdown-error" class="morning-error" role="status" hidden></div>
     <div class="shutdown-grid" id="db-shutdown-body" aria-live="polite"></div>
     <div class="morning-edition-actions" style="margin-top:1rem">
@@ -145,13 +145,12 @@ window.viewPreferencesReady.then(function(prefs){
 });
 initDays();
 var shutdownLoaded=false,shutdownReview=null;
-var CHICAGO_TZ="America/Chicago";
 function shutdownError(message){
   var el=document.getElementById("db-shutdown-error");el.textContent=message;el.hidden=!message;
 }
 function formatChicago(iso,allDay){
   if(allDay)return iso+" (all day)";
-  return new Date(iso).toLocaleString(undefined,{timeZone:CHICAGO_TZ,month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
+  return new Date(iso).toLocaleString(undefined,{timeZone:shutdownReview.zone,month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
 }
 function renderShutdown(r){
   shutdownReview=r;
@@ -168,7 +167,7 @@ function renderShutdown(r){
     return '<li><strong>'+esc(t.content)+'</strong><span class="dim"> · Todoist</span></li>';
   }).join("");
   var blocked=(r.unfinished.blockedToday||[]).map(function(b){
-    return '<li><strong>'+esc(b.title)+'</strong><span class="dim"> · blocked today</span></li>';
+    return '<li><a href="/calendar/event?task='+encodeURIComponent(b.cardId)+'">'+esc(b.title)+'</a><span class="dim"> · Native Board'+(b.dueDate?' · due '+esc(b.dueDate):'')+(b.scheduled?' · scheduled today':'')+'</span></li>';
   }).join("");
   var openEmpty=!openTodoist&&!blocked;
   var openNote=errs.todoistOpen?'<li class="bad">'+esc(errs.todoistOpen)+'</li>':'';
@@ -176,13 +175,13 @@ function renderShutdown(r){
     return '<li><strong>'+esc(ev.summary)+'</strong><br><span class="dim">'+esc(formatChicago(ev.start,ev.allDay))+'</span></li>';
   }).join("");
   var tomorrowTasks=(r.tomorrowPreview.tasksDue||[]).map(function(t){
-    return '<li><strong>'+esc(t.content)+'</strong><span class="dim"> · due tomorrow</span></li>';
-  }).join("");
+    return '<li><strong>'+esc(t.content)+'</strong><span class="dim"> · External Todoist · due tomorrow</span></li>';
+  }).join("")+(r.tomorrowPreview.nativeTasksDue||[]).map(function(t){return '<li><a href="/calendar/event?task='+encodeURIComponent(t.cardId)+'">'+esc(t.title)+'</a><span class="dim"> · Native Board · due tomorrow</span></li>';}).join("");
   var calNote=errs.calendar?'<p class="bad">'+esc(errs.calendar)+'</p>':"";
   body.innerHTML=
     '<section class="shutdown-section"><h2>Done today</h2><ul>'+doneNote+(doneEmpty&&!errs.todoistCompleted?'<li class="dim">Nothing recorded yet.</li>':doneTodoist+doneBoard)+'</ul></section>'
     +'<section class="shutdown-section"><h2>Planned but not done</h2><ul>'+openNote+(openEmpty&&!errs.todoistOpen&&!errs.calendar?'<li class="dim">All clear.</li>':openTodoist+blocked)+'</ul></section>'
-    +'<section class="shutdown-section"><h2>Time</h2>'+calNote+'<p>Calendar <strong>'+esc(String(r.time.calendarHours))+'</strong> h · Blocked tasks <strong>'+esc(String(r.time.blockedTaskHours))+'</strong> h</p></section>'
+    +'<section class="shutdown-section"><h2>Time reserved (not completion)</h2>'+calNote+'<p>Other calendar events <strong>'+esc(String(r.time.calendarHours))+'</strong> h · Native task blocks <strong>'+esc(String(r.time.blockedTaskHours))+'</strong> h</p></section>'
     +'<section class="shutdown-section"><h2>Tomorrow</h2><h3 class="dim" style="font-size:.85rem;margin:.5rem 0 0">First events</h3><ul>'+(tomorrowEv||(errs.calendar?'<li class="bad">'+esc(errs.calendar)+'</li>':'<li class="dim">No events loaded.</li>'))+'</ul>'
     +'<h3 class="dim" style="font-size:.85rem;margin:.75rem 0 0">Tasks due</h3><ul>'+(tomorrowTasks||'<li class="dim">None due tomorrow.</li>')+'</ul></section>';
   var reflectBtn=document.getElementById("db-shutdown-reflect");
