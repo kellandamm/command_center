@@ -16,6 +16,7 @@ test("personal dashboard, settings and briefing work without retired integration
     page.setDefaultTimeout(5000);
     const errors: string[] = [];
     const requests: string[] = [];
+    const unexpectedRequests: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     const settings = structuredClone(DEFAULT_SETTINGS);
     const briefing: DailyBriefingRecord = {
@@ -66,6 +67,22 @@ test("personal dashboard, settings and briefing work without retired integration
       if (path === "/api/hobie/board-summary") return route.fulfill({ json: { counts: {} } });
       if (path === "/api/calendar") return route.fulfill({ json: { events: [], feeds: [] } });
       if (path === "/api/activity/updates") return route.fulfill({ json: { updates: [] } });
+      const dashboardFixtures: Record<string, unknown> = {
+        "/api/dashboard/focus/tasks": { configured: true, tasks: [], timezone: "UTC" },
+        "/api/dashboard-layout": { layout: {} },
+        "/api/voice-captures": { captures: [], count: 0, timezone: "UTC" },
+        "/api/weather": { ok: false, error: "Weather temporarily unavailable" },
+        "/api/notes": { content: "" },
+        "/api/host-health": { host: {}, docker: { available: false, reason: "Docker not configured", containers: [] }, readOnly: true },
+        "/api/recallio/search": { configured: false, recallioEnabled: false, results: [] },
+        "/api/dashboard/tasks": { filter: "all", today: briefing.day, columns: ["Backlog"], tasks: [] },
+        "/api/dashboard/attention": { sections: [], pinned: [], hidden: [] },
+        "/api/dashboard/heatmap": { days: [] },
+        "/api/launchpad": { links: [], owner: false },
+      };
+      if (Object.hasOwn(dashboardFixtures, path)) return route.fulfill({ json: dashboardFixtures[path] });
+      if (path === "/icon-192.png") return route.fulfill({ status: 204 });
+      unexpectedRequests.push(`${request.method()} ${path}`);
       return route.fulfill({ status: 404, json: { error: `Unexpected route: ${path}` } });
     });
     await page.goto("http://personal.test/");
@@ -152,6 +169,7 @@ test("personal dashboard, settings and briefing work without retired integration
       }
     }
     assert.deepEqual(errors, []);
+    assert.deepEqual(unexpectedRequests, []);
     t.diagnostic("Responsive checks complete");
     assert.equal(requests.some((path) => /^\/api\/(?:news|rss|feeds|summaries|ai-security|briefing\/generate)/.test(path)), false);
   } finally {
