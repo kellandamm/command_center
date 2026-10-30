@@ -33,9 +33,9 @@ function usageResetCountdownText(rc){
   if(rc.days===0)return rc.hours+" h";
   return rc.days+"d "+rc.hours+"h";
 }
-function usageLocalTimeZoneLabel(){
+function usageLocalTimeZoneLabel(forDate){
   try{
-    var parts=new Intl.DateTimeFormat(undefined,{timeZoneName:"short"}).formatToParts(new Date());
+    var parts=new Intl.DateTimeFormat(undefined,{timeZoneName:"short"}).formatToParts(forDate);
     var hit=parts.find(function(p){return p.type==="timeZoneName";});
     return hit&&hit.value?hit.value:"";
   }catch(_){return "";}
@@ -45,7 +45,7 @@ function usageFormatResetWhen(iso){
   var d=new Date(iso);
   if(Number.isNaN(d.getTime()))return null;
   var when=d.toLocaleString(undefined,{dateStyle:"medium",timeStyle:"short"});
-  var tz=usageLocalTimeZoneLabel();
+  var tz=usageLocalTimeZoneLabel(d);
   return tz?when+" "+tz:when;
 }
 function usageResetLine(c){

@@ -241,9 +241,87 @@ test("agents usage reset line uses browser local time zone", { timeout: 120_000 
     });
     const resetLine = await page.locator(".agents-usage-reset").textContent();
     assert.ok(resetLine);
-    assert.match(resetLine, /\bPST\b|\bPDT\b/);
+    assert.match(resetLine, /\bPST\b/);
+    assert.doesNotMatch(resetLine, /\bPDT\b/);
     assert.doesNotMatch(resetLine, /UTC/);
     await context.close();
+  } finally {
+    await browser.close();
+    await app.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("agents usage reset zone label follows reset instant (DST)", { timeout: 120_000 }, async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "cc-usage-panel-tz-dst-"));
+  await seedDashboard(dataDir);
+  const app = await openOwnerDashboardServer(dataDir);
+  const browser = await chromium.launch();
+  try {
+    await waitForServer(app.base);
+    const context = await browser.newContext({
+      viewport: { width: 1440, height: 900 },
+      timezoneId: "America/Chicago",
+    });
+    await context.addCookies([{ name: "CF_Authorization", value: app.ownerJwt, domain: "127.0.0.1", path: "/" }]);
+    const page = await context.newPage();
+    await page.goto(`${app.base}/`, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(
+      () => typeof (window as unknown as { renderAgentsUsagePanel?: unknown }).renderAgentsUsagePanel === "function",
+    );
+    await renderPanel(page, {
+      latest: { asOf: "2026-10-30T12:00:00.000Z" },
+      computed: {
+        weeklyPercentUsed: 10,
+        metricsUnavailable: false,
+        resetsAt: "2026-11-02T15:00:00.000Z",
+        resetCountdown: { days: 2, hours: 5 },
+        status: "on_pace",
+        baseline: 8,
+      },
+      byBot: [],
+    });
+    const afterDstEnd = await page.locator(".agents-usage-reset").textContent();
+    assert.ok(afterDstEnd);
+    assert.match(afterDstEnd, /\bCST\b/);
+    assert.doesNotMatch(afterDstEnd, /\bCDT\b/);
+
+    await renderPanel(page, {
+      latest: { asOf: "2026-01-10T12:00:00.000Z" },
+      computed: {
+        weeklyPercentUsed: 10,
+        metricsUnavailable: false,
+        resetsAt: "2026-01-15T18:00:00.000Z",
+        resetCountdown: { days: 5, hours: 0 },
+        status: "on_pace",
+        baseline: 8,
+      },
+      byBot: [],
+    });
+    const january = await page.locator(".agents-usage-reset").textContent();
+    assert.ok(january);
+    assert.match(january, /\bCST\b/);
+    await context.close();
+  } finally {
+    await browser.close();
+    await app.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("voice inbox stays hidden when capture list is empty", { timeout: 120_000 }, async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "cc-voice-inbox-empty-"));
+  await seedDashboard(dataDir);
+  const app = await openOwnerDashboardServer(dataDir);
+  const browser = await chromium.launch();
+  try {
+    await waitForServer(app.base);
+    const page = await ownerPage(browser, app.base, app.ownerJwt);
+    await page.waitForFunction(() => {
+      const root = document.getElementById("voice-inbox");
+      return !!root && root.hidden === true;
+    });
+    assert.equal(await page.locator(".voice-inbox-unavailable:not([hidden])").count(), 0);
   } finally {
     await browser.close();
     await app.close();
