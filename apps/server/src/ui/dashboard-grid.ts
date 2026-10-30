@@ -6,8 +6,7 @@ export const dashboardGridCss = `
 .dashboard-toolbar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin-bottom:.75rem;flex-shrink:0}
 .dashboard-toolbar .dashboard-toolbar-hint{margin:0;font-size:.8125rem}
 .dashboard-toolbar .dashboard-import-label{cursor:pointer;margin:0}
-.dashboard-quick-add-bar{margin-bottom:.75rem;flex-shrink:0}
-.dashboard-quick-add-bar .quick-add-bar{margin-bottom:0}
+.dashboard-page .dashboard-quick-add-bar.quick-add-bar{margin-bottom:.75rem;flex-shrink:0}
 .dashboard-quick-add-bar .quick-add-wrap{max-width:none;width:100%}
 .dashboard-page .voice-inbox{margin-bottom:.75rem;flex-shrink:0;max-width:none;padding:.75rem 1rem}
 .dashboard-page .voice-inbox .voice-inbox-list{margin-top:.5rem}

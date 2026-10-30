@@ -33,11 +33,20 @@ function usageResetCountdownText(rc){
   if(rc.days===0)return rc.hours+" h";
   return rc.days+"d "+rc.hours+"h";
 }
+function usageLocalTimeZoneLabel(){
+  try{
+    var parts=new Intl.DateTimeFormat(undefined,{timeZoneName:"short"}).formatToParts(new Date());
+    var hit=parts.find(function(p){return p.type==="timeZoneName";});
+    return hit&&hit.value?hit.value:"";
+  }catch(_){return "";}
+}
 function usageFormatResetWhen(iso){
   if(!iso)return null;
   var d=new Date(iso);
   if(Number.isNaN(d.getTime()))return null;
-  return d.toLocaleString(undefined,{dateStyle:"medium",timeStyle:"short",timeZone:"UTC"});
+  var when=d.toLocaleString(undefined,{dateStyle:"medium",timeStyle:"short"});
+  var tz=usageLocalTimeZoneLabel();
+  return tz?when+" "+tz:when;
 }
 function usageResetLine(c){
   if(c.resetsAt===null||c.resetsAt===undefined)return "Reset unknown";
@@ -103,9 +112,7 @@ export const agentsUsagePanelCss = `
 .agents-usage-panel .pill.unknown{background:var(--muted);color:var(--muted-foreground)}
 `;
 
-export function agentsUsagePanelDashboardScript(): string {
-  return `
-${AGENTS_USAGE_CLIENT_HELPERS}
+export const AGENTS_USAGE_PANEL_RENDER_FN = `
 function renderAgentsUsagePanel(data){
   var root=document.getElementById("panel-agents-usage");
   if(!root)return;
@@ -171,7 +178,12 @@ function renderAgentsUsagePanel(data){
     });
   }
 }
-window.__renderAgentsUsagePanelForTests=renderAgentsUsagePanel;
+`;
+
+export function agentsUsagePanelDashboardScript(): string {
+  return `
+${AGENTS_USAGE_CLIENT_HELPERS}
+${AGENTS_USAGE_PANEL_RENDER_FN}
 function loadAgentsUsagePanel(){
   return api("/api/agents/usage").then(renderAgentsUsagePanel).catch(function(){
     renderAgentsUsagePanel({_apiError:true,latest:null,computed:{},byBot:[]});

@@ -1,14 +1,17 @@
 /**
  * Dashboard header + grid screenshots for agents-usage panel PR.
  * PHASE=before|after OUT_DIR=docs/screenshots/dashboard-header
+ *
+ * `before` runs the server from a detached git worktree at main (pre-PR UI).
  */
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { mkdir } from "node:fs/promises";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { promisify } from "node:util";
+import { readFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { AddressInfo } from "node:net";
-import { chromium, type BrowserContext, type Page } from "playwright";
+import { chromium, type BrowserContext } from "playwright";
 import { DailyBriefingService } from "../src/daily-briefing/service";
 import { loadConfig } from "../src/config";
 import { makeAuthenticator } from "../src/auth";
@@ -18,8 +21,11 @@ import { SettingsStore } from "../src/settings";
 import { closeIntegrationServer, openIntegrationStores } from "../test/helpers";
 import { createTestCfAccessJwt, TEST_CF_AUD, TEST_CF_TEAM } from "../test/cf-access-jwt";
 
+const execFileAsync = promisify(execFile);
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const serverDir = join(repoRoot, "apps/server");
+const MAIN_BEFORE_SHA = "fbbacb55";
 const ADMIN_TOKEN = "a".repeat(32);
 const phase = process.env.PHASE === "after" ? "after" : "before";
 const outDir = join(repoRoot, process.env.OUT_DIR ?? "docs/screenshots/dashboard-header", phase);
@@ -41,16 +47,55 @@ async function waitForServer(baseUrl: string) {
   throw new Error("server not ready");
 }
 
-async function runSeed(script: string, dataDir: string, extraEnv: Record<string, string> = {}) {
+async function runSeed(script: string, dataDir: string, cwd: string, extraEnv: Record<string, string> = {}) {
   const { spawn } = await import("node:child_process");
   await new Promise<void>((resolve, reject) => {
     const seed = spawn("pnpm", ["exec", "tsx", script], {
-      cwd: serverDir,
+      cwd,
       env: { ...process.env, DATA_DIR: dataDir, ...extraEnv },
       stdio: "inherit",
     });
     seed.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`seed ${code}`))));
   });
+}
+
+async function gitWorktreeAt(sha: string) {
+  const wt = await mkdtemp(join(tmpdir(), "cc-dash-capture-"));
+  await execFileAsync("git", ["worktree", "add", "--detach", wt, sha], { cwd: repoRoot });
+  await execFileAsync("pnpm", ["install", "--frozen-lockfile"], { cwd: wt, env: process.env });
+  return {
+    path: wt,
+    remove: async () => {
+      try {
+        await execFileAsync("git", ["worktree", "remove", "--force", wt], { cwd: repoRoot });
+      } catch {
+        await rm(wt, { recursive: true, force: true });
+      }
+    },
+  };
+}
+
+function startSpawnedServer(cwd: string, dataDir: string, port: number, extraEnv: Record<string, string> = {}) {
+  const child: ChildProcess = spawn("pnpm", ["exec", "tsx", "src/index.ts"], {
+    cwd,
+    env: {
+      ...process.env,
+      DATA_DIR: dataDir,
+      HOST: "127.0.0.1",
+      PORT: String(port),
+      ALLOW_INSECURE_NO_AUTH: "1",
+      TZ: "UTC",
+      ...extraEnv,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const base = `http://127.0.0.1:${port}`;
+  return {
+    base,
+    close: async () => {
+      child.kill("SIGTERM");
+    },
+  };
 }
 
 async function startOwnerServer(dataDir: string, port: number) {
@@ -85,12 +130,19 @@ async function startOwnerServer(dataDir: string, port: number) {
   return { base, ownerJwt, close };
 }
 
-async function themedContext(browser: Awaited<ReturnType<typeof chromium.launch>>, ownerJwt: string, theme: "light" | "dark", viewport: { width: number; height: number }) {
+async function themedContext(
+  browser: Awaited<ReturnType<typeof chromium.launch>>,
+  ownerJwt: string | null,
+  theme: "light" | "dark",
+  viewport: { width: number; height: number },
+) {
   const context = await browser.newContext({ viewport });
   await context.addInitScript((mode) => {
     localStorage.setItem("cc-theme", mode);
   }, theme);
-  await context.addCookies([{ name: "CF_Authorization", value: ownerJwt, domain: "127.0.0.1", path: "/" }]);
+  if (ownerJwt) {
+    await context.addCookies([{ name: "CF_Authorization", value: ownerJwt, domain: "127.0.0.1", path: "/" }]);
+  }
   return context;
 }
 
@@ -106,12 +158,25 @@ async function main() {
   const port = 4200 + Math.floor(Math.random() * 400);
   await mkdir(outDir, { recursive: true });
 
-  await runSeed("scripts/seed-dashboard-screenshot.ts", dataDir);
-  if (phase === "after") {
-    await runSeed("scripts/seed-agents-usage-screenshot.ts", dataDir);
+  let worktree: Awaited<ReturnType<typeof gitWorktreeAt>> | null = null;
+  let seedCwd = serverDir;
+  let runCwd = serverDir;
+  if (phase === "before") {
+    worktree = await gitWorktreeAt(MAIN_BEFORE_SHA);
+    seedCwd = join(worktree.path, "apps/server");
+    runCwd = seedCwd;
   }
 
-  const app = await startOwnerServer(dataDir, port);
+  await runSeed("scripts/seed-dashboard-screenshot.ts", dataDir, seedCwd);
+  if (phase === "after") {
+    await runSeed("scripts/seed-agents-usage-screenshot.ts", dataDir, serverDir);
+  }
+
+  const app =
+    phase === "after"
+      ? await startOwnerServer(dataDir, port)
+      : startSpawnedServer(runCwd, dataDir, port);
+
   const browser = await chromium.launch();
   try {
     await waitForServer(app.base);
@@ -125,10 +190,15 @@ async function main() {
     }
 
     for (const shot of shots) {
-      const context = await themedContext(browser, app.ownerJwt, shot.theme, { width: shot.width, height: shot.height });
+      const ownerJwt = "ownerJwt" in app ? app.ownerJwt : null;
+      const context = await themedContext(browser, ownerJwt, shot.theme, { width: shot.width, height: shot.height });
       const page = await shotPage(context, app.base, shot.path ?? "/");
       if (phase === "after" && shot.name.includes("sample")) {
         await page.waitForSelector("#panel-agents-usage .agents-usage-panel-pct", { timeout: 20_000 });
+      }
+      if (phase === "before") {
+        await page.waitForSelector("#voice-inbox", { timeout: 10_000 }).catch(() => {});
+        await page.waitForSelector("#dashboard-export-layout", { timeout: 10_000 });
       }
       await page.screenshot({ path: join(outDir, shot.name), fullPage: false });
       await context.close();
@@ -136,8 +206,8 @@ async function main() {
 
     if (phase === "after") {
       const staleDir = `${dataDir}-stale`;
-      await runSeed("scripts/seed-dashboard-screenshot.ts", staleDir);
-      await runSeed("scripts/seed-agents-usage-screenshot.ts", staleDir, { STALE: "1" });
+      await runSeed("scripts/seed-dashboard-screenshot.ts", staleDir, serverDir);
+      await runSeed("scripts/seed-agents-usage-screenshot.ts", staleDir, serverDir, { STALE: "1" });
       const stalePort = port + 1;
       const staleApp = await startOwnerServer(staleDir, stalePort);
       try {
@@ -159,6 +229,7 @@ async function main() {
   } finally {
     await browser.close();
     await app.close();
+    if (worktree) await worktree.remove();
   }
 }
 

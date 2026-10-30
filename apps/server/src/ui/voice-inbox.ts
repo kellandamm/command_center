@@ -34,7 +34,14 @@ function mountVoiceInbox(quickAddApi){
     });
   }
   function refresh(){
-    return api("/api/voice-captures").then(function(data){render(data.captures||[],data.timezone);}).catch(function(){
+    return api("/api/voice-captures").then(function(data){render(data.captures||[],data.timezone);}).catch(function(err){
+      var msg=err&&err.message?String(err.message):"";
+      if(/HTTP 403\\b/i.test(msg)||/verified owner login/i.test(msg)||/owner login/i.test(msg)){
+        root.hidden=true;
+        if(badge)badge.hidden=true;
+        setUnavailable(false);
+        return;
+      }
       root.hidden=false;
       if(badge)badge.hidden=true;
       setUnavailable(true);
