@@ -19,7 +19,7 @@ import {
 import { budgetAvailable, BUDGET_DISABLED_MESSAGE } from "./gate";
 import { importPreviewCache } from "./import-preview-cache";
 import { logBudgetError } from "./redact";
-import { BudgetStore } from "./store";
+import { BudgetStore, type BudgetAccount } from "./store";
 import type { AccountType } from "./constants";
 
 function json(res: ServerResponse, status: number, data: unknown) {
@@ -29,6 +29,11 @@ function json(res: ServerResponse, status: number, data: unknown) {
 
 function ownerOk(who: AuthResult & { ok: true }): boolean {
   return who.owner === true && Boolean(who.email);
+}
+
+function accountForApi(store: BudgetStore, account: BudgetAccount) {
+  const profile = store.getCsvProfile(account.id);
+  return { ...account, importDateFormat: profile?.dateFormat ?? null };
 }
 
 export async function handleBudgetRoutes(
@@ -60,7 +65,7 @@ export async function handleBudgetRoutes(
 
   try {
     if (path === "/api/budget/accounts" && req.method === "GET") {
-      json(res, 200, { accounts: store.listAccounts() });
+      json(res, 200, { accounts: store.listAccounts().map((a) => accountForApi(store, a)) });
       return true;
     }
     if (path === "/api/budget/accounts" && req.method === "POST") {
@@ -76,7 +81,7 @@ export async function handleBudgetRoutes(
         currentBalanceCents: body.currentBalanceCents != null ? Number(body.currentBalanceCents) : undefined,
         invertSign: Boolean(body.invertSign),
       });
-      json(res, 201, { account });
+      json(res, 201, { account: accountForApi(store, account) });
       return true;
     }
 
@@ -97,7 +102,7 @@ export async function handleBudgetRoutes(
         json(res, 404, { error: "not found" });
         return true;
       }
-      json(res, 200, { account });
+      json(res, 200, { account: accountForApi(store, account) });
       return true;
     }
 

@@ -64,6 +64,16 @@ test("budget csv: parseMoney rejects ambiguous and scientific forms", () => {
   assert.equal(parseMoney("1.234,56"), 123_456);
   assert.equal(parseMoney("1,234.56"), 123_456);
   assert.equal(parseMoney("1.005"), 101);
+  assert.equal(parseMoney("$-5"), -500);
+  assert.equal(parseMoney("-$5"), -500);
+  assert.equal(parseMoney("+45.00"), 4500);
+  assert.equal(parseMoney("1,234,567"), 123_456_700);
+  assert.equal(parseMoney("12,34"), 1234);
+});
+
+test("budget csv: parseDate ignores trailing time", () => {
+  assert.equal(parseDate("01/02/2026 10:30", "MM/DD/YYYY"), "2026-01-02");
+  assert.equal(parseDate("02/01/2026 08:00", "DD/MM/YYYY"), "2026-01-02");
 });
 
 test("budget csv: credit column guess does not match Posting Date", () => {
