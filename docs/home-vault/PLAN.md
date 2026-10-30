@@ -1,10 +1,12 @@
 # Home maintenance & documents vault — implementation plan
 
-**Owner-only** home maintenance reminders (ntfy, respecting quiet hours) plus a **documents/warranties vault** (manuals, receipts, warranties with expiry). Vault files and metadata **never** go to AI. Storage, limits, and backups are specified here; **infra changes require Kellan’s approval** (see bottom)—do not apply in agent runs without sign-off.
+**Owner-only** maintenance reminders (ntfy + quiet hours) and a **documents/warranties vault**. Vault bytes and metadata **never** go to AI. Infra/env changes need Kellan’s approval (bottom)—agents document only until yes.
 
-**Out of scope:** email triage, agent memory, direct bank connection, LLM extraction from PDFs, budget/subscription linkage.
+**Out of scope:** email triage, agent memory, direct bank connection, LLM on uploads, budget/subscription linkage.
 
-**Build order:** One implementation PR after subscriptions (soft dependency: none hard); can parallelize with goals if vault volume approved.
+**Cross-cutting:** no new dependencies or env vars in v1; budget data never in briefings or push (maintenance reminders are separate from budget alerts).
+
+**Build order:** One PR after subscriptions (soft); may parallel goals once volume approved.
 
 ---
 
@@ -12,74 +14,75 @@
 
 | In | Out |
 |----|-----|
-| Reminders CRUD + ntfy tick hook | Changing `NTFY_*` env schema (use existing `resolveNtfy` in `notify/ntfy.ts`) |
-| File upload/download for owner | Public or share-link access to vault blobs |
-| Expiry tracking + “expiring soon” UI | Sending vault filenames to `chatCompletion` |
-| Quiet-hours-aware reminder sends | Briefing/digest inclusion |
+| Reminders CRUD + ntfy tick hook | New `NTFY_*` schema |
+| Owner file upload/download | Share links / inline browser viewing of vault bytes |
+| Expiry UI | Briefing inclusion |
+| Quiet-hours-aware sends via `notifyIfAllowed` | LLM extraction from PDFs |
 
 ---
 
 ## Data model
 
-**SQLite:** `home.sqlite` under `cfg.dataDir` (same volume pattern as `budget.sqlite` in `docs/budget/PLAN.md` / `rss.sqlite` via `board/store.ts` `DatabaseSync` + dedicated file).
+**SQLite:** `home.sqlite` under `cfg.dataDir` (`node:sqlite` `DatabaseSync`, same pattern as `board/store.ts` / `budget/db.ts`).
 
 | Table | Purpose |
 |-------|---------|
-| `maintenance_items` | `id`, `title`, `notes` (plain, max 2k), `cadence_days`, `last_done_date`, `next_due_date`, `ntfy_enabled`, `created_at`, `updated_at` |
-| `vault_documents` | `id`, `title`, `category` (`manual` \| `receipt` \| `warranty` \| `other`), `expiry_date` nullable, `storage_key`, `mime`, `size_bytes`, `sha256`, `uploaded_at` |
+| `maintenance_items` | `id`, `title`, `notes`, `cadence_days`, `last_done_date`, `next_due_date`, `ntfy_enabled`, `pending_notify_after` (ISO instant when quiet hours blocked send), timestamps |
+| `vault_documents` | `id`, `title`, `category`, `expiry_date`, **`storage_key`** (server UUID), `original_filename` (display only), `mime`, `size_bytes`, `sha256`, `uploaded_at` |
 
-**Blob storage on disk:** `{dataDir}/home-vault/blobs/{storage_key}` — content-addressed or uuid filenames; **`chmod 0600`** files, **`0700`** dirs (mirror `budget/store.ts` `ensureDirs` intent from budget plan).
+**Blob paths:** `{dataDir}/home-vault/blobs/{storage_key}` — **`storage_key` is server-generated** (UUID); client filename is **never** used in path segments. Create dirs via `ensureDirs(dataDir)` then `home-vault/blobs` with mode **0700**; blob files **0600** (`apps/server/src/store.ts` line 57 `ensureDirs`; budget DB uses `chmodSync` on sqlite in `budget/db.ts` lines 31–35).
 
-**Limits (v1 defaults):**
+**Limits:** 25 MB upload; max 500 documents / 200 maintenance items.
 
-| Limit | Value |
-|-------|-------|
-| Max upload size | **25 MB** per file (`readRawBody` / multipart cap aligned with `request-body.ts` patterns) |
-| Allowed MIME | `application/pdf`, `image/jpeg`, `image/png`, `image/webp`, `text/plain` |
-| Max documents | **500** active rows |
-| Max maintenance items | **200** |
+**Allowed types (magic-byte allowlist, not client `Content-Type` alone):** PDF, PNG, JPEG, **HEIC/HEIF**, WebP; **`text/plain` stored and served as attachment-only** (never `inline`). Reject on content-type spoofing.
+
+**Upload parsing:** Reuse multipart/body parsing patterns from `apps/server/src/voice-capture/parse-body.ts` (`parseMultipartForm` / `readRawBody`) — **no new npm dependency**; add a vault-specific wrapper with vault size/MIME limits.
 
 ---
 
 ## API routes
 
-Gate: **`who.owner === true`** and same triple as budget—`cfg.cfTeamDomain`, `cfg.cfAud`, `cfg.ownerEmails` (`budget/gate.ts` `budgetAvailable` pattern). Reuse helper name `homeVaultAvailable(cfg)` in `home/gate.ts` (parallel module, do not merge with budget gate logic).
+Gate: **`homeVaultAvailable(cfg)`** — same triple as `budgetAvailable` (`budget/gate.ts`). **`who.owner === true`** for all vault bytes; reject admin-token for downloads (stricter than settings).
 
 | Method | Path | Notes |
 |--------|------|-------|
-| GET/POST/PUT/DELETE | `/api/home/maintenance/*` | CRUD; JSON no-store |
-| GET/POST/DELETE | `/api/home/vault/documents/*` | Upload via `POST` multipart; download `GET .../file` streams with `Content-Disposition` |
-| POST | `/api/home/vault/documents/:id/expiry` | Set expiry |
+| CRUD | `/api/home/maintenance/*` | JSON no-store |
+| Upload | `POST /api/home/vault/documents` | Multipart → UUID `storage_key` |
+| Download | `GET /api/home/vault/documents/:id/file` | **Streamed** (not `send()` at `http.ts:134`) |
 
-When gate off: **503** JSON, **404** for `/home` page; no nav tab (`nav-tabs.ts`).
+### Safe download response (required)
 
-**Auth:** owner JWT only—**not** `canManageSharedServerState` (`owner-auth.ts`); reject admin-token for vault bytes (stricter than settings).
+For `GET .../file`, use `res.writeHead` + stream body with:
+
+- **`Content-Disposition: attachment`** always — never `inline`. ASCII fallback filename + **RFC 5987** `filename*=UTF-8''…` from sanitized `original_filename` or `title`.
+- **`Content-Type`** from stored allowlisted MIME (from magic bytes at upload).
+- **`X-Content-Type-Options: nosniff`** (global `SECURITY` in `http.ts` lines 127–131 applies to `send()` only; streamed downloads must set it explicitly).
+- **`Cache-Control: no-store`**.
+
+Resolve `storage_key` only from DB row; reject `..`, slashes, or mismatched keys (**path traversal** test).
+
+When gate off: **503** JSON, **404** `/home` page.
 
 ---
 
 ## Notifications
 
-Hook in `apps/server/src/notify/tick.ts` (same tick as calendar reminders):
+In `apps/server/src/notify/tick.ts` (with calendar reminders):
 
-1. Select maintenance items where `ntfy_enabled`, `next_due_date <= today` (workspace `cfg.tz`), not notified in last 24h (dedupe key in sqlite or json state file under data dir).
-2. Call `shouldSendDuringQuietHours` (`notify/ntfy.ts` lines 132–134) — **respect** `NTFY_QUIET_HOURS` + `parseQuietHours` / `inQuietHours` (`notify/quiet-hours.ts`).
-3. Use `publishNtfy` with title only (item title + “due today”); **no** attachment paths or expiry amounts in body if they reveal purchases—optional generic copy.
+1. Items due where `ntfy_enabled` and `next_due_date <= today` in `cfg.tz`.
+2. Call **`notifyIfAllowed`** (`notify/ntfy.ts` lines 166–168), which applies **`shouldSendDuringQuietHours`** (`notify/ntfy.ts` lines 132–134) before **`notify`**.
+3. If due but quiet hours block: set **`pending_notify_after`** to the **end of the current quiet window** in workspace TZ (preferred over dropping); on subsequent ticks when `now >= pending_notify_after`, send and clear pending. Digest bypass in `tick.ts` (~line 67) does **not** apply to maintenance.
+4. Resolve config with **`resolveNtfyConfig(deployment, effective)`** (`notify/ntfy.ts` line 106), same as `http.ts` ntfy test/status routes.
 
-Morning briefing digest bypass (`notify/tick.ts` comment line 67) does **not** apply to maintenance—still respect quiet hours.
-
-**No** budget-style alerts in briefings.
+Generic title/body only—no filenames or receipt amounts in ntfy body.
 
 ---
 
 ## UI
 
-| Piece | Files |
-|-------|-------|
-| Page | `apps/server/src/ui/home-vault-page.ts` — `/home?view=maintenance|vault` query pattern like `sources-page.ts` / budget views |
-| Components | `#85` `pageHeader`, `field`, `emptyState`, `badge` (expiry warning → **orange/destructive** token only for expired) |
-| Upload | Owner-only form; show expiry date picker for warranties |
+`apps/server/src/ui/home-vault-page.ts` — `/home?view=maintenance|vault`; `#85` components.
 
-**PWA:** extend `pwa.ts` `SERVICE_WORKER` fetch guard to skip **`/home`** and **`/home/`** (same line pattern as budget plan for `/budget`).
+**PWA:** extend `pwa.ts` line 74 guard for `/home` and `/home/` (mirror `/budget`).
 
 ---
 
@@ -87,58 +90,56 @@ Morning briefing digest bypass (`notify/tick.ts` comment line 67) does **not** a
 
 | Rule | Enforcement | Test |
 |------|-------------|------|
-| Owner-only binary + metadata | Routes check `who.owner` + gate | `home-vault-owner.test.ts` |
-| No vault in LLM/MCP | `home/excluded.ts`; grep | Snapshot |
-| No document bytes in logs | Error codes only | Privacy test |
-| No AI on upload | No import of vault into `llm/` | Grep |
-| SSRF on upload | Magic-byte sniff + MIME allowlist | Unit |
-| Backups | Document in `SELFHOST.md` when shipping (see Needs approval) | Docs review |
+| Owner-only bytes | Gate + owner JWT | `home-vault-owner.test.ts` |
+| Download attachment + nosniff | Stream headers | Header unit test |
+| Path traversal | UUID keys only | `storage_key=../etc/passwd` → 404 |
+| Content-type spoofing | Magic-byte allowlist | Upload `.pdf` that is executable → reject |
+| No vault in LLM/MCP | `home/excluded.ts` | Grep |
+| No bytes in logs | Code-only errors | Privacy test |
 
 ---
 
 ## Tests
 
-**Unit:** `home-maintenance.test.ts` (cadence → next due), `home-vault-upload.test.ts` (size/MIME reject), `home-gate.test.ts`, `home-privacy.test.ts`.
+**Unit:** `home-vault-upload.test.ts`, `home-vault-download.test.ts` (attachment, nosniff, traversal), `home-maintenance-quiet.test.ts` (defer to quiet end).
 
-**Browser:** `home-vault.browser.ts` in `test:dashboard-browser` — owner upload flow; non-owner 403 on API.
+**Browser:** `home-vault.browser.ts` in `test:dashboard-browser`.
 
 ---
 
 ## PR breakdown
 
-Single PR: `home/` module (gate, store, routes, maintenance scheduler), `ui/home-vault-page.ts`, `notify/tick.ts` hook, `pwa.ts` skip, `http.ts` + `index.ts` wire, tests, **SELFHOST.md** backup bullet (text only in docs PR if infra not approved yet).
+Single PR: `home/` module, `ui/home-vault-page.ts`, `notify/tick.ts` hook, `pwa.ts`, `http.ts`, tests.
 
 ---
 
-## Needs Kellan’s approval (do not apply without explicit yes)
+## Needs Kellan’s approval
 
 | Change | Why |
 |--------|-----|
-| New **`home-vault/` blob directory** on `homepage-data` volume | Docker volume size / backup scope |
-| **`home.sqlite`** backup line in `SELFHOST.md` + restore procedure | Ops |
-| **`compose.yml` / volume mount** if separate mount desired (default: reuse `DATA_DIR`) | Infra |
-| Raising **25 MB** upload cap or adding MIME types | Security surface |
-| Optional **`HOME_VAULT_MAX_BYTES`** env (new) | Config policy—flag only, default unset |
-
-Agent/cloud runs: **document only** until approved.
+| `home-vault/blobs/` on `homepage-data` | Backup size |
+| `home.sqlite` in `SELFHOST.md` | Ops |
+| `compose.yml` extra mount (if not using `DATA_DIR`) | Infra |
+| Upload cap / MIME expansion | Security |
+| Optional `HOME_VAULT_*` env | New config—flag only |
 
 ---
 
 ## Open questions for Kellan
 
-1. Separate nav tab “Home” vs nested under Settings?
-2. Default maintenance templates (HVAC filter, smoke detector battery) seeded on first open?
-3. ntfy click URL → `/home?view=maintenance` using `appPublicUrl` (`config.ts`)?
-4. Warranty expiry lead time (30/60/90 days) for UI warnings?
+1. Nav tab “Home” vs Settings-only link?
+2. Seed default maintenance templates?
+3. ntfy `click` URL via `appPublicUrl` → `/home?view=maintenance`?
+4. Warranty expiry warning lead (30/60/90 days)?
 
 ---
 
-## Reference paths (existing)
+## Reference paths
 
-- SQLite file pattern: `apps/server/src/board/store.ts`, `apps/server/src/wins/store.ts` (`node:sqlite` `DatabaseSync`).
-- Owner check pattern: `apps/server/src/auth.ts`, `apps/server/src/owner-auth.ts`.
-- Budget gate reference: `docs/budget/PLAN.md`, `budget/gate.ts` (historical PR A).
-- Ntfy + quiet hours: `apps/server/src/notify/ntfy.ts`, `notify/quiet-hours.ts`, `notify/tick.ts`.
-- Config TZ / ntfy: `apps/server/src/config.ts` `tz`, `ntfyQuietHours`.
-- PWA: `apps/server/src/pwa.ts`.
-- Raw body limits: `apps/server/src/request-body.ts`.
+- `apps/server/src/budget/gate.ts` `budgetAvailable` (gate pattern on `main`).
+- `apps/server/src/store.ts` `ensureDirs` (line 57).
+- `apps/server/src/voice-capture/parse-body.ts` (multipart parsing, no new deps).
+- `apps/server/src/notify/ntfy.ts` `resolveNtfyConfig`, `notifyIfAllowed`, `shouldSendDuringQuietHours`.
+- `apps/server/src/notify/tick.ts`, `notify/quiet-hours.ts`.
+- `apps/server/src/http.ts` `send()` / `SECURITY` (line 134); streamed downloads set same nosniff.
+- `apps/server/src/pwa.ts` line 74.

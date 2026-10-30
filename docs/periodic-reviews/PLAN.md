@@ -1,10 +1,12 @@
 # Weekly & monthly reviews — implementation plan
 
-Structured **periodic reviews** built from workspace activity: tasks completed, meetings, bookmarks consumed, and a notes reflection prompt. Reuses shutdown review and calendar/day-plan data paths. **Budget and subscriptions are excluded entirely.** Optional AI summary uses **note text only** under existing LLM configuration—never financial data.
+**Periodic reviews** from activity: tasks done, meetings, bookmarks touched, calendar/day-plan context, and a notes reflection prompt. Reuses shutdown and planning code paths. **Budget and subscriptions excluded.** Optional LLM: **note titles only** (see LLM section)—counts stay in a deterministic template, not model prose.
 
-**Out of scope:** email triage, agent memory, direct bank connection, pushing review content via ntfy (unless Kellan later opts in—default **off**), including budget/subscription totals.
+**Out of scope:** email triage, agent memory, direct bank connection, ntfy push of reviews, budget/subscription totals.
 
-**Build order:** One implementation PR after command palette (optional) and independent of budget; no hard dependency on Budget PR A.
+**Cross-cutting:** no new dependencies or env vars; no budget data; budget alerts never in briefings or push.
+
+**Build order:** One PR; optional after command palette.
 
 ---
 
@@ -12,111 +14,108 @@ Structured **periodic reviews** built from workspace activity: tasks completed, 
 
 | In | Out |
 |----|-----|
-| `/reviews` page + `GET /api/reviews/weekly|monthly` | Budget / `BudgetStore` imports |
-| Aggregates from Todoist, Board, Calendar, Notes, Bookmarks, Meetings | Changing `OWNER_EMAILS` semantics |
-| Reuse `buildShutdownReview` logic for task/calendar slices | Auto-posting to daily briefing newspaper |
-| Optional LLM paragraph from non-sensitive notes only | LLM over bookmark URLs or meeting transcripts without size caps |
+| `/reviews` + `GET /api/reviews/weekly|monthly` | `BudgetStore` / budget routes |
+| Todoist, Board, Calendar, Notes, Bookmarks, Meetings | Changing owner auth model |
+| Reuse `buildShutdownReview` slices | Newspaper briefing edits |
+| Optional LLM summary (titles-only policy below) | Full note bodies / bookmark URLs to LLM |
 
 ---
 
 ## Data model
 
-**File-backed metadata** under `cfg.dataDir` (no new sqlite v1):
+File-backed under `cfg.dataDir`:
 
-| File | Purpose |
+| Path | Purpose |
 |------|---------|
-| `reviews/weekly.json` | Last generated `{ periodStart, periodEnd, generatedAt, snapshotId }` per week key |
-| `reviews/monthly.json` | Same for calendar month |
-| `reviews/snapshots/{id}.json` | Cached aggregate payload (counts + ids + user reflection text); **no budget fields** |
+| `reviews/weekly.json`, `reviews/monthly.json` | Last run metadata per period key |
+| `reviews/snapshots/{id}.json` | Aggregates + user reflection text (**no budget fields**) |
 
-Week/month boundaries use workspace `cfg.tz` (`config.ts` `tz`), same as `dayKey` / `dayKeyFromIso` (`store.ts`, `heatmap/counts.ts`).
+Period boundaries: `cfg.tz` via `dayKey` / `dayKeyFromIso` (`store.ts`, `heatmap/counts.ts`).
 
-Snapshot sections (all optional if integration missing):
+| Section | Sources |
+|---------|---------|
+| Tasks done | `buildShutdownReview` filters: `listCompletedTasks`, `listTasks`, `board.movesSince`, `DONE` (`briefing/shutdown-service.ts`, `todoist/client.ts`, `board/store.ts`) |
+| Meetings | Notes from meetings import (`meetings/import-service.ts`) with `updatedAt` in range |
+| Bookmarks | **`BookmarksStore` has no `readAt`** (`bookmarks/store.ts` schema: id, groupId, title, url, description only). **Fallback v1:** count/list bookmarks **added or updated in period** via import/mutation timestamps if added later; else **omit section** with copy “Bookmark activity tracking not available yet” — do not invent `readAt`. |
+| Calendar / day plan | `CalendarWorkspace.planning()` + `snapshot` hours (shutdown `time` fields) |
+| Notes prompt | Static checklist + user reflection stored on snapshot |
 
-| Section | Source functions |
-|---------|------------------|
-| Tasks done | `listCompletedTasks` + `partitionTodayAndOverdue` inverse (`todoist/client.ts`); Board `movesSince` + `DONE` column (`board/store.ts`, `board/types.ts`) — same filters as `buildShutdownReview` (`briefing/shutdown-service.ts`) |
-| Meetings | Notes tagged via meetings pipeline (`meetings/import-service.ts`, `meetings/summary-queue.ts`) with `updatedAt` in range |
-| Bookmarks read | Bookmark items with `readAt` / consumed flag if present in bookmarks store (else “added in period” fallback from `http.ts` bookmarks service) |
-| Calendar / day plan | `CalendarWorkspace.planning()` blocks + `snapshot` event hours (`calendar/workspace.ts` `planning`, `snapshot`); mirror shutdown `time.calendarHours` / blocked task hours |
-| Notes prompt | Static template + optional user free-text saved in snapshot only |
-
-**Exclude budget:** static rule in `reviews/excluded.ts` (mirror `budget/excluded.ts` intent); CI grep that `reviews/` does not import `budget/`.
+**Exclude budget:** `reviews/excluded.ts`; CI grep no `budget/` imports under `reviews/`.
 
 ---
 
 ## API routes
 
-| Method | Path | Auth | Response |
-|--------|------|------|----------|
-| GET | `/api/reviews/weekly?week=YYYY-Www` | Authenticated principal (same as briefing routes) | `{ period, sections, llmEnabled, errors }` |
-| GET | `/api/reviews/monthly?month=YYYY-MM` | Same | Same structure, wider ranges |
-| POST | `/api/reviews/weekly/reflection` | Same + `readBody` | Saves user reflection text on snapshot (no LLM required) |
-| POST | `/api/reviews/monthly/summary` | Same | Optional LLM: **only** concatenated non-sensitive note titles + user reflection + numeric aggregates (no raw URLs, no bookmark bodies) |
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/reviews/weekly?week=…` | Build/load snapshot |
+| GET | `/api/reviews/monthly?month=…` | Same |
+| POST | `/api/reviews/weekly/reflection` | Save user reflection (no LLM) |
+| POST | `/api/reviews/monthly/summary` | Optional LLM (policy below) |
 
-Wire in `http.ts` near `handleDailyBriefingRoutes` (`daily-briefing/routes.ts`). JSON `cache-control: no-store`.
+Wire near `handleDailyBriefingRoutes` (`daily-briefing/routes.ts`). JSON no-store.
 
-**LLM:** when `llmConfigured(cfg)` (`config.ts`), call `chatCompletion` (`llm/provider.ts`) with system prompt similar to `generateShutdownReflection` (`shutdown-service.ts` lines 324–354) but fed **only** `notesForLlmContext`-filtered excerpts (`notes/sensitive.ts`). Cap input bytes (reuse `MAX_CLIENT_REVIEW_BYTES` pattern from shutdown).
+### LLM policy (single rule)
+
+When `llmConfigured(cfg)` (`config.ts`):
+
+1. **Deterministic block (never LLM):** all numeric counts, lists of task/board/meeting **titles** already shown in the UI, calendar hours, bookmark fallback counts, period labels — rendered from snapshot JSON in SSR/ client template.
+2. **LLM input (only if user clicks “Summarize”):** newline-separated **non-sensitive note titles only** from notes touched in period (`isNoteSensitive` → exclude entirely via `notes/sensitive.ts`), plus the user’s saved reflection text, plus **aggregate counts as numbers in the prompt** (same as `generateShutdownReflection` numeric lines in `shutdown-service.ts` lines 332–338). **No note bodies, no bookmark URLs, no meeting transcript text, no budget fields.**
+3. Call `chatCompletion` (`llm/provider.ts`) with byte cap inspired by `MAX_CLIENT_REVIEW_BYTES` in `shutdown-service.ts`.
 
 ---
 
 ## UI
 
-| Piece | Files |
-|-------|-------|
-| Page | `apps/server/src/ui/reviews-page.ts` — `#85` `pageHeader`, `statCard` for counts, sections as `card()` from `components.ts` |
-| Route | `GET /reviews` in `http.ts`; nav tab optional (hidden by default in `nav-tabs.ts` until enabled—**no new env**; use settings sidebar visibility patch only if Kellan wants) |
-| Shutdown reuse | Link “See today’s shutdown” → `/briefing` shutdown tab (`daily-briefing-page.ts` `#db-mode-shutdown`, `/api/briefing/shutdown`) |
-| Day plan reuse | Show “Scheduled blocks remaining” from `/api/calendars/planning` (`calendar/routes.ts` line 19, `calendar-planning-script.ts`) |
+`apps/server/src/ui/reviews-page.ts` — `pageHeader`, `statCard`, `card()`.
 
-**Daily Briefing newspaper style** (`daily-briefing-page.ts`) stays unchanged—reviews are a separate gray/royal-blue workspace page.
+Link to shutdown tab: `daily-briefing-page.ts`, `/api/briefing/shutdown`.
+
+Day plan: `/api/calendars/planning` (`calendar/routes.ts`).
 
 ---
 
 ## Privacy and security
 
-| Rule | Enforcement | Test |
-|------|-------------|------|
-| No budget data | No `BudgetStore` in review builders | Grep + fixture assert |
-| Sensitive notes excluded from LLM | `notesForLlmContext` | Unit with sensitive note seeded |
-| No review payload in MCP tools | `IntegrationDeps` unchanged | MCP tool name snapshot |
-| No ntfy on generate | Do not call `notify/ntfy.ts` | Grep |
-| Briefing editions unchanged | `DailyBriefingService` does not read reviews dir | Integration test |
-| `Cache-Control: no-store` | JSON + HTML `send()` | Header test |
+| Rule | Test |
+|------|------|
+| No budget imports | Grep |
+| LLM gets titles-only policy | Unit: sensitive note title excluded; body never in prompt |
+| No ntfy | Grep |
+| Briefing unchanged | `DailyBriefingService` |
+| no-store | Header test |
 
 ---
 
 ## Tests
 
-**Unit:** `reviews-build.test.ts` (week boundaries in `cfg.tz`, section counts, budget import forbidden), `reviews-llm.test.ts` (sensitive exclusion).
+**Unit:** `reviews-build.test.ts`, `reviews-llm.test.ts`.
 
-**Browser:** `reviews.browser.ts` in `test:dashboard-browser` — load `/reviews`, weekly tab shows shutdown-linked counts, LLM button disabled when `LLM_*` unset (mirror settings page pattern in `pages.ts`).
+**Browser:** `reviews.browser.ts` in `test:dashboard-browser`.
 
 ---
 
 ## PR breakdown
 
-Single PR: `briefing/reviews-service.ts` (or `reviews/service.ts`), routes, `reviews-page.ts`, snapshot storage, tests, optional nav entry.
+Single PR: `reviews/service.ts`, routes, `reviews-page.ts`, tests.
 
 ---
 
 ## Open questions for Kellan
 
-1. Should weekly reviews align to **ISO week** or **Sunday-start** in `cfg.tz`?
-2. Nav tab visible by default or buried under Settings → Features?
-3. LLM summary opt-in per review (button) vs auto-generate on first open?
-4. Include **focus sessions** (`FocusSessionsStore` in `focus/store.ts`, `panels/focus.ts`) in activity section?
+1. ISO week vs Sunday-start in `cfg.tz`?
+2. Default nav tab visibility?
+3. LLM button-only vs auto on open?
+4. Include `FocusSessionsStore` (`focus/store.ts`)?
 
 ---
 
-## Reference paths (existing)
+## Reference paths
 
-- Shutdown aggregate: `apps/server/src/briefing/shutdown-service.ts` `buildShutdownReview`, `generateShutdownReflection`.
-- Briefing HTTP: `apps/server/src/daily-briefing/routes.ts` (`/api/briefing/shutdown`).
-- UI shutdown tab: `apps/server/src/ui/daily-briefing-page.ts`.
-- Calendar planning: `apps/server/src/calendar/workspace.ts` `planning()`; API `calendar/routes.ts`.
-- Todoist: `apps/server/src/todoist/client.ts` `listCompletedTasks`, `listTasks`, `partitionTodayAndOverdue`.
-- Board done: `apps/server/src/board/store.ts` `movesSince`, `DONE` in `board/types.ts`.
-- LLM gate: `apps/server/src/config.ts` `llmConfigured`, `llmConfig`.
-- Note sensitivity: `apps/server/src/notes/sensitive.ts` `notesForLlmContext`, `isNoteSensitive`.
-- Timezone day keys: `apps/server/src/store.ts` `dayKey`.
+- `apps/server/src/briefing/shutdown-service.ts` `buildShutdownReview`, `generateShutdownReflection`.
+- `apps/server/src/daily-briefing/routes.ts`, `ui/daily-briefing-page.ts`.
+- `apps/server/src/calendar/workspace.ts` `planning()`.
+- `apps/server/src/bookmarks/store.ts` (no readAt).
+- `apps/server/src/notes/sensitive.ts` `isNoteSensitive`, `notesForLlmContext` (titles-only policy stricter than full notesForLlmContext).
+- `apps/server/src/config.ts` `llmConfigured`.
+- `apps/server/src/http.ts` `send()` line 134.

@@ -1,10 +1,12 @@
 # Goals & milestones — implementation plan
 
-**Goals** with **milestones** linked to Todoist tasks and Board cards. Todoist writes (`createTask`, `completeTask` in `todoist/client.ts`) happen **only after explicit UI confirmation**—no silent API side effects.
+**Goals** with **milestones** linked to Board cards and Todoist tasks. **Todoist writes only after owner confirmation in the UI.** No silent `createTask` calls.
 
-**Out of scope:** email triage, agent memory, direct bank connection, auto-sync from budget/subscriptions, LLM goal decomposition.
+**Out of scope:** email triage, agent memory, direct bank connection, budget/subscription data, LLM decomposition, MCP tools in v1.
 
-**Build order:** One implementation PR; may follow periodic reviews. No budget imports.
+**Cross-cutting:** **no new dependencies or env vars**; **no budget data**; **budget alerts never in briefings or push** (goals module must not import budget).
+
+**Build order:** One PR; may follow periodic reviews.
 
 ---
 
@@ -12,104 +14,92 @@
 
 | In | Out |
 |----|-----|
-| `goals.sqlite` (or table set in dedicated file) | New OAuth scopes for Todoist |
-| UI `/goals` with milestone progress | Automatic Todoist sync on board moves |
-| Link milestones ↔ `BoardStore` cards ↔ Todoist task ids | MCP tools exposing goals (v1) |
+| `goals.sqlite` | New Todoist OAuth scopes |
+| `/goals` UI + milestone links | Auto Todoist sync on board moves |
+| Board + Todoist links | `completeTask` without confirm (see below) |
+| Owner-confirmed Todoist **create** only | MCP exposure v1 |
 
 ---
 
 ## Data model
 
-**File:** `{dataDir}/goals.sqlite` — `GoalsStore.open` mirroring `wins/store.ts` / `board/store.ts` (`node:sqlite` `DatabaseSync`, `schema_version` table per budget plan pattern).
+`{dataDir}/goals.sqlite` — `GoalsStore.open` like `wins/store.ts` (`DatabaseSync`, migrations).
 
-| Table | Columns |
-|-------|---------|
-| `goals` | `id`, `title`, `description`, `target_date` nullable, `status` (`active` \| `completed` \| `archived`), `created_at`, `updated_at` |
-| `milestones` | `id`, `goal_id`, `title`, `position`, `due_date` nullable, `completed_at` nullable |
-| `milestone_links` | `milestone_id`, `kind` (`board` \| `todoist`), `external_id`, `created_at` |
+Tables: `goals`, `milestones`, `milestone_links` (`kind`: `board` | `todoist`).
 
-Unique `(milestone_id, kind, external_id)`.
-
-**Board link:** `external_id` = board card id (`BoardStore.get`, `board/routes.ts` CRUD). Display column/title from `board.list()`.
-
-**Todoist link:** store Todoist task id from `createTask` response; completion state read via `listTasks` / user action—not polled every request (load on page open + after confirmed writes).
+**Todoist draft tokens:** server-side table or cache `todoist_drafts` — `draft_token` (random), `milestone_id`, payload `{ content, due }`, **`expires_at` ~10 minutes**, **`used_at`**. Single-use: confirm consumes token; duplicate confirm returns 409 without second `createTask`.
 
 ---
 
 ## API routes
 
-Authenticated users may **read** goals (shared workspace visibility—same as board read today). **Writes** require `canManageSharedServerState(cfg, principal)` **or** stricter—default plan: **owner-only writes** if Kellan prefers; open question below.
+Reads: authenticated users (same as board list today). **Todoist confirm and all writes that call Todoist: owner only** (`who.owner === true` + email, same bar as budget `ownerOk` — use shared `isBudgetOwner` pattern or parallel `isGoalsTodoistWriter` with identical owner check).
 
 | Method | Path | Behavior |
 |--------|------|----------|
-| GET | `/api/goals` | List goals + milestones + link summaries |
-| POST | `/api/goals` | Create goal |
-| PUT | `/api/goals/:id` | Update / archive |
-| POST | `/api/goals/:id/milestones` | Add milestone |
-| PUT | `/api/goals/milestones/:id` | Edit / mark complete locally |
-| POST | `/api/goals/milestones/:id/link` | Body `{ kind, externalId }` — validate card exists or Todoist id format |
-| POST | `/api/goals/milestones/:id/todoist/create` | **Two-step:** returns `{ draft: { content, due } }` without calling Todoist |
-| POST | `/api/goals/milestones/:id/todoist/confirm` | Body `{ confirm: true, draftToken }` — only then call `createTask` (`todoist/client.ts`) |
+| GET | `/api/goals` | List goals + milestones + links |
+| POST/PUT | `/api/goals`, milestones, board links | CRUD (per write policy above) |
+| POST | `/api/goals/milestones/:id/todoist/create` | Returns `{ draftToken, preview }` — **no Todoist HTTP** |
+| POST | `/api/goals/milestones/:id/todoist/confirm` | Body `{ draftToken }` — **`createTask`** once (`todoist/client.ts`); mark token used |
 
-Board link creation does not need Todoist confirmation; moving a card to `DONE` (`board/types.ts`) can suggest milestone completion in UI but **does not** auto-complete milestone without button click.
+**Do not** expose `completeTask` in v1 unless adding a **separate confirm-gated** route (`/todoist/complete/confirm`) with the same draft-token pattern. Milestone completion stays local until explicitly designed.
 
-JSON `cache-control: no-store` (`board/routes.ts` helper style).
+Board links: no Todoist confirmation required. Card → `DONE` may suggest UI completion only—no auto milestone complete.
+
+JSON `cache-control: no-store` (`board/routes.ts` style). CSRF: `csrfOk` + `x-ah` (`auth.ts`).
 
 ---
 
 ## UI
 
-| Piece | Files |
-|-------|-------|
-| Page | `apps/server/src/ui/goals-page.ts` — `#85` `pageHeader`, milestone list, link picker (board cards from `/api/board/cards`, Todoist tasks when configured) |
-| Confirmation modal | Reuse `dialog()` from `components.ts` (as `notes-page.ts`); focus trap via shared `layout.ts` Esc/inert pattern |
-| Todoist flow | Step 1 preview task title/due → Step 2 “Create in Todoist” button sets `x-ah: 1` POST confirm |
+`apps/server/src/ui/goals-page.ts` — `pageHeader`, `dialog()` (`components.ts`, `notes-page.ts` pattern).
 
-Route: `GET /goals` in `http.ts`; optional nav entry in `nav-tabs.ts` (workspace group).
+Todoist: preview → confirm dialog; only **owner** sees confirm button (match budget page owner gating pattern in `budget-page.ts` / `http.ts` `/budget`).
+
+Focus: reuse **`trapSidebarTab`** / `.sidebar-inset` `inert` patterns from `layout.ts` for modal focus.
 
 ---
 
 ## Privacy and security
 
-| Rule | Enforcement | Test |
-|------|-------------|------|
-| Todoist token never sent to browser | Server-side `cfg.todoistApiToken` only | Route test |
-| No goal text in LLM briefing by default | No import into `shutdown-service` / reviews without explicit future PR | Grep |
-| CSRF on confirm POST | `csrfOk` (`auth.ts`) + `x-ah` header | Existing pattern test |
-| Budget excluded | No budget fields | N/A |
-
-Goals are not owner-gated like budget unless Kellan chooses owner-only writes.
+| Rule | Enforcement |
+|------|-------------|
+| Todoist token server-only | Never in JSON to browser |
+| Owner-only Todoist confirm | Route checks |
+| draftToken single-use | Store + tests |
+| No budget / briefings / ntfy | Import grep |
+| No new deps/env | Package + config review |
 
 ---
 
 ## Tests
 
-**Unit:** `goals-store.test.ts`, `goals-todoist-confirm.test.ts` (confirm false → no fetch to Todoist; mock fetch called once on confirm).
+**Unit:** `goals-store.test.ts`, `goals-todoist-confirm.test.ts` (double submit → one `createTask`; expired token → 410).
 
-**Browser:** `goals.browser.ts` in `test:dashboard-browser` — link board card; Todoist confirm dialog blocks until clicked.
+**Browser:** `goals.browser.ts` in `test:dashboard-browser`.
 
 ---
 
 ## PR breakdown
 
-Single PR: `goals/` store + routes, `goals-page.ts`, `http.ts`, tests, optional nav.
+Single PR: `goals/` store, routes, `goals-page.ts`, `http.ts`, tests.
 
 ---
 
 ## Open questions for Kellan
 
-1. **Read access:** all authenticated users or owner-only entire module?
-2. When a linked board card hits `DONE`, auto-check milestone complete with undo snackbar?
-3. Show goals panel on dashboard (`panels/registry.ts`) in v1 or page-only?
-4. Archive goal behavior for linked Todoist tasks (leave open vs prompt to complete)?
+1. Goal **read** access: all authenticated users or owner-only module?
+2. Board card → DONE: suggest milestone complete with undo?
+3. Dashboard panel in v1?
+4. Archive goal while Todoist task open?
 
 ---
 
-## Reference paths (existing)
+## Reference paths
 
-- Board: `apps/server/src/board/store.ts`, `board/routes.ts`, `board/types.ts` `DONE`, `BOARD_COLUMNS`.
-- Todoist: `apps/server/src/todoist/client.ts` `createTask`, `completeTask`, `listTasks`; `todoistConfigured` in `config.ts`.
-- Calendar-task linking precedent: `apps/server/src/calendar/workspace.ts` `nativeDraft` task version checks.
-- UI dialog: `apps/server/src/ui/components.ts` `dialog`; notes usage `notes-page.ts`.
-- CSRF: `apps/server/src/auth.ts` `csrfOk`.
-- SQLite: `apps/server/src/wins/store.ts`, `apps/server/src/board/store.ts`.
+- `apps/server/src/board/store.ts`, `board/routes.ts`, `board/types.ts` `DONE`.
+- `apps/server/src/todoist/client.ts` `createTask`, `listTasks`; `todoistConfigured` in `config.ts`.
+- `apps/server/src/auth.ts` `csrfOk`; `auth.ts` owner flag lines 40–48.
+- `apps/server/src/ui/components.ts` `dialog`; `layout.ts` focus patterns.
+- `apps/server/src/wins/store.ts` (sqlite file pattern).
+- `apps/server/src/budget/routes.ts` `ownerOk` → shared extract for owner-only writes.
