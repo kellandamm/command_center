@@ -109,6 +109,8 @@ Generic title/body only—no filenames or receipt amounts in ntfy body.
 
 ---
 
+## PR breakdown
+
 Single PR: `home/` module, `ui/home-vault-page.ts`, `notify/tick.ts` hook, `pwa.ts`, `http.ts`, `nav-tabs.ts`, tests, **`SELFHOST.md` backup bullet** (text).
 
 ---
