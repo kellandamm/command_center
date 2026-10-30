@@ -1,6 +1,6 @@
 import type { NavLink } from "./layout";
 import { page } from "./layout";
-import { pageHeader } from "./components";
+import { pageHeader, settingsLinkRow } from "./components";
 import { PHASE2_PAGE_CSS } from "./phase2-pages-css";
 
 export { dashboardPage } from "./dashboard-page";
@@ -12,18 +12,33 @@ export function settingsPage(nav?: NavLink[]): string {
     nav,
     extraCss: PHASE2_PAGE_CSS,
     body: `<div class="phase2-page settings-page">
+<div class="settings-stack">
 ${pageHeader({ title: "Settings", description: "Tune schedules, view behavior, and navigation." })}
-<nav class="settings-quick-links" aria-label="Settings shortcuts">
-  <a href="/settings/connections">Service connections</a>
-  <a href="/settings/calendars">Calendars &amp; subscriptions</a>
-</nav>
+<div class="settings-tabs" role="tablist" aria-label="Settings sections">
+  <button type="button" class="ghost on" data-tab="views">Views</button>
+  <button type="button" class="ghost" data-tab="topics">Briefing topics</button>
+  <button type="button" class="ghost" data-tab="schedule">Schedule</button>
+  <button type="button" class="ghost" data-tab="tabs">Tabs</button>
+</div>
+<section class="settings-section" aria-labelledby="settings-general-heading">
+<h2 class="settings-section-title" id="settings-general-heading">General</h2>
 <section class="card settings-card" id="settings-features" aria-label="Deployment features">
-<h2 style="margin:0 0 .5rem;font-size:1rem">Features</h2>
+<h3 style="margin:0 0 .5rem;font-size:1rem">Features</h3>
 <p class="dim" style="margin:0 0 .75rem">Read-only deployment flags (no secret values).</p>
-<dl id="settings-features-list" class="settings-features-list"></dl>
+<div id="settings-features-list" class="settings-features-list"></div>
 </section>
+</section>
+<section class="settings-section" aria-labelledby="settings-connections-heading">
+<h2 class="settings-section-title" id="settings-connections-heading">Connections</h2>
+<div class="settings-link-list">
+${settingsLinkRow({ href: "/settings/connections", label: "Manage service connections and keys", iconName: "plug" })}
+${settingsLinkRow({ href: "/settings/calendars", label: "Manage calendars and subscriptions", iconName: "calendar" })}
+</div>
+</section>
+<section class="settings-section" aria-labelledby="settings-notifications-heading">
+<h2 class="settings-section-title" id="settings-notifications-heading">Notifications</h2>
 <section class="card settings-card" id="settings-ntfy" aria-label="Phone notifications">
-<h2 style="margin:0 0 .5rem;font-size:1rem">Phone notifications (ntfy)</h2>
+<h3 style="margin:0 0 .5rem;font-size:1rem">Phone notifications (ntfy)</h3>
 <p id="ntfy-status" class="dim" role="status">Checking…</p>
 <div class="row" style="margin-top:.75rem">
 <button type="button" id="ntfy-test" disabled>Send test notification</button>
@@ -32,12 +47,9 @@ ${pageHeader({ title: "Settings", description: "Tune schedules, view behavior, a
 <p class="dim">Configure <code>NTFY_TOPIC</code> on the server (or save credentials under Service connections). Subscribe to the same topic in the ntfy app on your phone. The morning briefing digest is sent even during quiet hours; reminders and other alerts follow <code>NTFY_QUIET_HOURS</code> in the configured workspace <code>TZ</code>.</p>
 <p id="ntfy-owner-hint" class="dim" role="status" hidden>Owner sign-in required to send a test notification.</p>
 </section>
-<div class="settings-tabs" role="tablist">
-  <button type="button" class="ghost on" data-tab="views">Views</button>
-  <button type="button" class="ghost" data-tab="topics">Briefing topics</button>
-  <button type="button" class="ghost" data-tab="schedule">Schedule</button>
-  <button type="button" class="ghost" data-tab="tabs">Tabs</button>
-</div>
+</section>
+<section class="settings-section" aria-labelledby="settings-views-heading">
+<h2 class="settings-section-title" id="settings-views-heading">Views</h2>
 <div class="card settings-card settings-tab-panel on" id="tab-views">
 <p class="dim">Choose what each page shows and how it’s displayed. These preferences are saved on this server.</p>
 <div class="settings-options-grid">
@@ -75,6 +87,8 @@ ${pageHeader({ title: "Settings", description: "Tune schedules, view behavior, a
 <p class="dim">Show, hide, rename, and reorder sidebar tabs. Dashboard and Settings are always visible.</p>
 <div id="tabs-editor"></div>
 <div class="row" style="margin-top:1rem"><button type="button" id="tabs-save">Save tabs</button><span id="saved-tabs" class="dim"></span></div>
+</div>
+</section>
 </div>
 </div>`,
     script: `
@@ -134,18 +148,20 @@ function renderTabsEditor(){
   el.querySelectorAll(".tab-up").forEach(function(b){b.onclick=function(){swap(b.dataset.id,-1)}});
   el.querySelectorAll(".tab-down").forEach(function(b){b.onclick=function(){swap(b.dataset.id,1)}});
 }
+function featureBadge(on){
+  return on
+    ?'<span class="ui-badge ui-badge-soft ui-badge-ok">On</span>'
+    :'<span class="ui-badge ui-badge-soft ui-badge-neutral">Off</span>';
+}
 function addFeatureRow(list,label,on,offHint,onHint){
   var row=document.createElement("div");
   row.className="settings-feature-row";
-  var dt=document.createElement("dt");
-  dt.textContent=label;
-  var dd=document.createElement("dd");
-  var strong=document.createElement("strong");
-  strong.textContent=on?"On":"Off";
-  dd.appendChild(strong);
+  var top=document.createElement("div");
+  top.className="settings-feature-top";
+  top.innerHTML='<span class="settings-feature-label">'+esc(label)+'</span><span class="settings-feature-status">'+featureBadge(on)+'</span>';
+  row.appendChild(top);
   var hint=on?onHint:offHint;
-  if(hint){var p=document.createElement("p");p.className="dim";p.textContent=hint;dd.appendChild(p);}
-  row.append(dt,dd);
+  if(hint){var p=document.createElement("p");p.className="settings-feature-hint dim";p.textContent=hint;row.appendChild(p);}
   list.appendChild(row);
 }
 function renderDeploymentFeatures(meta){

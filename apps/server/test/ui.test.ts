@@ -145,7 +145,7 @@ test("ui: spaces, assistant and capture pages render", () => {
 test("ui: settings page has schedule and tabs sections", () => {
   const html = settingsPage();
   assert.match(html, /ui-page-header/);
-  assert.match(html, /settings-quick-links/);
+  assert.match(html, /settings-link-row/);
   assert.match(html, /settings-card settings-tab-panel/);
   assert.match(html, /href="\/settings" class="on"/);
   assert.match(html, /id="tab-schedule"/);
@@ -160,6 +160,19 @@ test("ui: settings page has schedule and tabs sections", () => {
   assert.match(html, /data-pref="calendar.weekStartsOn"/);
   assert.match(html, /data-pref="activity.limit"/);
   assert.match(html, /id="views-save"/);
+});
+
+test("ui: settings connection rows are accessible links", () => {
+  const html = settingsPage();
+  for (const [href, label] of [
+    ["/settings/connections", "Manage service connections and keys"],
+    ["/settings/calendars", "Manage calendars and subscriptions"],
+  ] as const) {
+    const re = new RegExp(
+      `<a class="settings-link-row" href="${href.replace(/\//g, "\\/")}"[^>]*>[\\s\\S]*?${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+    );
+    assert.match(html, re, `expected link row for ${href}`);
+  }
 });
 
 test("ui: retained dashboard, settings and briefing scripts parse without retired integrations", () => {
