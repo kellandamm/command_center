@@ -137,7 +137,7 @@ document.getElementById("dashboard-import-layout")?.addEventListener("change",fu
     return api("/api/dashboard-layout/import","POST",JSON.parse(text));
   }).then(function(r){if(r.layout&&window.applyDashboardLayout)window.applyDashboardLayout(r.layout);})
   .catch(function(err){alert(err.message||"Import failed");})
-  .finally(function(){input.value="";});
+  .finally(function(){input.value="";document.querySelector(".page-header-menu[open]")?.removeAttribute("open");});
 });
 ${PANEL_SCRIPTS.map((fn) => fn()).join("\n")}
 ${quickAddScript}

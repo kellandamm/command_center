@@ -310,15 +310,32 @@ const THEME_SCRIPT = `
     if(isMobile())btn.setAttribute("aria-expanded",shell.getAttribute("data-mobile-sidebar")==="open"?"true":"false");
     else btn.setAttribute("aria-expanded",shell.getAttribute("data-sidebar-state")==="collapsed"?"false":"true");
   }
-  function focusFirstSidebar(){
+  function focusFirstSidebarWhenVisible(){
     if(!sidebar)return;
-    var target=sidebar.querySelector(".sidebar-nav a,.sidebar-brand");
-    if(target&&target.focus)target.focus();
+    var done=false;
+    function focusIt(){
+      if(done)return;
+      done=true;
+      sidebar.removeEventListener("transitionend",onEnd);
+      var target=sidebar.querySelector(".sidebar-nav a,.sidebar-brand");
+      if(target&&target.focus)target.focus();
+    }
+    function onEnd(ev){
+      if(ev.target!==sidebar)return;
+      if(ev.propertyName==="transform"||ev.propertyName==="visibility")focusIt();
+    }
+    sidebar.addEventListener("transitionend",onEnd);
+    setTimeout(focusIt,280);
+  }
+  function resetMobileSheetState(){
+    shell.setAttribute("data-mobile-sidebar","closed");
+    if(sidebar){sidebar.removeAttribute("inert");sidebar.removeAttribute("aria-hidden");}
+    syncToggleAria();
   }
   function setMobileOpen(open){
     shell.setAttribute("data-mobile-sidebar",open?"open":"closed");
     if(sidebar){
-      if(open){sidebar.removeAttribute("inert");sidebar.removeAttribute("aria-hidden");focusFirstSidebar();}
+      if(open){sidebar.removeAttribute("inert");sidebar.removeAttribute("aria-hidden");focusFirstSidebarWhenVisible();}
       else{sidebar.setAttribute("inert","");sidebar.setAttribute("aria-hidden","true");document.getElementById("sidebar-toggle")?.focus();}
     }
     syncToggleAria();
@@ -346,6 +363,15 @@ const THEME_SCRIPT = `
     sidebar.setAttribute("inert","");sidebar.setAttribute("aria-hidden","true");
   }
   syncToggleAria();
+  var mobileMq=window.matchMedia("(max-width:768px)");
+  function onViewportChange(){
+    if(!isMobile())resetMobileSheetState();
+    else if(shell.getAttribute("data-mobile-sidebar")!=="open"&&sidebar){
+      sidebar.setAttribute("inert","");sidebar.setAttribute("aria-hidden","true");
+    }
+    syncToggleAria();
+  }
+  mobileMq.addEventListener("change",onViewportChange);
   document.getElementById("sidebar-toggle")?.addEventListener("click",toggle);
   document.getElementById("sidebar-backdrop")?.addEventListener("click",function(){setMobileOpen(false);});
   document.addEventListener("click",function(ev){

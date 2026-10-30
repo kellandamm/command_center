@@ -1,8 +1,32 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Script, createContext, runInContext } from "node:vm";
+import { createContext, runInContext } from "node:vm";
+import { agentsUsagePage } from "../src/ui/agents-usage-page";
 import { dashboardPage } from "../src/ui/pages";
 import { statCard } from "../src/ui/components";
+
+function usagePageScript(html: string): string {
+  const m = html.match(/<script>\n([\s\S]*)<\/script><\/body>/);
+  assert.ok(m, "usage page script");
+  return m[1]!;
+}
+
+function extractFunction(script: string, name: string): string {
+  const start = script.indexOf(`function ${name}(`);
+  assert.ok(start >= 0, `${name} in usage page script`);
+  const open = script.indexOf("{", start);
+  assert.ok(open >= 0);
+  let depth = 0;
+  for (let i = open; i < script.length; i++) {
+    const c = script[i];
+    if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) return script.slice(start, i + 1);
+    }
+  }
+  assert.fail(`${name} unclosed in usage script`);
+}
 
 test("shell: sidebar toggle persists cc-sidebar to localStorage", () => {
   const storage: Record<string, string> = {};
@@ -24,6 +48,7 @@ test("shell: sidebar toggle persists cc-sidebar to localStorage", () => {
   const sidebar = {
     setAttribute() {},
     removeAttribute() {},
+    addEventListener() {},
     querySelector() {
       return null;
     },
@@ -74,7 +99,7 @@ test("shell: sidebar toggle persists cc-sidebar to localStorage", () => {
       },
       window: {
         matchMedia() {
-          return { matches: false };
+          return { matches: false, addEventListener() {} };
         },
       },
     }),
@@ -92,22 +117,20 @@ test("components: statCard escapes value HTML", () => {
   assert.match(html, /&lt;img/);
 });
 
-test("agents usage: client statCard escapes value", () => {
+test("agents usage: client statCard from emitted page script escapes value", () => {
+  const script = usagePageScript(agentsUsagePage());
+  const escFn = extractFunction(script, "esc");
+  const statCardFn = extractFunction(script, "statCard");
   const ctx = createContext({
     document: {
       createElement(tag: string) {
-        const el = { tagName: tag, className: "", innerHTML: "" };
-        return el;
+        return { tagName: tag, className: "", innerHTML: "" };
       },
     },
   });
   runInContext(
-    `function esc(s){return String(s??"").replace(/[&<>"']/g,function(c){return({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]});}
-function statCard(title,value,sub){
-  var el=document.createElement("article");el.className="stat-card card card-sm usage-stat-card";
-  el.innerHTML="<div class=\\"stat-card-top\\"><span class=\\"stat-label dim\\">"+esc(title)+"</span></div><div class=\\"stat-value tabular-nums\\">"+esc(value)+"</div>"+(sub?"<p class=\\"stat-hint dim\\">"+esc(sub)+"</p>":"");
-  return el;
-}
+    `${escFn}
+${statCardFn}
 var el=statCard("t","<script>","sub");
 result=el.innerHTML;`,
     ctx,
