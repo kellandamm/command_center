@@ -8,10 +8,13 @@ export const PHASE2_PAGE_CSS = `
   box-shadow:0 0 0 1px color-mix(in srgb,var(--foreground) 6%,transparent),0 1px 2px rgba(0,0,0,.04)}
 html.dark .phase2-shell{box-shadow:0 0 0 1px color-mix(in srgb,var(--foreground) 10%,transparent),0 1px 2px rgba(0,0,0,.35)}
 .settings-page .settings-stack{display:flex;flex-direction:column;gap:1.25rem;width:100%;max-width:48rem}
-.settings-page .settings-section{display:flex;flex-direction:column;gap:.75rem}
-.settings-page .settings-section-title{margin:0;font-size:.8125rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted-foreground)}
+.settings-page .settings-tabs,.settings-page .settings-subtabs{margin:0 0 .75rem}
+.settings-page .settings-subtabs{display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:1rem}
 .settings-page .settings-card{max-width:none;margin:0}
-.settings-page .settings-tabs{margin:0 0 .25rem}
+.settings-section-panel{display:none}
+.settings-section-panel.on{display:block}
+.settings-sub-panel{display:none}
+.settings-sub-panel.on{display:block}
 .settings-link-list{display:flex;flex-direction:column;gap:.5rem}
 .settings-link-row{
   display:flex;align-items:center;gap:.75rem;padding:.75rem 1rem;border:1px solid var(--border);border-radius:var(--radius);

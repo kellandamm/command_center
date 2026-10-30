@@ -6,7 +6,7 @@ import { calendarScript } from "./calendar-script";
 import { calendarPlanningScript } from "./calendar-planning-script";
 
 export function calendarPage(nav?: NavLink[]): string {
-  const headerActions = `${button({ label: "New event", href: "/calendar/event" })}${button({ label: "Calendar settings", variant: "outline", href: "/settings/calendars" })}${button({ label: "Refresh calendars", variant: "ghost", attrs: { id: "cal-refresh", type: "button" } })}`;
+  const headerActions = `${button({ label: "New event", href: "/calendar/event" })}${button({ label: "Calendar settings", variant: "outline", href: "/settings/calendars" })}${button({ label: "Refresh calendars", variant: "ghost", attrs: { id: "cal-refresh" } })}`;
   return page({
     title: "Calendar — Command center",
     active: "/calendar",

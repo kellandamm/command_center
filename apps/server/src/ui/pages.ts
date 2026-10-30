@@ -1,7 +1,7 @@
 import type { NavLink } from "./layout";
 import { page } from "./layout";
-import { pageHeader, settingsLinkRow } from "./components";
 import { PHASE2_PAGE_CSS } from "./phase2-pages-css";
+import { settingsPageBody, SETTINGS_PAGE_TAB_SCRIPT } from "./pages-settings-body";
 
 export { dashboardPage } from "./dashboard-page";
 
@@ -11,95 +11,8 @@ export function settingsPage(nav?: NavLink[]): string {
     active: "/settings",
     nav,
     extraCss: PHASE2_PAGE_CSS,
-    body: `<div class="phase2-page settings-page">
-<div class="settings-stack">
-${pageHeader({ title: "Settings", description: "Tune schedules, view behavior, and navigation." })}
-<div class="settings-tabs" role="tablist" aria-label="Settings sections">
-  <button type="button" class="ghost on" data-tab="views">Views</button>
-  <button type="button" class="ghost" data-tab="topics">Briefing topics</button>
-  <button type="button" class="ghost" data-tab="schedule">Schedule</button>
-  <button type="button" class="ghost" data-tab="tabs">Tabs</button>
-</div>
-<section class="settings-section" aria-labelledby="settings-general-heading">
-<h2 class="settings-section-title" id="settings-general-heading">General</h2>
-<section class="card settings-card" id="settings-features" aria-label="Deployment features">
-<h3 style="margin:0 0 .5rem;font-size:1rem">Features</h3>
-<p class="dim" style="margin:0 0 .75rem">Read-only deployment flags (no secret values).</p>
-<div id="settings-features-list" class="settings-features-list"></div>
-</section>
-</section>
-<section class="settings-section" aria-labelledby="settings-connections-heading">
-<h2 class="settings-section-title" id="settings-connections-heading">Connections</h2>
-<div class="settings-link-list">
-${settingsLinkRow({ href: "/settings/connections", label: "Manage service connections and keys", iconName: "plug" })}
-${settingsLinkRow({ href: "/settings/calendars", label: "Manage calendars and subscriptions", iconName: "calendar" })}
-</div>
-</section>
-<section class="settings-section" aria-labelledby="settings-notifications-heading">
-<h2 class="settings-section-title" id="settings-notifications-heading">Notifications</h2>
-<section class="card settings-card" id="settings-ntfy" aria-label="Phone notifications">
-<h3 style="margin:0 0 .5rem;font-size:1rem">Phone notifications (ntfy)</h3>
-<p id="ntfy-status" class="dim" role="status">Checking…</p>
-<div class="row" style="margin-top:.75rem">
-<button type="button" id="ntfy-test" disabled>Send test notification</button>
-<span id="ntfy-test-status" class="dim" role="status"></span>
-</div>
-<p class="dim">Configure <code>NTFY_TOPIC</code> on the server (or save credentials under Service connections). Subscribe to the same topic in the ntfy app on your phone. The morning briefing digest is sent even during quiet hours; reminders and other alerts follow <code>NTFY_QUIET_HOURS</code> in the configured workspace <code>TZ</code>.</p>
-<p id="ntfy-owner-hint" class="dim" role="status" hidden>Owner sign-in required to send a test notification.</p>
-</section>
-</section>
-<section class="settings-section" aria-labelledby="settings-views-heading">
-<h2 class="settings-section-title" id="settings-views-heading">Views</h2>
-<div class="card settings-card settings-tab-panel on" id="tab-views">
-<p class="dim">Choose what each page shows and how it’s displayed. These preferences are saved on this server.</p>
-<div class="settings-options-grid">
-<div class="settings-option"><label for="pref-density">Page density</label><select id="pref-density" data-pref="density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select><p class="dim">Compact reduces spacing across supported pages.</p></div>
-<fieldset class="settings-option"><legend>Daily Briefing sections</legend>
-<label class="row choice-row"><input type="checkbox" data-pref="briefing.topics"/> Keyword digest</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.weather"/> Weather</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.calendar"/> Calendar</label></fieldset>
-<div class="settings-option"><label for="pref-hobie-status">Agent queue filter</label><select id="pref-hobie-status" data-pref="hobie.status"><option value="all">All tasks</option><option value="pending">Pending</option><option value="claimed">Claimed</option><option value="done">Done</option></select><p class="dim">Default filter on Agent → Queue.</p></div>
-<div class="settings-option"><label for="pref-calendar-week">Calendar week starts on</label><select id="pref-calendar-week" data-pref="calendar.weekStartsOn"><option value="monday">Monday</option><option value="sunday">Sunday</option></select></div>
-<div class="settings-option"><label for="pref-activity-limit">Activity entries</label><select id="pref-activity-limit" data-pref="activity.limit"><option value="25">25</option><option value="50">50</option><option value="100">100</option><option value="200">200</option></select></div>
-<div class="settings-option"><label for="pref-notes-size">Notes text size</label><select id="pref-notes-size" data-pref="notes.fontSize"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></div>
-</div>
-<div class="row" style="margin-top:1rem"><button type="button" id="views-save">Save view preferences</button><span id="saved-views" class="dim"></span></div>
-</div>
-<div class="card settings-card settings-tab-panel" id="tab-topics">
-<h2>Briefing topics</h2>
-<p>Follow what matters to you. Your daily edition searches the web for each keyword or phrase and summarizes recent results with source links.</p>
-<p class="dim">Searches cover the past 24 hours, not RSS feeds. AI digests use search excerpts, not full articles. These topics are shared across this server.</p>
-<p id="settings-manage-hint" class="dim" role="status" hidden></p>
-<p id="topics-providers" role="status">Checking search and summarizer configuration...</p>
-<form id="f-topics">
-<label for="briefingTopics">Keywords and phrases</label>
-<textarea id="briefingTopics" rows="8" maxlength="1210" placeholder="Microsoft Fabric&#10;AI agent security&#10;Chicago technology" aria-describedby="topics-hint"></textarea>
-<p id="topics-hint" class="dim">One topic per line. Up to 10 topics, 120 characters each. Remove a line to stop following it. Leave blank to turn off keyword searches.</p>
-<div class="row"><button type="submit" id="topics-save" disabled>Save topics</button><span id="saved-topics" role="status"></span></div>
-</form>
-<p class="dim">Saved topics apply to the next scheduled edition. To use them now, open <a href="/briefing">Daily Briefing</a> and choose Refresh edition.</p>
-</div>
-<div class="card settings-card settings-tab-panel" id="tab-schedule">
-<form id="f-schedule">
-<p class="dim">Prepare your keyword digest, calendar, and weather once a day at this time in the server's configured timezone.</p>
-<label for="briefingTime">Daily briefing time</label><input id="briefingTime" type="time" required>
-<div class="row" style="margin-top:18px"><button type="submit">Save schedule</button><span id="saved-schedule" class="dim"></span></div>
-</form></div>
-<div class="card settings-card settings-tab-panel" id="tab-tabs">
-<p class="dim">Show, hide, rename, and reorder sidebar tabs. Dashboard and Settings are always visible.</p>
-<div id="tabs-editor"></div>
-<div class="row" style="margin-top:1rem"><button type="button" id="tabs-save">Save tabs</button><span id="saved-tabs" class="dim"></span></div>
-</div>
-</section>
-</div>
-</div>`,
-    script: `
-var settingsState={sidebarTabs:[],viewPreferences:{}};
-function showTab(name){
-  document.querySelectorAll(".settings-tabs button").forEach(function(b){b.classList.toggle("on",b.dataset.tab===name)});
-  document.querySelectorAll(".settings-tab-panel").forEach(function(p){p.classList.toggle("on",p.id==="tab-"+name)});
-}
-document.querySelectorAll(".settings-tabs button").forEach(function(b){b.onclick=function(){showTab(b.dataset.tab)}});
-function showHashTab(){var name=location.hash.slice(1);if(["views","topics","schedule","tabs"].includes(name))showTab(name)}
-window.addEventListener("hashchange",showHashTab);showHashTab();
+    body: settingsPageBody(),
+    script: SETTINGS_PAGE_TAB_SCRIPT + `
 function getPref(path){
   return path.split(".").reduce(function(obj,key){return obj&&obj[key]},settingsState.viewPreferences);
 }

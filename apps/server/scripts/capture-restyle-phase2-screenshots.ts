@@ -81,7 +81,7 @@ const SHOTS: Shot[] = [
     await p.waitForSelector("#knowledge-note-list", { timeout: 25_000 });
   }),
   ...shotsFor("settings", "/settings", "Settings", async (p) => {
-    await p.waitForSelector("#tab-views", { timeout: 20_000 });
+    await p.waitForSelector("#settings-features-list", { timeout: 20_000 });
   }),
 ];
 

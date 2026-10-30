@@ -146,7 +146,9 @@ test("ui: settings page has schedule and tabs sections", () => {
   const html = settingsPage();
   assert.match(html, /ui-page-header/);
   assert.match(html, /settings-link-row/);
-  assert.match(html, /settings-card settings-tab-panel/);
+  assert.match(html, /settings-sub-panel/);
+  assert.match(html, /role="tab"/);
+  assert.match(html, /aria-controls="settings-panel-general"/);
   assert.match(html, /href="\/settings" class="on"/);
   assert.match(html, /id="tab-schedule"/);
   assert.match(html, /id="tab-views"/);
@@ -160,6 +162,23 @@ test("ui: settings page has schedule and tabs sections", () => {
   assert.match(html, /data-pref="calendar.weekStartsOn"/);
   assert.match(html, /data-pref="activity.limit"/);
   assert.match(html, /id="views-save"/);
+});
+
+test("ui: settings tab panels sit directly under the tablist", () => {
+  const html = settingsPage();
+  assert.match(
+    html,
+    /<div class="settings-tabs" role="tablist"[\s\S]*?<\/div>\s*<div class="settings-tab-panels">/,
+  );
+  assert.doesNotMatch(html, /settings-section-title/);
+});
+
+test("ui: settings script maps legacy view hashes", () => {
+  const html = settingsPage();
+  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]!);
+  const settingsScript = scripts[scripts.length - 1]!;
+  assert.match(settingsScript, /VIEW_SUBTABS=\["views","topics","schedule","tabs"\]/);
+  assert.match(settingsScript, /setSettingsSection\("views",name\)/);
 });
 
 test("ui: settings connection rows are accessible links", () => {
