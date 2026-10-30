@@ -99,6 +99,7 @@ export function dashboardPage(nav?: NavLink[]): string {
 </div>
 <section id="voice-inbox" class="voice-inbox card" hidden aria-label="Voice inbox">
   <div class="voice-inbox-header"><strong>Voice inbox</strong><span class="voice-inbox-badge" hidden>0</span></div>
+  <p class="voice-inbox-unavailable dim" hidden>Voice inbox unavailable</p>
   <ul class="voice-inbox-list"></ul>
 </section>
 <div class="dashboard-toolbar row">

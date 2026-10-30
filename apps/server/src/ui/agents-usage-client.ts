@@ -27,6 +27,34 @@ function usagePacePillLabel(status){
   if(status==="on_pace")return "On pace";
   return "Unavailable";
 }
+function usageResetCountdownText(rc){
+  if(!rc)return "—";
+  if(rc.days===0&&rc.hours===0)return "<1 h";
+  if(rc.days===0)return rc.hours+" h";
+  return rc.days+"d "+rc.hours+"h";
+}
+function usageFormatResetWhen(iso){
+  if(!iso)return null;
+  var d=new Date(iso);
+  if(Number.isNaN(d.getTime()))return null;
+  return d.toLocaleString(undefined,{dateStyle:"medium",timeStyle:"short",timeZone:"UTC"});
+}
+function usageResetLine(c){
+  if(c.resetsAt===null||c.resetsAt===undefined)return "Reset unknown";
+  var when=usageFormatResetWhen(c.resetsAt);
+  if(c.cycleEnded)return when?"Last reset "+when:"Reset unknown";
+  if(c.metricsUnavailable&&!c.readingStale)return when?"Resets "+when:"Reset unknown";
+  var rc=c.resetCountdown;
+  if(!rc||c.resetsAt===null)return when?"Resets "+when:"Reset unknown";
+  return "Resets in "+usageResetCountdownText(rc)+(when?" · "+when:"");
+}
+function usageShowUnavailable(wrap,pctEl,resetEl,barEl,botsEl,pillEl,resetText){
+  if(pctEl){pctEl.textContent="Unavailable";pctEl.classList.add("unavailable");}
+  if(resetEl)resetEl.textContent=resetText===undefined?"Reset unknown":resetText;
+  if(barEl)usageRenderBar(barEl,null,null,false);
+  if(botsEl)botsEl.replaceChildren();
+  if(pillEl){pillEl.className="pill unknown";pillEl.textContent="Unavailable";}
+}
 function usageRenderBar(root,pct,baseline,dimmed){
   if(!root)return;
   root.replaceChildren();
@@ -93,34 +121,30 @@ function renderAgentsUsagePanel(data){
   var barEl=wrap.querySelector(".agents-usage-panel-bar");
   var botsEl=wrap.querySelector(".agents-usage-bots");
   var pillEl=wrap.querySelector(".agents-usage-pace-pill");
+  if(metricsEl)metricsEl.hidden=false;
   if(staleEl)staleEl.hidden=true;
   if(cycleEl){cycleEl.hidden=true;cycleEl.textContent="";}
   wrap.classList.remove("is-dimmed");
+  if(data._apiError){
+    usageShowUnavailable(wrap,pctEl,resetEl,barEl,botsEl,pillEl,"");
+    return;
+  }
   if(!data.latest){
-    if(pctEl){pctEl.textContent="Unavailable";pctEl.classList.add("unavailable");}
-    if(resetEl)resetEl.textContent="Reset unknown";
-    if(barEl)usageRenderBar(barEl,null,null,false);
-    if(botsEl)botsEl.replaceChildren();
-    if(pillEl){pillEl.className="pill unknown";pillEl.textContent="Unavailable";}
-    if(metricsEl)metricsEl.hidden=false;
+    usageShowUnavailable(wrap,pctEl,resetEl,barEl,botsEl,pillEl,"Reset unknown");
     return;
   }
   if(c.cycleEnded){
     if(cycleEl){cycleEl.hidden=false;cycleEl.textContent=c.cycleEndedMessage||"Reset passed, awaiting new reading";}
     if(pctEl){pctEl.textContent=c.cycleEndedMessage||"Cycle ended";pctEl.classList.add("unavailable");}
-    if(resetEl)resetEl.textContent=c.resetsAt?("Last reset "+c.resetsAt):"Reset unknown";
+    if(resetEl)resetEl.textContent=usageResetLine(c);
     if(barEl)usageRenderBar(barEl,pct,null,true);
     if(pillEl){pillEl.className="pill unknown";pillEl.textContent=c.cycleEndedMessage||"Cycle ended";}
     if(botsEl)botsEl.replaceChildren();
     wrap.classList.add("is-dimmed");
     return;
   }
-  if(pct===null||c.metricsUnavailable){
-    if(pctEl){pctEl.textContent="Unavailable";pctEl.classList.add("unavailable");}
-    if(resetEl)resetEl.textContent=c.resetsAt===null?"Reset unknown":(c.resetsAt||"Reset unknown");
-    if(barEl)usageRenderBar(barEl,null,c.baseline,false);
-    if(pillEl){pillEl.className="pill unknown";pillEl.textContent="Unavailable";}
-    if(botsEl)botsEl.replaceChildren();
+  if(pct===null||pct===undefined||!Number.isFinite(pct)){
+    usageShowUnavailable(wrap,pctEl,resetEl,barEl,botsEl,pillEl,usageResetLine(c));
     return;
   }
   if(pctEl){pctEl.textContent=usageFmtPct(pct,0)+" used";pctEl.classList.remove("unavailable");}
@@ -134,19 +158,12 @@ function renderAgentsUsagePanel(data){
     pillEl.textContent=usagePacePillLabel(c.status);
   }
   usageRenderBar(barEl,pct,c.baseline,c.readingStale);
-  if(resetEl){
-    if(c.resetsAt===null)resetEl.textContent="Reset unknown";
-    else{
-      var rc=c.resetCountdown;
-      var rcText=rc?(rc.days+"d "+rc.hours+"h"):"—";
-      resetEl.textContent="Resets in "+rcText+" · "+c.resetsAt;
-    }
-  }
+  if(resetEl)resetEl.textContent=usageResetLine(c);
   if(botsEl){
     botsEl.replaceChildren();
     var bots=(data.byBot||[]).slice().sort(function(a,b){return b.share-a.share}).slice(0,3);
     if(!bots.length){
-      var li=document.createElement("li");li.className="dim";li.textContent="No bot breakdown";botsEl.appendChild(li);
+      var emptyLi=document.createElement("li");emptyLi.className="dim";emptyLi.textContent="No bot breakdown";botsEl.appendChild(emptyLi);
     }else bots.forEach(function(b){
       var li=document.createElement("li");
       li.innerHTML="<span>"+esc(b.name)+"</span><span class=dim>"+esc(usageFmtPct(b.share,1))+"</span>";
@@ -154,9 +171,10 @@ function renderAgentsUsagePanel(data){
     });
   }
 }
+window.__renderAgentsUsagePanelForTests=renderAgentsUsagePanel;
 function loadAgentsUsagePanel(){
   return api("/api/agents/usage").then(renderAgentsUsagePanel).catch(function(){
-    renderAgentsUsagePanel({latest:null,computed:{},byBot:[]});
+    renderAgentsUsagePanel({_apiError:true,latest:null,computed:{},byBot:[]});
   });
 }
 loadAgentsUsagePanel();

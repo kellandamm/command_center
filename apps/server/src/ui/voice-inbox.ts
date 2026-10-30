@@ -3,7 +3,13 @@ function mountVoiceInbox(quickAddApi){
   var root=document.getElementById("voice-inbox");if(!root)return;
   var list=root.querySelector(".voice-inbox-list");
   var badge=root.querySelector(".voice-inbox-badge");
+  var unavailable=root.querySelector(".voice-inbox-unavailable");
+  function setUnavailable(show){
+    if(unavailable)unavailable.hidden=!show;
+    if(show&&list)list.replaceChildren();
+  }
   function render(rows,timezone){
+    setUnavailable(false);
     var count=rows.length;
     root.hidden=!count;
     if(!count)return;
@@ -28,7 +34,11 @@ function mountVoiceInbox(quickAddApi){
     });
   }
   function refresh(){
-    return api("/api/voice-captures").then(function(data){render(data.captures||[],data.timezone);}).catch(function(){root.hidden=true;});
+    return api("/api/voice-captures").then(function(data){render(data.captures||[],data.timezone);}).catch(function(){
+      root.hidden=false;
+      if(badge)badge.hidden=true;
+      setUnavailable(true);
+    });
   }
   refresh();
   return {refresh:refresh};

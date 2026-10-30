@@ -1,5 +1,5 @@
 export const quickAddCss = `
-.quick-add-bar{margin-bottom:0}
+.quick-add-bar{margin-bottom:1rem}
 .quick-add-wrap{position:relative;max-width:36rem;width:100%}
 .quick-add-row{display:flex;gap:.5rem;align-items:stretch}
 .quick-add-row input{flex:1;min-width:8rem;min-height:2.25rem}

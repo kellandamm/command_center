@@ -7,6 +7,7 @@ export const dashboardGridCss = `
 .dashboard-toolbar .dashboard-toolbar-hint{margin:0;font-size:.8125rem}
 .dashboard-toolbar .dashboard-import-label{cursor:pointer;margin:0}
 .dashboard-quick-add-bar{margin-bottom:.75rem;flex-shrink:0}
+.dashboard-quick-add-bar .quick-add-bar{margin-bottom:0}
 .dashboard-quick-add-bar .quick-add-wrap{max-width:none;width:100%}
 .dashboard-page .voice-inbox{margin-bottom:.75rem;flex-shrink:0;max-width:none;padding:.75rem 1rem}
 .dashboard-page .voice-inbox .voice-inbox-list{margin-top:.5rem}
@@ -14,7 +15,7 @@ export const dashboardGridCss = `
 .page-content:has(.dashboard-page){
   flex:1 1 0;min-height:0;display:flex;flex-direction:column;padding:1rem 1.25rem .5rem;box-sizing:border-box;
   overflow:hidden;max-width:none;width:100%}
-.dashboard-page{flex:1 1 0;min-height:0;display:flex;flex-direction:column;width:100%;max-width:90rem;margin:0 auto}
+.dashboard-page{flex:1 1 0;min-height:0;display:flex;flex-direction:column;width:100%;max-width:none;margin:0}
 .dashboard-page .page-header{margin-bottom:.75rem;flex-shrink:0}
 .dashboard-page .page-header p{margin:.2rem 0 0}
 .dashboard-grid{

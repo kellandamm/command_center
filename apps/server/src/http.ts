@@ -520,12 +520,7 @@ export function createApp(app: App): Server {
         email: who.email,
         serviceToken: who.serviceToken,
       }, readBody)) return;
-      if (handleAgentsUsageGetRoutes(app.cfg, app.agentsUsage, req, res, path, {
-        owner: who.owner === true,
-        who: who.who,
-        email: who.email,
-        serviceToken: who.serviceToken,
-      })) return;
+      if (handleAgentsUsageGetRoutes(app.agentsUsage, req, res, path, who.owner === true)) return;
 
       if (path.startsWith("/api/board") || path.startsWith("/api/wins")) {
         const bodyForApi = get ? undefined : await readBody(req);

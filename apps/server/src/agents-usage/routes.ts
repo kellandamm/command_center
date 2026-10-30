@@ -1,12 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
 import type { Config } from "../config";
-import type { Config } from "../config";
 import { ValidationError } from "../settings";
 import { USAGE_IMPORT_MAX_BYTES } from "./constants";
 import { authenticateAgentsUsageImport } from "./auth";
 import { usageImportBodySchema } from "./schema";
-import { OWNER_ACTION_FORBIDDEN, canManageSharedServerState, type SharedSettingsPrincipal } from "../owner-auth";
+import { OWNER_ACTION_FORBIDDEN } from "../owner-auth";
 import type { AgentsUsageStore } from "./store";
 import { buildUsageDashboard } from "./view";
 
@@ -64,16 +63,15 @@ export async function handleAgentsUsageImportRoute(
 }
 
 export function handleAgentsUsageGetRoutes(
-  cfg: Config,
   store: AgentsUsageStore,
   req: IncomingMessage,
   res: ServerResponse,
   path: string,
-  principal: SharedSettingsPrincipal,
+  owner: boolean,
 ): boolean {
   if (req.method !== "GET" && req.method !== "HEAD") return false;
   if (!path.startsWith("/api/agents/usage")) return false;
-  if (!canManageSharedServerState(cfg, principal)) {
+  if (!owner) {
     json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
     return true;
   }
