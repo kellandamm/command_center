@@ -24,8 +24,9 @@ const usageCss = `
 .bar-under{fill:var(--chart-1)}
 .line-usage{stroke:var(--chart-1);fill:none;stroke-width:2}
 .line-baseline{stroke:var(--chart-2);fill:none;stroke-width:1.5;stroke-dasharray:4 3}
-.line-cap{stroke:var(--muted-foreground);opacity:.6}
-.usage-stat-card .stat-value{font-size:1.875rem}
+.line-cap{stroke:var(--muted-foreground);stroke-dasharray:6 4;opacity:.6}
+.usage-stat-card .stat-value{font-size:1.625rem;font-variant-numeric:tabular-nums}
+.usage-stat-card .stat-hint{white-space:nowrap}
 `;
 
 export function agentsUsagePage(nav?: NavLink[]): string {
@@ -175,8 +176,9 @@ function renderUsage(data){
   }
   var stats=$("usage-stats");stats.replaceChildren();
   var delta=c.baseline!==null?pct-c.baseline:null;
-  var vsBase=delta===null?"Unavailable":Math.abs(Math.round(delta))+"% "+(delta>0?"over":"under")+" baseline";
-  stats.appendChild(statCard("vs Baseline",vsBase,delta!==null?(delta>0?"(using it fast)":"(plenty left)"):""));
+  var vsMain=delta===null?"Unavailable":Math.abs(Math.round(delta))+"%";
+  var vsSub=delta===null?"":(delta>0?"over baseline · using it fast":"under baseline · plenty left");
+  stats.appendChild(statCard("vs Baseline",vsMain,vsSub));
   var remDisp=c.remainingDisplay!==null?c.remainingDisplay:null;
   var overSub=c.remainingOverCap!==null&&c.remainingOverCap>0?usageFmtPct(c.remainingOverCap,0)+" over cap":"";
   stats.appendChild(statCard("Remaining",remDisp===null?"Unavailable":usageFmtPct(remDisp,0),overSub));

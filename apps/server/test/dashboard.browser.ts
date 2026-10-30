@@ -292,3 +292,48 @@ test("dashboard: bootstrap without layout API and breakpoint reflow", { timeout:
     await rm(dataDir, { recursive: true, force: true });
   }
 });
+
+test("dashboard: Esc closes mobile sidebar and layout menu; Ctrl+B ignored in textarea", { timeout: 120_000 }, async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "cc-dash-a11y-"));
+  const port = 4800 + Math.floor(Math.random() * 500);
+  const base = `http://127.0.0.1:${port}`;
+  await new Promise<void>((resolve, reject) => {
+    const seed = spawn("pnpm", ["exec", "tsx", "scripts/seed-dashboard-screenshot.ts"], {
+      cwd: join(import.meta.dirname, ".."),
+      env: { ...process.env, DATA_DIR: dataDir },
+      stdio: "inherit",
+    });
+    seed.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`seed ${code}`))));
+  });
+  const app = startServer(dataDir, port);
+  const browser = await chromium.launch();
+  try {
+    await waitForServer(base);
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.goto(`${base}/`);
+    await page.waitForSelector("#dashboard-grid", { timeout: 20_000 });
+    await page.locator("#sidebar-toggle").click();
+    await page.waitForFunction(() => document.querySelector(".app-shell")?.getAttribute("data-mobile-sidebar") === "open");
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => document.querySelector(".app-shell")?.getAttribute("data-mobile-sidebar") === "closed");
+    const focusAfterEsc = await page.evaluate(() => document.activeElement?.id ?? "");
+    assert.equal(focusAfterEsc, "sidebar-toggle");
+
+    await page.locator(".dashboard-quick-add-bar input").click({ position: { x: 4, y: 4 } });
+    const expandedBefore = await page.locator(".app-shell").getAttribute("data-sidebar-state");
+    await page.keyboard.press("Control+b");
+    const expandedAfter = await page.locator(".app-shell").getAttribute("data-sidebar-state");
+    assert.equal(expandedAfter, expandedBefore);
+
+    await page.locator(".page-header-menu summary").click();
+    await page.waitForSelector(".page-header-menu[open]");
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => !document.querySelector(".page-header-menu[open]"));
+    const menuFocus = await page.evaluate(() => document.activeElement?.matches(".page-header-menu summary") ?? false);
+    assert.ok(menuFocus);
+  } finally {
+    await browser.close();
+    app.kill("SIGTERM");
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});

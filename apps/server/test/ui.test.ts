@@ -46,6 +46,10 @@ test("ui: dashboard renders draggable grid panels and v1 widgets", () => {
 test("ui: shell breadcrumb and sidebar persistence script", () => {
   const html = dashboardPage();
   assert.match(html, /localStorage\.getItem\("cc-sidebar"\)/);
+  assert.match(html, /localStorage\.setItem\(key,next\)/);
+  assert.match(html, /sidebarShortcutBlocked/);
+  assert.match(html, /page-header-menu\[open\]/);
+  assert.match(html, /id="dashboard-import-layout-btn"/);
   assert.match(html, /aria-current="page">Dashboard<\/span>/);
 });
 

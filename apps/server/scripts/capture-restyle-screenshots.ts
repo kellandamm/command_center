@@ -5,6 +5,7 @@
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { mkdtemp, rm } from "node:fs/promises";
 import { spawn, type ChildProcess } from "node:child_process";
+import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -30,9 +31,11 @@ const SHOTS: Shot[] = [
   { name: "dashboard-1440-light", path: "/", marker: "Dashboard", viewport: { width: 1440, height: 900 }, prepare: async (p) => { await p.waitForSelector("#dashboard-grid", { timeout: 20_000 }); } },
   { name: "dashboard-1440-dark", path: "/", marker: "Dashboard", viewport: { width: 1440, height: 900 }, theme: "dark", prepare: async (p) => { await p.evaluate(() => { document.documentElement.classList.add("dark"); localStorage.setItem("cc-theme", "dark"); }); await p.waitForSelector("#dashboard-grid", { timeout: 20_000 }); } },
   { name: "dashboard-mobile-light", path: "/", marker: "Dashboard", viewport: { width: 390, height: 844 }, prepare: async (p) => { await p.waitForSelector("#dashboard-grid", { timeout: 20_000 }); } },
+  { name: "dashboard-mobile-dark", path: "/", marker: "Dashboard", viewport: { width: 390, height: 844 }, theme: "dark", prepare: async (p) => { await p.evaluate(() => { document.documentElement.classList.add("dark"); localStorage.setItem("cc-theme", "dark"); }); await p.waitForSelector("#dashboard-grid", { timeout: 20_000 }); } },
   { name: "agents-usage-1440-light", path: "/agent?view=usage", marker: "Agent usage", viewport: { width: 1440, height: 900 }, prepare: waitUsageReady },
   { name: "agents-usage-1440-dark", path: "/agent?view=usage", marker: "Agent usage", viewport: { width: 1440, height: 900 }, theme: "dark", prepare: waitUsageReadyDark },
   { name: "agents-usage-mobile-light", path: "/agent?view=usage", marker: "Agent usage", viewport: { width: 390, height: 844 }, prepare: waitUsageReady },
+  { name: "agents-usage-mobile-dark", path: "/agent?view=usage", marker: "Agent usage", viewport: { width: 390, height: 844 }, theme: "dark", prepare: waitUsageReadyDark },
   { name: "notes-1440-light", path: "/notes", marker: "Notes", viewport: { width: 1440, height: 900 }, prepare: async (p) => { await p.waitForSelector("#knowledge-note-list", { timeout: 20_000 }); } },
   { name: "notes-1440-dark", path: "/notes", marker: "Notes", viewport: { width: 1440, height: 900 }, theme: "dark", prepare: async (p) => { await p.evaluate(() => { document.documentElement.classList.add("dark"); localStorage.setItem("cc-theme", "dark"); }); await p.waitForSelector("#knowledge-note-list", { timeout: 20_000 }); } },
   { name: "notes-mobile-light", path: "/notes", marker: "Notes", viewport: { width: 390, height: 844 }, prepare: async (p) => { await p.waitForSelector("#knowledge-note-list", { timeout: 20_000 }); } },
@@ -106,6 +109,14 @@ async function ownerContext(browser: Awaited<ReturnType<typeof chromium.launch>>
 
 async function main() {
   await mkdir(outRoot, { recursive: true });
+  let gitSha = "unknown";
+  try {
+    gitSha = execSync("git rev-parse HEAD", { cwd: repoRoot, encoding: "utf8" }).trim();
+  } catch {
+    /* best effort */
+  }
+  console.log("capture", mode, "git", gitSha);
+  await writeFile(join(outRoot, "git-sha.txt"), `${gitSha}\n`, "utf8");
   const dataDir = await mkdtemp(join(tmpdir(), "cc-restyle-"));
   await new Promise<void>((resolve, reject) => {
     const seed2 = spawn("pnpm", ["exec", "tsx", "scripts/seed-dashboard-screenshot.ts"], {
@@ -164,7 +175,7 @@ async function main() {
     }
     await context.close();
     await browser.close();
-    await writeFile(join(outRoot, "README.md"), `# Restyle ${mode} screenshots\n\nCaptured at ${new Date().toISOString()} UTC.\n`);
+    await writeFile(join(outRoot, "README.md"), `# Restyle ${mode} screenshots\n\nCaptured at ${new Date().toISOString()} UTC.\nGit: \`${gitSha}\`\n`);
   } finally {
     await closeServer();
     await rm(dataDir, { recursive: true, force: true });

@@ -3,9 +3,6 @@ import { DASHBOARD_GRID_LAYOUT_HELPERS } from "./dashboard-grid-layout";
 /** Dashboard grid layout (native CSS grid + pointer drag/resize; zero extra deps). */
 
 export const dashboardGridCss = `
-.dashboard-toolbar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin-bottom:.75rem;flex-shrink:0}
-.dashboard-toolbar .dashboard-toolbar-hint{margin:0;font-size:.8125rem}
-.dashboard-toolbar .dashboard-import-label{cursor:pointer;margin:0}
 .dashboard-page .dashboard-quick-add-bar.quick-add-bar{margin-bottom:.75rem;flex-shrink:0}
 .dashboard-quick-add-bar .quick-add-wrap{max-width:none;width:100%}
 .dashboard-page .voice-inbox{margin-bottom:.75rem;flex-shrink:0;max-width:none;padding:.75rem 1rem}
@@ -127,8 +124,8 @@ ${DASHBOARD_GRID_LAYOUT_HELPERS}
     var header=page.querySelector(".page-header");
     var quickAdd=page.querySelector(".dashboard-quick-add-bar");
     var voiceInbox=page.querySelector("#voice-inbox:not([hidden])");
-    var toolbar=page.querySelector(".dashboard-toolbar");
-    var chrome=(header?header.offsetHeight:0)+(quickAdd?quickAdd.offsetHeight:0)+(voiceInbox?voiceInbox.offsetHeight:0)+(toolbar?toolbar.offsetHeight:0)+16;
+    var layoutHint=page.querySelector(".dashboard-layout-hint");
+    var chrome=(header?header.offsetHeight:0)+(quickAdd?quickAdd.offsetHeight:0)+(voiceInbox?voiceInbox.offsetHeight:0)+(layoutHint?layoutHint.offsetHeight:0)+16;
     var avail=Math.max(160,page.clientHeight-chrome-6);
     var stripRows=0,flexRows=0;
     for(var r=0;r<maxEnd;r++){

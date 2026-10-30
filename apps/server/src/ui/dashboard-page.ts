@@ -52,7 +52,9 @@ export const dashboardPanelCss = `
   position:absolute;right:0;top:calc(100% + .35rem);min-width:12rem;padding:.35rem;display:flex;flex-direction:column;gap:.25rem;
   background:var(--card);border-radius:calc(var(--radius) - 2px);
   box-shadow:0 0 0 1px color-mix(in srgb,var(--foreground) 8%,transparent),0 8px 24px rgba(0,0,0,.12);z-index:30}
-.page-header-menu-panel .btn,.page-header-menu-panel .dashboard-import-label{justify-content:flex-start;width:100%}
+.page-header-menu-panel .btn,.page-header-menu-panel .dashboard-import-btn{justify-content:flex-start;width:100%}
+#panel-daily-briefing .dashboard-panel-body{padding-bottom:1rem}
+#panel-daily-briefing .ui-empty{padding:1rem .5rem 1.25rem}
 `;
 
 const PANEL_SCRIPTS = [
@@ -96,7 +98,8 @@ export function dashboardPage(nav?: NavLink[]): string {
   <div class="page-header-menu-panel">
     ${button({ label: "Reset layout", variant: "outline", size: "sm", attrs: { id: "dashboard-reset-layout" } })}
     ${button({ label: "Export layout", variant: "outline", size: "sm", href: "/api/dashboard-layout/export.json", attrs: { id: "dashboard-export-layout" } })}
-    <label class="btn btn-outline btn-sm dashboard-import-label"><input type="file" id="dashboard-import-layout" accept="application/json" hidden />Import layout</label>
+    <input type="file" id="dashboard-import-layout" accept="application/json" hidden />
+    ${button({ label: "Import layout", variant: "outline", size: "sm", className: "dashboard-import-btn", attrs: { id: "dashboard-import-layout-btn" } })}
   </div>
 </details>`;
   return page({
@@ -125,6 +128,9 @@ ${pageHeader({ title: "Dashboard", description: "Drag panels, pin what matters, 
 var PANEL_PAGE_LINKS=${JSON.stringify(pageLinks)};
 var PANEL_TITLES=${JSON.stringify(panelTitles)};
 ${dashboardGridScript()}
+document.getElementById("dashboard-import-layout-btn")?.addEventListener("click",function(){
+  document.getElementById("dashboard-import-layout")?.click();
+});
 document.getElementById("dashboard-import-layout")?.addEventListener("change",function(ev){
   var input=ev.target;var file=input.files&&input.files[0];if(!file)return;
   file.text().then(function(text){

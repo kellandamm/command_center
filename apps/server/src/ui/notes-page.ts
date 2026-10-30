@@ -241,7 +241,7 @@ ${dialog({
 .notes-library>label{margin-top:0}.notes-library-heading{display:flex;justify-content:space-between;align-items:center;margin:1.5rem 0 .5rem}.notes-library-heading h2{margin:0}
 .notes-all{width:100%;justify-content:flex-start;margin-bottom:.5rem}
 .notes-note{display:block;width:100%;text-align:left;background:transparent;color:var(--foreground);border:1px solid transparent;padding:.75rem;margin:.2rem 0}
-.notes-note:hover{background:var(--accent);border-color:var(--border)}
+.notes-note:hover{background:var(--muted);border-color:var(--border)}
 .notes-note[aria-current=true]{background:var(--selected);color:var(--selected-foreground);border-color:color-mix(in srgb,var(--primary) 28%,var(--border))}
 .notes-note strong,.notes-note span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.notes-note span{font-size:.75rem;font-weight:400;margin-top:.2rem;color:var(--dim)}
 #knowledge-note-list{max-height:42vh;overflow:auto}.notes-library-section{padding:.85rem 0;border-top:1px solid var(--border);margin-top:.5rem}

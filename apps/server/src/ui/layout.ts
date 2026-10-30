@@ -27,7 +27,8 @@ html,body{margin:0;min-height:100%;background:var(--background);color:var(--fore
   -webkit-font-smoothing:antialiased}
 a{color:inherit;text-decoration:none}
 h1{font-size:1.5rem;font-weight:600;letter-spacing:-.025em;line-height:1.2;margin:0}
-.tabular-nums,.num{font-variant-numeric:tabular-nums;font-family:var(--font-mono)}
+.tabular-nums{font-variant-numeric:tabular-nums}
+.num{font-variant-numeric:tabular-nums;font-family:var(--font-mono)}
 h2{font-size:.875rem;font-weight:600;line-height:1;margin:0 0 .75rem;letter-spacing:-.01em}
 code{font-size:.875em;background:var(--muted);padding:.1em .35em;border-radius:calc(var(--radius) - 4px)}
 .dim{color:var(--muted-foreground)}.bad{color:var(--destructive)}.ok{color:var(--ok)}
@@ -62,6 +63,7 @@ code{font-size:.875em;background:var(--muted);padding:.1em .35em;border-radius:c
 .ui-icon{display:inline-flex;flex-shrink:0;align-items:center;justify-content:center;width:1rem;height:1rem}
 .ui-icon svg{display:block}
 .sidebar-footer{margin-top:auto;padding:.5rem .25rem 0;border-top:1px solid var(--sidebar-border)}
+.sidebar-footer .sidebar-nav{margin:0;padding:0 .25rem}
 .sidebar-user{display:flex;align-items:center;gap:.5rem;padding:.5rem .35rem;margin-top:.35rem;border-radius:calc(var(--radius) - 2px)}
 .sidebar-user-avatar{
   width:2rem;height:2rem;border-radius:calc(var(--radius) - 2px);background:var(--muted);color:var(--muted-foreground);
@@ -247,8 +249,9 @@ html.dark .morning-briefing{--paper-ink:#f0ede3;--paper-muted:#b2aea3;--paper-ru
   .app-shell{--inset-gap:0}
   .sidebar{
     position:fixed;left:0;top:0;bottom:0;width:min(18rem,88vw);transform:translateX(-105%);
-    transition:transform .2s ease;box-shadow:0 8px 32px rgba(0,0,0,.2);z-index:50}
-  .app-shell[data-mobile-sidebar=open] .sidebar{transform:translateX(0)}
+    transition:transform .2s ease,visibility .2s ease;box-shadow:0 8px 32px rgba(0,0,0,.2);z-index:50}
+  .app-shell[data-mobile-sidebar=closed] .sidebar{visibility:hidden}
+  .app-shell[data-mobile-sidebar=open] .sidebar{transform:translateX(0);visibility:visible}
   .app-shell[data-mobile-sidebar=open] .sidebar-backdrop{display:block}
   .sidebar-backdrop{
     position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:40;border:0;padding:0;cursor:pointer}
@@ -296,30 +299,70 @@ const THEME_SCRIPT = `
 (function(){
   var key="cc-sidebar",shell=document.querySelector(".app-shell");
   if(!shell)return;
+  var sidebar=shell.querySelector(".sidebar");
   var stored=localStorage.getItem(key);
   if(stored==="collapsed"||stored==="expanded")shell.setAttribute("data-sidebar-state",stored);
   else shell.setAttribute("data-sidebar-state","expanded");
+  function isMobile(){return window.matchMedia("(max-width:768px)").matches}
+  function syncToggleAria(){
+    var btn=document.getElementById("sidebar-toggle");
+    if(!btn)return;
+    if(isMobile())btn.setAttribute("aria-expanded",shell.getAttribute("data-mobile-sidebar")==="open"?"true":"false");
+    else btn.setAttribute("aria-expanded",shell.getAttribute("data-sidebar-state")==="collapsed"?"false":"true");
+  }
+  function focusFirstSidebar(){
+    if(!sidebar)return;
+    var target=sidebar.querySelector(".sidebar-nav a,.sidebar-brand");
+    if(target&&target.focus)target.focus();
+  }
+  function setMobileOpen(open){
+    shell.setAttribute("data-mobile-sidebar",open?"open":"closed");
+    if(sidebar){
+      if(open){sidebar.removeAttribute("inert");sidebar.removeAttribute("aria-hidden");focusFirstSidebar();}
+      else{sidebar.setAttribute("inert","");sidebar.setAttribute("aria-hidden","true");document.getElementById("sidebar-toggle")?.focus();}
+    }
+    syncToggleAria();
+  }
   function setState(next){
     shell.setAttribute("data-sidebar-state",next);
     document.documentElement.setAttribute("data-sidebar-state",next);
     localStorage.setItem(key,next);
-    var btn=document.getElementById("sidebar-toggle");
-    if(btn)btn.setAttribute("aria-expanded",next==="expanded"?"true":"false");
+    syncToggleAria();
   }
   function toggle(){
-    if(window.matchMedia("(max-width:768px)").matches){
-      var open=shell.getAttribute("data-mobile-sidebar")==="open";
-      shell.setAttribute("data-mobile-sidebar",open?"closed":"open");
-      return;
-    }
-    setState(shell.getAttribute("data-sidebar-state")==="collapsed"?"expanded":"collapsed");
+    if(isMobile())setMobileOpen(shell.getAttribute("data-mobile-sidebar")!=="open");
+    else setState(shell.getAttribute("data-sidebar-state")==="collapsed"?"expanded":"collapsed");
   }
+  function sidebarShortcutBlocked(){
+    var el=document.activeElement;
+    if(!el||!el.tagName)return false;
+    var tag=el.tagName;
+    if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT")return true;
+    if(el.isContentEditable)return true;
+    if(el.closest&&el.closest("#knowledge-editor,#notes-editor,.notes-editor,[contenteditable=true]"))return true;
+    return false;
+  }
+  if(isMobile()&&shell.getAttribute("data-mobile-sidebar")!=="open"&&sidebar){
+    sidebar.setAttribute("inert","");sidebar.setAttribute("aria-hidden","true");
+  }
+  syncToggleAria();
   document.getElementById("sidebar-toggle")?.addEventListener("click",toggle);
-  document.getElementById("sidebar-backdrop")?.addEventListener("click",function(){
-    shell.setAttribute("data-mobile-sidebar","closed");
+  document.getElementById("sidebar-backdrop")?.addEventListener("click",function(){setMobileOpen(false);});
+  document.addEventListener("click",function(ev){
+    var menu=document.querySelector(".page-header-menu[open]");
+    if(!menu||menu.contains(ev.target))return;
+    menu.removeAttribute("open");
   });
   document.addEventListener("keydown",function(ev){
-    if((ev.metaKey||ev.ctrlKey)&&ev.key.toLowerCase()==="b"){ev.preventDefault();toggle();}
+    if(ev.key==="Escape"){
+      if(isMobile()&&shell.getAttribute("data-mobile-sidebar")==="open"){ev.preventDefault();setMobileOpen(false);return;}
+      var menu=document.querySelector(".page-header-menu[open]");
+      if(menu){ev.preventDefault();menu.removeAttribute("open");menu.querySelector("summary")?.focus();return;}
+    }
+    if((ev.metaKey||ev.ctrlKey)&&ev.key.toLowerCase()==="b"){
+      if(sidebarShortcutBlocked())return;
+      ev.preventDefault();toggle();
+    }
   });
 })();
 `;
@@ -468,7 +511,7 @@ export function page(opts: {
   </div>
   <div class="sidebar-content">${sidebarGroups}</div>
   <div class="sidebar-footer">
-    ${sidebarLink(settingsTab, activeHref === settingsTab.href)}
+    <nav class="sidebar-nav" aria-label="Settings">${sidebarLink(settingsTab, activeHref === settingsTab.href)}</nav>
     <div class="sidebar-user" id="sidebar-user">
       <span class="sidebar-user-avatar" id="sidebar-user-initials" aria-hidden="true">?</span>
       <span class="sidebar-user-meta"><strong id="sidebar-user-name">Signed in</strong><span id="sidebar-user-email" class="dim">Loading…</span></span>
