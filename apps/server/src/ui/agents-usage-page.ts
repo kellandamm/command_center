@@ -24,7 +24,7 @@ const usageCss = `
 .bar-under{fill:var(--chart-1)}
 .line-usage{stroke:var(--chart-1);fill:none;stroke-width:2}
 .line-baseline{stroke:var(--chart-2);fill:none;stroke-width:1.5;stroke-dasharray:4 3}
-.line-cap{stroke:var(--foreground);stroke-width:1;opacity:.35}
+.line-cap{stroke:var(--foreground);stroke-width:1;stroke-dasharray:none;opacity:.35}
 .usage-stat-card .stat-value{font-size:1.625rem;font-variant-numeric:tabular-nums}
 .usage-stat-card .stat-hint{white-space:nowrap}
 `;

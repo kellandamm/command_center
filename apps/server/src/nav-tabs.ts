@@ -9,6 +9,7 @@ export type SidebarTabId =
   | "notes"
   | "bookmarks"
   | "calendar"
+  | "budget"
   | "settings";
 
 export type SidebarGroup = "workspace" | "library" | "agent";
@@ -36,6 +37,7 @@ export const DEFAULT_SIDEBAR_TABS: SidebarTab[] = [
   { id: "spaces", href: "/spaces", label: "Spaces", visible: true, order: 62, group: "workspace", icon: "layoutGrid" },
   { id: "bookmarks", href: "/bookmarks", label: "Bookmarks", visible: true, order: 67, group: "library", icon: "bookmark" },
   { id: "calendar", href: "/calendar", label: "Calendar", visible: true, order: 70, group: "workspace", icon: "calendar" },
+  { id: "budget", href: "/budget", label: "Budget", visible: true, order: 65, group: "workspace", icon: "wallet" },
   { id: "settings", href: "/settings", label: "Settings", visible: true, order: 90, locked: true, group: "workspace", icon: "settings" },
 ];
 
@@ -87,15 +89,16 @@ export function normalizeSidebarTabs(input: unknown): SidebarTab[] {
 
 export function visibleNavTabs(
   tabs: SidebarTab[],
-  opts?: { whiteboard?: boolean },
+  opts?: { whiteboard?: boolean; budget?: boolean },
 ): Array<{ href: string; label: string }> {
   return visibleSidebarTabs(tabs, opts).map((t) => ({ href: t.href, label: t.label }));
 }
 
-export function visibleSidebarTabs(tabs: SidebarTab[], opts?: { whiteboard?: boolean }): SidebarTab[] {
-  const rows = tabs
+export function visibleSidebarTabs(tabs: SidebarTab[], opts?: { whiteboard?: boolean; budget?: boolean }): SidebarTab[] {
+  let rows = tabs
     .filter((t) => t.visible || t.locked)
     .sort((a, b) => a.order - b.order);
+  if (!opts?.budget) rows = rows.filter((t) => t.id !== "budget");
   if (!opts?.whiteboard) return rows;
   const out = [...rows];
   const settingsIdx = out.findIndex((t) => t.id === "settings");

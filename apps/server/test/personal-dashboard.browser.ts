@@ -79,6 +79,7 @@ test("personal dashboard, settings and briefing work without retired integration
         "/api/dashboard/attention": { sections: [], pinned: [], hidden: [] },
         "/api/dashboard/heatmap": { days: [] },
         "/api/launchpad": { links: [], owner: false },
+        "/api/agents/usage": { latest: null, computed: { weeklyPercentUsed: null }, chart: { cumulative: [], dailyIncrements: [] }, byBot: [], byRoutine: [], dailyLog: [], checkins: [] },
       };
       if (Object.hasOwn(dashboardFixtures, path)) return route.fulfill({ json: dashboardFixtures[path] });
       if (path === "/icon-192.png") return route.fulfill({ status: 204 });
@@ -89,10 +90,9 @@ test("personal dashboard, settings and briefing work without retired integration
     t.diagnostic("Dashboard opened");
     await page.waitForSelector("#panel-tasks", { timeout: 15_000 });
     assert.equal(await page.locator(".sidebar-nav").getByRole("link", { name: /News|Summaries|AI Security/ }).count(), 0);
-    await page.goto("http://personal.test/settings");
+    await page.goto("http://personal.test/settings#schedule");
     t.diagnostic("Settings opened");
     await page.waitForFunction(() => (document.querySelector("#briefingTime") as HTMLInputElement)?.value === "06:00");
-    await page.locator('[data-tab="schedule"]').click();
     await page.locator("#briefingTime").fill("08:30");
     await Promise.all([
       page.waitForEvent("domcontentloaded"),
