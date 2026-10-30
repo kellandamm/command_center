@@ -13,7 +13,7 @@ Native **Budget** in Command Center (`apps/server`, server-rendered TS UI). **CS
 | Area | Files (new unless noted) |
 |------|---------------------------|
 | DB | `apps/server/src/budget/db.ts` (`BudgetStore.open`, `chmod`/`0600` on DB path after create), `migrations.ts` (numbered steps + `schema_version`), `schema.ts` (zod), `store.ts` |
-| Import | `csv.ts` (RFC-4180 parser + normalize), `import-preview-cache.ts` (in-memory previews, 15 min TTL), `redact.ts` (safe log lines) |
+| Import | `csv.ts` (RFC-4180 parser + normalize), `import-preview-cache.ts` (in-memory: key = owner email + random preview id; value = normalized rows only; 15 min TTL; delete on commit/undo; never log keys or row payloads), `redact.ts` (safe log lines) |
 | HTTP | `routes.ts`, `gate.ts` (`budgetAvailable(cfg)`), wire in `apps/server/src/index.ts`, `apps/server/src/http.ts` (**before** panel loop, like board/calendar) |
 | Nav | `apps/server/src/nav-tabs.ts` (`budget` tab, hidden when gate false) |
 | UI (minimal) | `apps/server/src/ui/budget-page.ts` — shell + tabs + “Budget unavailable” when gate false; Accounts + Import wizard only |
@@ -37,7 +37,7 @@ Native **Budget** in Command Center (`apps/server`, server-rendered TS UI). **CS
 |------|--------|
 | Logic | `rollup.ts` (month/category spent, income vs spend, cash flow; exclude `transfer_account_id`) |
 | UI | extend `budget-page.ts` — Overview, Transactions, Budget views; client fetch `/api/budget/rollup`, `/api/budget/transactions` |
-| Panel | `apps/server/src/panels/budget.ts`, register in `apps/server/src/panels/registry.ts`, `panels/types.ts` (`budget?: BudgetStore`), `dashboard-layout/defaults.ts` (add panel + **`DEFAULT_COLLAPSED_PANEL_IDS`**), `apps/server/src/ui/dashboard-page.ts` if needed |
+| Panel | `apps/server/src/panels/budget.ts`, register in `apps/server/src/panels/registry.ts`, `panels/types.ts` (`budget?: BudgetStore`), `dashboard-layout/defaults.ts` (add panel + **`DEFAULT_COLLAPSED_PANEL_IDS`**), `apps/server/src/ui/dashboard-page.ts` if needed. **Omit panel from layout and skip `/api/panels/budget` fetch** when gate is off or `owner === false` (no placeholder copy) |
 | Settings | in-page export JSON/CSV, delete-all (type-to-confirm), privacy default |
 | Docs | `SELFHOST.md` — backup `budget.sqlite` |
 
@@ -52,8 +52,8 @@ Native **Budget** in Command Center (`apps/server`, server-rendered TS UI). **CS
 | Area | Files |
 |------|--------|
 | Engine | `apps/server/src/budget/loans/` — port MIT files from [AB-Asset-Tracker](https://github.com/gismc123/AB-Asset-Tracker): `amortize.ts`, `equity.ts`, `money.ts`, `dates.ts` (+ minimal `types.ts` slices). **Omit v1:** PMI, escrow ledger, daily-simple interest, skip/defer/catch-up, payoff quotes, `modules` toggles beyond mortgage/auto/personal label |
-| DB | migration 2: `loans`, `loan_setup` (JSON), `loan_settings` (`category_id` → CC category), `loan_details`, `adjustments`, `loan_months`, `assets`, `asset_values` |
-| HTTP | `/api/budget/loans/*`, reconcile = link `loan_months.transaction_id` to imported tx |
+| DB | migration 2: `loans`, `loan_setup` (JSON), `loan_settings` (`category_id` → CC category), `loan_details`, `adjustments`, `loan_months` (`transaction_id` → `transactions`, **`ON DELETE SET NULL`**), `assets`, `asset_values` |
+| HTTP | `/api/budget/loans/*`, reconcile = link `loan_months.transaction_id` to imported tx (import undo clears link, does not block delete) |
 | UI | `/budget?view=loans` (or sub-routes): setup, schedule, equity, reconcile |
 | Legal | `THIRD_PARTY_NOTICES.md` — Ivan Santos / MIT block for AB engine |
 
@@ -72,9 +72,9 @@ Native **Budget** in Command Center (`apps/server`, server-rendered TS UI). **CS
 **Row limits:** 5 MB file cap; reject >20 k data rows at preview.
 
 **Fingerprint (dedupe):**  
-`sha256(accountId + "|" + date + "|" + amountCents + "|" + normalizedPayee + "|" + nth)` hex, where `normalizedPayee = trim, collapse whitespace, lowercase ASCII`. **`nth`** = 0-based index among rows **in the same import** that share the same `(accountId, date, amountCents, normalizedPayee)` **before** insert; existing DB rows with the same partial key bump matching importers to higher `nth`. Unique index on `(account_id, fingerprint)` skips duplicates on commit.
+`sha256(accountId + "|" + date + "|" + amountCents + "|" + normalizedPayee + "|" + nth)` hex, where `normalizedPayee = trim, collapse whitespace, lowercase ASCII`. **`nth`** = 0-based index among rows **in the same file only** that share the same `(accountId, date, amountCents, normalizedPayee)` (first match → 0, second → 1, …). **`nth` is not adjusted from the DB** — re-importing the same or an overlapping statement recomputes the same fingerprints, hits the unique index on `(account_id, fingerprint)`, and rows are skipped (that is the intended dedupe). Two genuinely identical same-day charges in one file get different `nth` values and **both** insert. **`budget-import.test.ts`:** commit a file, re-commit the same file and a partially overlapping file → **0 new rows** each time; one file with two identical rows → **2 rows** stored.
 
-**Commit:** single SQLite transaction; record `import_batches` with `file_sha256` (hash of raw bytes), counts, `mapping_json`; **never** store raw CSV. Undo = delete batch → cascade transactions (`ON DELETE CASCADE`).
+**Commit:** single SQLite transaction; record `import_batches` with `file_sha256` (hash of raw bytes), counts, `mapping_json`; **never** store raw CSV. Undo = delete batch → cascade transactions (`ON DELETE CASCADE`); loan reconcile rows lose `transaction_id` via **`SET NULL`** (PR C).
 
 ---
 
@@ -84,11 +84,11 @@ Native **Budget** in Command Center (`apps/server`, server-rendered TS UI). **CS
 |------|----------------|------|
 | Owner-only reads/writes | `budget/routes.ts`: `requireBudgetOwner(who)` → 403 + `OWNER_ACTION_FORBIDDEN` from `owner-auth.ts`; `/budget` page omits API script for non-owner | `budget-routes-owner.test.ts` — admin-token & anonymous 403 |
 | Section off without CF Access + owners | `budget/gate.ts`; `index.ts` skips store; `nav-tabs.ts` visibility | `budget-gate.test.ts` |
-| No financial data in logs | `budget/routes.ts` try/catch → `redact.logBudgetError(code)` only; never log `err` from zod/parse with row payload; `http.ts` outer catch must not run for budget paths | `budget-privacy.test.ts` — import with payee `PLANT_SECRET_PAYEE`, assert captured `console.error` lacks it |
-| No budget data to LLM/MCP/webhooks/briefings | No `BudgetStore` on `IntegrationDeps` (`mcp/actions.ts`); no tools in `mcp/create-server.ts`; no imports of budget from `llm/provider.ts`, `daily-briefing/`, `briefing/shutdown-service.ts`, `integrations/power-automate.ts`, `panels/notes.ts` Q&A, `notify/` | `budget-privacy.test.ts` — snapshot MCP tool names; static grep test for `budget/` under `mcp/` and `llm/` |
+| No financial data in logs | `budget/routes.ts` try/catch → `redact.logBudgetError(code)` only; never log `err` from zod/parse with row payload; preview cache keys/rows never logged; `http.ts` outer catch must not run for budget paths | `budget-privacy.test.ts` — import with payee `PLANT_SECRET_PAYEE`, assert captured `console.error` lacks it |
+| No budget data to LLM/MCP/webhooks/briefings | No `BudgetStore` on `IntegrationDeps` (`mcp/actions.ts`); no tools in `mcp/create-server.ts`; no imports of budget from `llm/provider.ts`, `daily-briefing/`, `briefing/shutdown-service.ts`, `integrations/power-automate.ts`, `panels/notes.ts` Q&A, `notify/` | `budget-privacy.test.ts` — snapshot MCP tool names; grep `budget/` under `mcp/` and `llm/`; where cheap, run existing briefing/MCP/LLM context builders (e.g. daily briefing payload assembly, `createCommandCenterMcp` tool list, notes Q&A context helper) with budget data seeded and assert output **does not contain** `PLANT_SECRET_PAYEE` |
 | `Cache-Control: no-store` | Budget JSON helpers + `send()` for `/budget` (global `send` already sets no-store in `http.ts`) | `budget-routes-owner.test.ts` header assert |
 | PWA must not cache `/budget` | `apps/server/src/pwa.ts` — extend SW `fetch` guard: skip cache when `pathname === "/budget" \|\| pathname.startsWith("/budget/")` | `budget-privacy.test.ts` — SW source contains skip |
-| Dashboard amounts blurred by default | `panels/budget.ts` — CSS blur + eye toggle (`localStorage`); non-owner panel copy only | `budget-panel.test.ts` HTML contains blur class |
+| Dashboard amounts blurred by default | `panels/budget.ts` — CSS blur + eye toggle (`localStorage`); panel only registered/rendered for owner + gate | `budget-panel.test.ts` — owner HTML contains blur class; non-owner / gate-off layout has no `budget` panel id |
 
 Follow **`notes/sensitive.ts`** pattern: add `apps/server/src/budget/excluded.ts` documenting “budget never in agent context” (hard rule, no opt-in LLM categorization in v1).
 
