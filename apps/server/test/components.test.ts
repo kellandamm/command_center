@@ -8,6 +8,10 @@ import {
   errorState,
   field,
   loadingState,
+  pageHeader,
+  skeleton,
+  statCard,
+  statGrid,
   table,
   tabs,
 } from "../src/ui/components";
@@ -29,7 +33,7 @@ test("components: badge and states escape user text", () => {
   const evil = `<script>"x"`;
   assert.match(badge(evil, "destructive"), /&lt;script&gt;/);
   assert.match(emptyState({ title: evil }), /&lt;script&gt;/);
-  assert.match(loadingState(evil), /&lt;script&gt;/);
+  assert.match(loadingState(evil), /class="skeleton"/);
   assert.match(errorState(evil), /&lt;script&gt;/);
 });
 
@@ -40,6 +44,17 @@ test("components: tabs mark active route", () => {
   );
   assert.match(html, /class="ui-tabs"/);
   assert.match(html, /href="\/notes" aria-current="page"/);
+});
+
+test("components: pageHeader statCard emptyState skeleton", () => {
+  const header = pageHeader({ title: "Dashboard", description: "Hello", actionsHtml: "<button type=button>Go</button>" });
+  assert.match(header, /ui-page-header/);
+  assert.match(header, /<h1>Dashboard<\/h1>/);
+  const grid = statGrid(statCard({ label: "Tasks", value: "3" }));
+  assert.match(grid, /class="stat-grid"/);
+  assert.match(grid, /class="stat-value tabular-nums"/);
+  assert.match(emptyState({ title: "Empty", description: "Try again" }), /class="ui-empty-title"/);
+  assert.match(skeleton({ lines: 2 }), /class="skeleton"/);
 });
 
 test("components: table and field render structure", () => {
