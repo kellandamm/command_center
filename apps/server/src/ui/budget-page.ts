@@ -66,9 +66,6 @@ document.querySelectorAll(".ui-tabs a").forEach(function(a){
   var el=document.getElementById("budget-panel-"+id);
   if(el)el.hidden=(panels[active]!==id);
 });
-function escHtml(s){
-  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
-}
 function api(path,method,body){
   return fetch(path,{method:method||"GET",headers:{"content-type":"application/json","x-ah":"1"},body:body?JSON.stringify(body):undefined}).then(function(r){
     return r.json().then(function(j){if(!r.ok)throw new Error(j.error||("HTTP "+r.status));return j;});
@@ -77,7 +74,17 @@ function api(path,method,body){
 function fmt(cents){var n=Number(cents)||0;return (n<0?"-":"")+"$"+(Math.abs(n)/100).toFixed(2);}
 function setStatus(msg,bad){var el=document.getElementById("budget-status");el.textContent=msg||"";el.classList.toggle("bad",!!bad);}
 function textCell(tr,text){var td=document.createElement("td");td.textContent=text;tr.appendChild(td);}
-var state={accounts:[],preview:null};
+var state={accounts:[],preview:null,dateFormatTouched:false};
+function importDateFormatFor(accountId){
+  var acct=state.accounts.find(function(a){return a.id===accountId;});
+  return (acct&&acct.importDateFormat)||"MM/DD/YYYY";
+}
+function syncImportDateFormat(){
+  var accountSel=document.getElementById("budget-import-account");
+  var dateSel=document.getElementById("budget-date-format");
+  if(!accountSel||!dateSel||state.dateFormatTouched)return;
+  dateSel.value=importDateFormatFor(accountSel.value);
+}
 function renderAccounts(){
   var box=document.getElementById("budget-panel-accounts");
   if(!state.accounts.length){
@@ -120,14 +127,18 @@ function fillImportAccounts(){
     var o=document.createElement("option");o.value=a.id;o.textContent=a.name;sel.appendChild(o);
   });
   var pre=params.get("account"); if(pre)sel.value=pre;
+  sel.onchange=function(){state.dateFormatTouched=false;syncImportDateFormat();};
+  syncImportDateFormat();
 }
 function runPreview(){
   var accountId=document.getElementById("budget-import-account").value;
   var file=document.getElementById("budget-import-file").files[0];
-  var dateFormat=document.getElementById("budget-date-format").value;
   if(!accountId||!file){setStatus("Choose an account and CSV file.",true);return;}
   setStatus("Parsing…");
-  var url="/api/budget/import/preview?accountId="+encodeURIComponent(accountId)+"&fileName="+encodeURIComponent(file.name)+"&dateFormat="+encodeURIComponent(dateFormat);
+  var url="/api/budget/import/preview?accountId="+encodeURIComponent(accountId)+"&fileName="+encodeURIComponent(file.name);
+  if(state.dateFormatTouched){
+    url+="&dateFormat="+encodeURIComponent(document.getElementById("budget-date-format").value);
+  }
   fetch(url,{method:"POST",headers:{"content-type":"text/csv","x-ah":"1"},body:file})
   .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||"preview failed");return j;});})
   .then(function(p){
@@ -157,6 +168,7 @@ function commitImport(){
 }
 document.getElementById("budget-preview-btn").onclick=runPreview;
 document.getElementById("budget-commit-btn").onclick=commitImport;
+document.getElementById("budget-date-format").onchange=function(){state.dateFormatTouched=true;};
 loadAccounts();
 if(active==="import")fillImportAccounts();
 })();
@@ -173,7 +185,7 @@ function cardImportWizard(): string {
   })}${field({
     label: "Date format",
     id: "budget-date-format",
-    hint: "Must match the dates in your CSV.",
+    hint: "Must match the dates in your CSV. Uses each account's saved format until you change it.",
     inputHtml:
       '<select id="budget-date-format"><option value="MM/DD/YYYY">MM/DD/YYYY</option><option value="DD/MM/YYYY">DD/MM/YYYY</option><option value="YYYY-MM-DD">YYYY-MM-DD (ISO)</option></select>',
   })}${field({

@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -189,4 +190,58 @@ test("budget import: oversize file returns 413", async () => {
   } finally {
     await h.close();
   }
+});
+
+test("budget import: saved DD/MM profile applies when dateFormat param omitted", async () => {
+  const h = await openBudgetHttp();
+  try {
+    const { account } = (await (
+      await fetch(`${h.base}/api/budget/accounts`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ name: "EU Checking", type: "checking" }),
+      })
+    ).json()) as { account: { id: string } };
+    const csv = `Date,Description,Amount\n15/03/2026,Pay,-10.00\n`;
+
+    const seedPreview = await fetch(
+      `${h.base}/api/budget/import/preview?accountId=${account.id}&fileName=seed.csv&dateFormat=DD/MM/YYYY`,
+      { method: "POST", headers: { ...headers, "content-type": "text/csv" }, body: csv },
+    );
+    const seed = (await seedPreview.json()) as { previewId: string; mapping: { dateFormat: string } };
+    assert.equal(seedPreview.status, 200);
+    assert.equal(seed.mapping.dateFormat, "DD/MM/YYYY");
+    const seedCommit = await fetch(`${h.base}/api/budget/import/commit`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ previewId: seed.previewId }),
+    });
+    assert.equal(seedCommit.status, 201);
+
+    const again = await fetch(
+      `${h.base}/api/budget/import/preview?accountId=${account.id}&fileName=seed.csv`,
+      { method: "POST", headers: { ...headers, "content-type": "text/csv" }, body: csv },
+    );
+    const preview = (await again.json()) as {
+      mapping: { dateFormat: string };
+      sample: Array<{ date: string; error?: string; status: string }>;
+    };
+    assert.equal(again.status, 200);
+    assert.equal(preview.mapping.dateFormat, "DD/MM/YYYY");
+    assert.equal(preview.sample[0]?.date, "2026-03-15");
+    assert.notEqual(preview.sample[0]?.status, "error");
+
+    const acctRes = await fetch(`${h.base}/api/budget/accounts`, { headers });
+    const listed = (await acctRes.json()) as { accounts: Array<{ id: string; importDateFormat: string | null }> };
+    const row = listed.accounts.find((a) => a.id === account.id);
+    assert.equal(row?.importDateFormat, "DD/MM/YYYY");
+  } finally {
+    await h.close();
+  }
+});
+
+test("budget import: revert guard — forcing MM/DD over saved profile must fail", () => {
+  const src = readFileSync(join(process.cwd(), "src/budget/routes.ts"), "utf8");
+  assert.match(src, /dateFormatParam && \(DATE_FORMATS/);
+  assert.doesNotMatch(src, /mapping\.dateFormat\s*=\s*"MM\/DD\/YYYY"/);
 });

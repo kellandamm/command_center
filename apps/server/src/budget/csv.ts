@@ -169,8 +169,10 @@ function isoFromParts(y: number, m: number, d: number): string | null {
 }
 
 export function parseDate(raw: string, format: DateFormat): string | null {
-  const s = raw.trim();
+  let s = raw.trim();
   if (!s) return null;
+  const space = s.indexOf(" ");
+  if (space > 0) s = s.slice(0, space);
   if (format === "YYYY-MM-DD") {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
     const [ys, ms, ds] = s.split("-");
@@ -202,12 +204,15 @@ export function parseMoney(raw: string): number | null {
   if (s.startsWith("(") && s.endsWith(")")) {
     negative = true;
     s = s.slice(1, -1).trim();
-  } else if (s.startsWith("-")) {
-    negative = true;
-    s = s.slice(1).trim();
   }
-  s = s.replace(/[$\s]/g, "");
-  if (/[eExX]/.test(s)) return null;
+  s = s.replace(/\s/g, "");
+  s = s.replace(/\$/g, "");
+  if (s.startsWith("+")) s = s.slice(1);
+  else if (s.startsWith("-")) {
+    negative = true;
+    s = s.slice(1);
+  }
+  if (!s || /[eExX]/.test(s)) return null;
 
   const dot = s.lastIndexOf(".");
   const comma = s.lastIndexOf(",");
@@ -223,6 +228,7 @@ export function parseMoney(raw: string): number | null {
     const segs = s.split(",");
     if (segs.length === 2 && segs[1]!.length <= 2) s = `${segs[0]!.replace(/\./g, "")}.${segs[1]}`;
     else if (/^\d{1,3}(,\d{3})+\.\d+$/.test(s)) s = s.replace(/,/g, "");
+    else if (/^\d{1,3}(,\d{3}){2,}$/.test(s)) s = s.replace(/,/g, "");
     else if (segs.length === 2 && segs[1]!.length === 3 && /^\d+$/.test(segs[0]!)) return null;
     else return null;
   } else if (dot >= 0) {
