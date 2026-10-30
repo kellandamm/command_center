@@ -1,28 +1,29 @@
 import { page, type NavLink } from "./layout";
+import { button, field, pageHeader } from "./components";
+import { PHASE2_PAGE_CSS } from "./phase2-pages-css";
 
 export function bookmarksPage(nav?: NavLink[]): string {
+  const headerActions = `${button({ label: "Add bookmark", attrs: { id: "bookmark-add", disabled: true } })}${button({ label: "New group", variant: "ghost", attrs: { id: "bookmark-new-group", disabled: true } })}`;
   return page({
     title: "Bookmarks — Command center",
     active: "/bookmarks",
     nav,
-    body: `<div class="bookmark-page">
-<header class="page-header bookmark-header">
-  <div><p class="bookmark-eyebrow dim">YOUR EVERYDAY INTERNET</p><h1>Bookmarks</h1><p class="dim">Favorite places. One clear view.</p></div>
-  <div class="row"><button id="bookmark-add" disabled>Add bookmark</button><button id="bookmark-new-group" class="ghost" disabled>New group</button></div>
-</header>
-<div class="bookmark-toolbar">
-  <label class="bookmark-search" for="bookmark-search">Find a bookmark<input id="bookmark-search" type="search" placeholder="Search titles, links, groups…"></label>
-  <details class="bookmark-options"><summary>Layout &amp; files</summary><div class="bookmark-options-body">
+    extraCss: PHASE2_PAGE_CSS,
+    body: `<div class="phase2-page bookmark-page">
+${pageHeader({ title: "Bookmarks", description: "Favorite places. One clear view.", actionsHtml: headerActions })}
+<div class="phase2-toolbar">
+${field({ label: "Find a bookmark", id: "bookmark-search", inputHtml: '<input id="bookmark-search" type="search" placeholder="Search titles, links, groups…" autocomplete="off" />' })}
+  <details class="bookmark-options"><summary class="btn btn-outline btn-sm">Layout &amp; files</summary><div class="bookmark-options-body">
     <label for="bookmark-density">Spacing</label><select id="bookmark-density" disabled><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select>
     <label for="bookmark-columns">Columns</label><select id="bookmark-columns" disabled><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select>
-    <label class="btn ghost" for="bookmark-import">Import bookmarks</label><input id="bookmark-import" type="file" accept=".html,.htm,.json,text/html,application/json" disabled>
+    <label class="btn btn-outline btn-sm bookmark-import-label" for="bookmark-import">Import bookmarks</label><input id="bookmark-import" type="file" accept=".html,.htm,.json,text/html,application/json" disabled>
     <p class="dim">Import a browser bookmarks HTML export or a Bookmarks JSON backup. Folder paths become groups; duplicate URLs within a group are skipped.</p>
-    <a class="btn ghost" href="/api/bookmarks/export.json">Download backup</a>
+    ${button({ label: "Download backup", variant: "outline", size: "sm", href: "/api/bookmarks/export.json" })}
   </div></details>
 </div>
 <p id="bookmark-status" role="status" aria-live="polite">Loading bookmarks…</p>
 <div id="bookmark-groups" class="bookmark-grid" aria-label="Bookmark groups"></div>
-<dialog id="bookmark-dialog" aria-labelledby="bookmark-dialog-title">
+<dialog id="bookmark-dialog" class="ui-dialog" aria-labelledby="bookmark-dialog-title">
   <form id="bookmark-form">
     <h2 id="bookmark-dialog-title">Add bookmark</h2>
     <input id="bookmark-id" type="hidden">
@@ -36,13 +37,13 @@ export function bookmarksPage(nav?: NavLink[]): string {
 </dialog>
 </div>
 <style>
-.bookmark-page{max-width:84rem;margin:auto}.bookmark-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin:1rem 0 2rem}
-.bookmark-header .bookmark-eyebrow{font-size:.65rem;letter-spacing:.16em;margin:0 0 .5rem}
-.bookmark-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;border-bottom:1px solid var(--border);padding-bottom:1.25rem}
-.bookmark-search{margin:0;max-width:30rem;flex:1}.bookmark-search input{margin-top:.4rem}
-.bookmark-options{max-width:23rem}.bookmark-options summary{cursor:pointer;padding:.5rem;font-size:.8rem}.bookmark-options-body{padding:0 .5rem 1rem}.bookmark-options-body p{font-size:.75rem}
-.bookmark-grid{display:grid;grid-template-columns:repeat(var(--bookmark-columns,3),minmax(0,1fr));gap:1.5rem;align-items:start}
-.bookmark-group{min-width:0;border:1px solid var(--border);border-radius:var(--radius);padding:1rem;background:var(--card)}
+.bookmark-page .bookmark-options summary{list-style:none;cursor:pointer}
+.bookmark-options-body{padding:0 .5rem 1rem}.bookmark-options-body p{font-size:.75rem}
+.bookmark-options-body label.field-label,.bookmark-options-body label{font-size:.875rem;margin:.75rem 0 .35rem}
+.bookmark-grid{display:grid;grid-template-columns:repeat(var(--bookmark-columns,3),minmax(0,1fr));gap:var(--grid-gap);align-items:start}
+.bookmark-group{min-width:0;padding:var(--card-pad);background:var(--card);border-radius:calc(var(--radius) + 0.25rem);
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--foreground) 6%,transparent),0 1px 2px rgba(0,0,0,.04)}
+html.dark .bookmark-group{box-shadow:0 0 0 1px color-mix(in srgb,var(--foreground) 10%,transparent),0 1px 2px rgba(0,0,0,.35)}
 .bookmark-group-head{display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem}.bookmark-group-head h2{margin:0;flex:1;overflow-wrap:anywhere;font-size:1rem}
 .bookmark-count{font-size:.75rem;color:var(--dim)}
 .bookmark-actions{position:relative}.bookmark-actions summary{cursor:pointer;font-size:.75rem;color:var(--dim);padding:.3rem}
@@ -54,13 +55,13 @@ export function bookmarksPage(nav?: NavLink[]): string {
 .bookmark-monogram{display:grid;place-items:center;width:2rem;height:2rem;flex-shrink:0;background:var(--muted);border:1px solid var(--border);border-radius:.5rem;font-weight:600;font-size:.75rem}
 .bookmark-copy{min-width:0}.bookmark-copy strong{display:block;font-size:.85rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bookmark-copy small{display:block;font-size:.7rem;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bookmark-empty{padding:2rem 0;color:var(--dim);grid-column:1/-1}.bookmark-empty h2{font-size:1.1rem;line-height:1.4;color:var(--fg)}
+.bookmark-empty{padding:2rem 0;color:var(--dim);grid-column:1/-1}
+.bookmark-empty h2{font-size:1rem;line-height:1.4;font-weight:600;margin:0}
 .bookmark-page[data-density=compact] .bookmark-link{padding:.3rem}.bookmark-page[data-density=compact] .bookmark-monogram{width:1.5rem;height:1.5rem;font-size:.65rem}
 .bookmark-page[data-density=compact] .bookmark-copy small{display:none}
-#bookmark-dialog{width:min(30rem,calc(100% - 2rem));max-height:90vh;overflow:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);color:var(--fg);padding:1.5rem}
-#bookmark-dialog::backdrop{background:rgba(0,0,0,.4)}
+#bookmark-dialog{width:min(30rem,calc(100% - 2rem));max-height:90vh;overflow:auto;padding:1.5rem}
 @media(max-width:1200px){.bookmark-grid{grid-template-columns:repeat(min(var(--bookmark-columns,3),2),minmax(0,1fr))}}
-@media(max-width:650px){.bookmark-grid{grid-template-columns:minmax(0,1fr)}.bookmark-toolbar{flex-direction:column}.bookmark-search{width:100%;max-width:none}}
+@media(max-width:650px){.bookmark-grid{grid-template-columns:minmax(0,1fr)}}
 </style>`,
     script: `
 (function(){
@@ -140,8 +141,8 @@ export function bookmarksPage(nav?: NavLink[]): string {
       section.appendChild(list);container.appendChild(section);
     });
     if(!container.children.length){
-      var empty=node("div","bookmark-empty");empty.appendChild(node("h2","",query?"No matching bookmarks":"Your internet, organized."));
-      empty.appendChild(node("p","",query?"Try a different search.":"Create a group to add your favorite links, or import a browser bookmark export from Layout & files."));
+      var empty=node("div","bookmark-empty ui-empty");empty.appendChild(node("h2","ui-empty-title",query?"No matching bookmarks":"Your internet, organized."));
+      empty.appendChild(node("p","ui-empty-desc dim",query?"Try a different search.":"Create a group to add your favorite links, or import a browser bookmark export from Layout & files."));
       container.appendChild(empty);
     }
   }
