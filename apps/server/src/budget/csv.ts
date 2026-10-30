@@ -1,6 +1,94 @@
 import { createHash } from "node:crypto";
 import type { DateFormat } from "./constants";
 
+/** ISO calendar dates; optional `T` or space + time (rejected unless well-formed). */
+const ISO_DATE_CORE =
+  /^(\d{4}-\d{2}-\d{2})(?:(?:T| )(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
+
+/** US thousands: leading group 1–3 digits without a leading zero; further groups are exactly three digits. */
+const US_GROUPED_AMOUNT = /^[1-9]\d{0,2}(,\d{3})+(\.\d{1,2})?$/;
+/** Valid US grouping for column-style inference (allows longer fractional tails in samples). */
+const US_GROUPED_EVIDENCE = /^[1-9]\d{0,2}(,\d{3})+(\.\d+)?$/;
+
+export type AmountColumnStyle = "us" | "european" | "unknown";
+
+function moneyScanCore(raw: string): string {
+  let s = raw.trim();
+  if (!s || s === "-") return "";
+  if (s.startsWith("(") && s.endsWith(")")) s = s.slice(1, -1).trim();
+  s = s.replace(/\s/g, "").replace(/\$/g, "");
+  if (s.startsWith("+")) s = s.slice(1);
+  else if (s.startsWith("-")) s = s.slice(1);
+  return s;
+}
+
+function usColumnEvidence(s: string): boolean {
+  const dot = s.lastIndexOf(".");
+  const comma = s.lastIndexOf(",");
+  if (comma >= 0 && dot >= 0 && dot > comma && US_GROUPED_AMOUNT.test(s)) return true;
+  if (comma >= 0 && dot < 0 && US_GROUPED_EVIDENCE.test(s) && s.split(",").length >= 3) return true;
+  if (dot >= 0 && comma < 0) {
+    const segs = s.split(".");
+    if (segs.length === 2 && segs[1]!.length >= 1 && segs[1]!.length <= 2) return true;
+  }
+  return false;
+}
+
+function europeanColumnEvidence(s: string): boolean {
+  if (isEuropeanDecimalComma(s)) return true;
+  const dot = s.lastIndexOf(".");
+  const comma = s.lastIndexOf(",");
+  return comma >= 0 && dot >= 0 && comma > dot;
+}
+
+function isAmbiguousSingleCommaGroup(s: string): boolean {
+  const comma = s.lastIndexOf(",");
+  if (comma < 0 || s.includes(".")) return false;
+  const segs = s.split(",");
+  return segs.length === 2 && segs[1]!.length === 3 && US_GROUPED_AMOUNT.test(s);
+}
+
+/** One pass over an amount column: infer US vs European grouping for ambiguous single-comma values. */
+export function inferAmountColumnStyle(rawValues: string[]): AmountColumnStyle {
+  let us = false;
+  let eu = false;
+  for (const raw of rawValues) {
+    const s = moneyScanCore(raw);
+    if (!s || /[eExX]/.test(s)) continue;
+    if (usColumnEvidence(s)) us = true;
+    if (europeanColumnEvidence(s)) eu = true;
+  }
+  if (us && !eu) return "us";
+  if (eu && !us) return "european";
+  return "unknown";
+}
+
+function parseIsoDateInput(raw: string): string | null {
+  const trimmed = raw.trim();
+  const m = trimmed.match(ISO_DATE_CORE);
+  if (m) {
+    if (m[2] !== undefined) {
+      const h = Number(m[2]);
+      const min = Number(m[3]);
+      const sec = m[4] !== undefined ? Number(m[4]) : 0;
+      if (h > 23 || min > 59 || sec > 59) return null;
+    }
+    return m[1]!;
+  }
+  if (/^\d{4}-\d{2}-\d{2}T/i.test(trimmed)) return null;
+  const space = trimmed.search(/\s/);
+  const datePart = space >= 0 ? trimmed.slice(0, space) : trimmed;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return null;
+  return datePart;
+}
+
+function isEuropeanDecimalComma(s: string): boolean {
+  const segs = s.split(",");
+  if (segs.length !== 2) return false;
+  if (segs[1]!.length < 1 || segs[1]!.length > 2) return false;
+  return /^\d+$/.test(segs[0]!.replace(/\./g, "")) && /^\d+$/.test(segs[1]!);
+}
+
 export interface CsvMapping {
   dateColumn: string;
   dateFormat: DateFormat;
@@ -171,13 +259,14 @@ function isoFromParts(y: number, m: number, d: number): string | null {
 export function parseDate(raw: string, format: DateFormat): string | null {
   let s = raw.trim();
   if (!s) return null;
-  const space = s.indexOf(" ");
-  if (space > 0) s = s.slice(0, space);
   if (format === "YYYY-MM-DD") {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
-    const [ys, ms, ds] = s.split("-");
+    const datePart = parseIsoDateInput(s);
+    if (!datePart) return null;
+    const [ys, ms, ds] = datePart.split("-");
     return isoFromParts(Number(ys), Number(ms), Number(ds));
   }
+  const space = s.indexOf(" ");
+  if (space > 0) s = s.slice(0, space);
   const parts = s.split(/[/-]/);
   if (parts.length !== 3) return null;
   let y: number;
@@ -197,7 +286,7 @@ export function parseDate(raw: string, format: DateFormat): string | null {
 }
 
 /** Parse currency to whole cents. Outflows may be negative. Returns null on ambiguous or invalid input. */
-export function parseMoney(raw: string): number | null {
+export function parseMoney(raw: string, columnStyle: AmountColumnStyle = "unknown"): number | null {
   let s = raw.trim();
   if (!s || s === "-") return null;
   let negative = false;
@@ -221,16 +310,17 @@ export function parseMoney(raw: string): number | null {
       if (!/^\d{1,3}(\.\d{3})*,\d+$/.test(s) && !/^\d+,\d+$/.test(s)) return null;
       s = s.replace(/\./g, "").replace(",", ".");
     } else {
-      if (!/^\d{1,3}(,\d{3})+\.\d+$/.test(s) && !/^\d+\.\d+$/.test(s)) return null;
+      if (!US_GROUPED_AMOUNT.test(s) && !/^\d+\.\d+$/.test(s)) return null;
       s = s.replace(/,/g, "");
     }
   } else if (comma >= 0) {
-    const segs = s.split(",");
-    if (segs.length === 2 && segs[1]!.length <= 2) s = `${segs[0]!.replace(/\./g, "")}.${segs[1]}`;
-    else if (/^\d{1,3}(,\d{3})+\.\d+$/.test(s)) s = s.replace(/,/g, "");
-    else if (/^\d{1,3}(,\d{3}){2,}$/.test(s)) s = s.replace(/,/g, "");
-    else if (segs.length === 2 && segs[1]!.length === 3 && /^\d+$/.test(segs[0]!)) return null;
-    else return null;
+    if (isEuropeanDecimalComma(s)) {
+      const segs = s.split(",");
+      s = `${segs[0]!.replace(/\./g, "")}.${segs[1]}`;
+    } else if (US_GROUPED_AMOUNT.test(s)) {
+      if (isAmbiguousSingleCommaGroup(s) && columnStyle !== "us") return null;
+      s = s.replace(/,/g, "");
+    } else return null;
   } else if (dot >= 0) {
     const segs = s.split(".");
     if (segs.length > 2) return null;
@@ -288,6 +378,19 @@ export function normalizeImportRows(opts: NormalizeOptions): NormalizedImportRow
   const dupCounts = new Map<string, number>();
   const out: NormalizedImportRow[] = [];
 
+  const amountStyle =
+    amountIdx >= 0
+      ? inferAmountColumnStyle(opts.dataRows.map((row) => String(row[amountIdx] ?? "").trim()))
+      : "unknown";
+  const debitStyle =
+    debitIdx >= 0
+      ? inferAmountColumnStyle(opts.dataRows.map((row) => String(row[debitIdx] ?? "").trim()))
+      : "unknown";
+  const creditStyle =
+    creditIdx >= 0
+      ? inferAmountColumnStyle(opts.dataRows.map((row) => String(row[creditIdx] ?? "").trim()))
+      : "unknown";
+
   for (let i = 0; i < opts.dataRows.length; i++) {
     const row = opts.dataRows[i]!;
     const rowNumber = opts.headerRowIndex + i + 2;
@@ -310,10 +413,10 @@ export function normalizeImportRows(opts: NormalizeOptions): NormalizedImportRow
     }
 
     let amountCents: number | null = null;
-    if (amountIdx >= 0) amountCents = parseMoney(get(amountIdx));
+    if (amountIdx >= 0) amountCents = parseMoney(get(amountIdx), amountStyle);
     else {
-      const debit = debitIdx >= 0 ? parseMoney(get(debitIdx)) : null;
-      const credit = creditIdx >= 0 ? parseMoney(get(creditIdx)) : null;
+      const debit = debitIdx >= 0 ? parseMoney(get(debitIdx), debitStyle) : null;
+      const credit = creditIdx >= 0 ? parseMoney(get(creditIdx), creditStyle) : null;
       if (debit != null && debit !== 0) amountCents = -Math.abs(debit);
       else if (credit != null && credit !== 0) amountCents = Math.abs(credit);
     }

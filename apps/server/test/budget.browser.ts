@@ -95,6 +95,35 @@ test("budget import UI: XSS payee renders as inert text", { timeout: 120_000 }, 
   }
 });
 
+test("budget accounts UI: XSS account name renders as inert text", { timeout: 120_000 }, async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "cc-budget-acct-xss-"));
+  const app = await openBudgetBrowserServer(dataDir);
+  const browser = await chromium.launch();
+  try {
+    const acctRes = await fetch(`${app.base}/api/budget/accounts`, {
+      method: "POST",
+      headers: ownerHeaders(app.ownerJwt),
+      body: JSON.stringify({ name: XSS, type: "checking" }),
+    });
+    assert.ok(acctRes.ok, `create account: ${acctRes.status}`);
+
+    const context = await browser.newContext();
+    await context.addCookies([
+      { name: "CF_Authorization", value: app.ownerJwt, domain: "127.0.0.1", path: "/" },
+    ]);
+    const page = await context.newPage();
+    await page.goto(`${app.base}/budget?view=accounts`);
+    await page.waitForSelector("#budget-panel-accounts table tbody tr", { timeout: 20_000 });
+    assert.equal(await page.locator("#budget-panel-accounts img").count(), 0);
+    const nameText = await page.locator("#budget-panel-accounts table tbody tr td:first-child").innerText();
+    assert.equal(nameText, XSS);
+  } finally {
+    await browser.close();
+    await app.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("budget import UI: invert checkbox checked for saved inverted credit account", { timeout: 120_000 }, async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "cc-budget-invert-ui-"));
   const app = await openBudgetBrowserServer(dataDir);

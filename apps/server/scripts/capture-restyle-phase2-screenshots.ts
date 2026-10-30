@@ -36,6 +36,32 @@ type Shot = {
 
 const PAGES = ["bookmarks", "calendar", "notes", "settings"] as const;
 
+async function waitForNotesEditorReady(p: Page) {
+  await p.waitForSelector("#knowledge-note-list", { timeout: 25_000 });
+  const firstNote = p.locator("#knowledge-note-list .notes-note").first();
+  if ((await firstNote.count()) > 0) await firstNote.click();
+  await p.waitForFunction(
+    () => {
+      const w = window as unknown as { notesEditor?: { load?: (body: string) => boolean } };
+      return typeof w.notesEditor?.load === "function";
+    },
+    { timeout: 30_000 },
+  );
+  await p.locator('[data-note-mode="write"]').click();
+  await p.waitForFunction(
+    () => {
+      const warn = document.getElementById("knowledge-editor-warning");
+      const text = warn?.textContent ?? "";
+      return !text.includes("Formatted editor could not load");
+    },
+    { timeout: 30_000 },
+  );
+  await p.waitForFunction(
+    () => document.getElementById("knowledge-writing")?.dataset.mode === "write",
+    { timeout: 15_000 },
+  );
+}
+
 function shotsFor(page: (typeof PAGES)[number], route: string, marker: string, prepare: (p: Page) => Promise<void>): Shot[] {
   const base = { path: route, marker, prepare };
   return [
@@ -77,12 +103,21 @@ const SHOTS: Shot[] = [
   ...shotsFor("calendar", "/calendar", "Calendar", async (p) => {
     await p.waitForSelector("#cal-mini", { timeout: 25_000 });
   }),
-  ...shotsFor("notes", "/notes", "Notes", async (p) => {
-    await p.waitForSelector("#knowledge-note-list", { timeout: 25_000 });
-  }),
+  ...shotsFor("notes", "/notes", "Notes", waitForNotesEditorReady),
   ...shotsFor("settings", "/settings", "Settings", async (p) => {
     await p.waitForSelector("#settings-features-list", { timeout: 20_000 });
   }),
+  {
+    name: "settings-views-subtabs-1440-light",
+    path: "/settings",
+    marker: "Settings",
+    viewport: { width: 1440, height: 900 },
+    prepare: async (p) => {
+      await p.waitForSelector("#settings-tab-views", { timeout: 20_000 });
+      await p.click("#settings-tab-views");
+      await p.waitForSelector(".settings-subtabs", { timeout: 10_000 });
+    },
+  },
 ];
 
 function sleep(ms: number) {
@@ -154,6 +189,11 @@ async function main() {
   console.log("capture phase2", mode, "git", gitSha);
   await writeFile(join(outRoot, "git-sha.txt"), `${gitSha}\n`, "utf8");
 
+  await new Promise<void>((resolve, reject) => {
+    const build = spawn("pnpm", ["run", "build"], { cwd: serverDir, stdio: "inherit" });
+    build.on("exit", (c) => (c === 0 ? resolve() : reject(new Error(`build ${c}`))));
+  });
+
   const dataDir = await mkdtemp(join(tmpdir(), "cc-phase2-cap-"));
   await new Promise<void>((resolve, reject) => {
     const seed = spawn("pnpm", ["exec", "tsx", "scripts/seed-ui-screenshots.ts"], {
@@ -199,7 +239,7 @@ async function main() {
     await browser.close();
     await writeFile(
       join(outRoot, "README.md"),
-      `# Phase 2 restyle ${mode} screenshots\n\nBookmarks, Calendar, Notes, Settings at 1440×900 and 390×844 (light + dark).\n\nGit: \`${gitSha}\`\n`,
+      `# Phase 2 restyle ${mode} screenshots\n\nBookmarks, Calendar, Notes, Settings at 1440×900 and 390×844 (light + dark).\n\nGit commit: see \`git-sha.txt\`.\n`,
     );
   } finally {
     await closeServer();
