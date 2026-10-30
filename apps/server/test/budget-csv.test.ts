@@ -60,13 +60,20 @@ test("budget csv: parseMoney US thousands and European decimals", () => {
   assert.equal(parseMoney("12,345"), 1_234_500);
   assert.equal(parseMoney("12,345.67"), 1_234_567);
   assert.equal(parseMoney("1,23"), 123);
-  assert.equal(parseMoney("1,234"), null);
+  // Strict US grouping: 1,234 is $1,234.00 (not ambiguous null — no European column hint in parseMoney).
+  assert.equal(parseMoney("1,234"), 123_400);
+  assert.equal(parseMoney("1234,567"), null);
+  assert.equal(parseMoney("00,123"), null);
+  assert.equal(parseMoney("12,34,567"), null);
 });
 
 test("budget csv: parseDate accepts ISO date-times", () => {
   assert.equal(parseDate("2026-10-30T12:00:00", "YYYY-MM-DD"), "2026-10-30");
   assert.equal(parseDate("2026-10-30T12:00:00Z", "YYYY-MM-DD"), "2026-10-30");
   assert.equal(parseDate("2026-02-31T00:00:00", "YYYY-MM-DD"), null);
+  assert.equal(parseDate("2026-10-30Tfoo", "YYYY-MM-DD"), null);
+  assert.equal(parseDate("2026-10-30T", "YYYY-MM-DD"), null);
+  assert.equal(parseDate("10/30/2026T12:00", "MM/DD/YYYY"), null);
 });
 
 test("budget csv: parseMoney rejects ambiguous and scientific forms", () => {

@@ -1,6 +1,20 @@
 import { createHash } from "node:crypto";
 import type { DateFormat } from "./constants";
 
+/** ISO calendar dates; optional `T` time ( rejected unless well-formed). */
+const ISO_DATE_INPUT =
+  /^(\d{4}-\d{2}-\d{2})(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+
+/** US thousands: leading group 1–3 digits without a leading zero; further groups are exactly three digits. */
+const US_GROUPED_AMOUNT = /^[1-9]\d{0,2}(,\d{3})+(\.\d{1,2})?$/;
+
+function isEuropeanDecimalComma(s: string): boolean {
+  const segs = s.split(",");
+  if (segs.length !== 2) return false;
+  if (segs[1]!.length < 1 || segs[1]!.length > 2) return false;
+  return /^\d+$/.test(segs[0]!.replace(/\./g, "")) && /^\d+$/.test(segs[1]!);
+}
+
 export interface CsvMapping {
   dateColumn: string;
   dateFormat: DateFormat;
@@ -171,15 +185,15 @@ function isoFromParts(y: number, m: number, d: number): string | null {
 export function parseDate(raw: string, format: DateFormat): string | null {
   let s = raw.trim();
   if (!s) return null;
-  const space = s.indexOf(" ");
-  if (space > 0) s = s.slice(0, space);
-  const isoTime = s.indexOf("T");
-  if (isoTime > 0) s = s.slice(0, isoTime);
   if (format === "YYYY-MM-DD") {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+    const iso = s.match(ISO_DATE_INPUT);
+    if (!iso) return null;
+    s = iso[1]!;
     const [ys, ms, ds] = s.split("-");
     return isoFromParts(Number(ys), Number(ms), Number(ds));
   }
+  const space = s.indexOf(" ");
+  if (space > 0) s = s.slice(0, space);
   const parts = s.split(/[/-]/);
   if (parts.length !== 3) return null;
   let y: number;
@@ -223,24 +237,16 @@ export function parseMoney(raw: string): number | null {
       if (!/^\d{1,3}(\.\d{3})*,\d+$/.test(s) && !/^\d+,\d+$/.test(s)) return null;
       s = s.replace(/\./g, "").replace(",", ".");
     } else {
-      if (!/^\d{1,3}(,\d{3})+\.\d+$/.test(s) && !/^\d+\.\d+$/.test(s)) return null;
+      if (!US_GROUPED_AMOUNT.test(s) && !/^\d+\.\d+$/.test(s)) return null;
       s = s.replace(/,/g, "");
     }
   } else if (comma >= 0) {
-    const segs = s.split(",");
-    if (segs.length === 2 && segs[1]!.length <= 2) s = `${segs[0]!.replace(/\./g, "")}.${segs[1]}`;
-    else if (/^\d{1,3}(,\d{3})+\.\d+$/.test(s)) s = s.replace(/,/g, "");
-    else if (/^\d{1,3}(,\d{3}){2,}$/.test(s)) s = s.replace(/,/g, "");
-    else if (
-      segs.length === 2 &&
-      segs[1]!.length === 3 &&
-      /^\d+$/.test(segs[0]!) &&
-      /^\d+$/.test(segs[1]!) &&
-      segs[0]!.length >= 2
-    ) {
-      s = `${segs[0]!.replace(/\./g, "")}${segs[1]!}`;
-    } else if (segs.length === 2 && segs[1]!.length === 3 && /^\d+$/.test(segs[0]!)) return null;
-    else return null;
+    if (isEuropeanDecimalComma(s)) {
+      const segs = s.split(",");
+      s = `${segs[0]!.replace(/\./g, "")}.${segs[1]}`;
+    } else if (US_GROUPED_AMOUNT.test(s)) {
+      s = s.replace(/,/g, "");
+    } else return null;
   } else if (dot >= 0) {
     const segs = s.split(".");
     if (segs.length > 2) return null;
