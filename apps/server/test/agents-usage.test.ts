@@ -18,6 +18,7 @@ import {
 import { parseNormalizeInstant } from "../src/agents-usage/datetime";
 import {
   baselineForDayIndex,
+  buildCycleDayDates,
   burnRateFromHistory,
   cycleEndedAtReading,
   dailyBudgetLeft,
@@ -29,9 +30,10 @@ import {
   runOutBeforeReset,
   snapshotsInCycle,
 } from "../src/agents-usage/pace";
+import { USAGE_CHECKIN_MAX_TOTAL } from "../src/agents-usage/constants";
 import { buildUsageDashboard } from "../src/agents-usage/view";
 import type { UsageSnapshot } from "../src/agents-usage/types";
-import { setAgentsUsageWriteForTests } from "../src/agents-usage/store";
+import { retainCheckinsForTests, setAgentsUsageWriteForTests } from "../src/agents-usage/store";
 
 const ADMIN_TOKEN = "a".repeat(32);
 const IMPORT_TOKEN = "u".repeat(32);
@@ -236,7 +238,54 @@ test("agents usage GET routes are owner-only", async () => {
   }
 });
 
-test("agents usage never-fake: null resetsAt and cycle ended", async () => {
+test("agents usage cycle clock uses now not reading time", async () => {
+  const h = await harness();
+  try {
+    const resetsAt = "2026-10-24T09:00:00.000Z";
+    await fetch(`${h.base}/api/agents/usage/import`, {
+      method: "POST",
+      headers: await importHeaders(),
+      body: JSON.stringify({
+        ...samplePayload,
+        asOf: "2026-10-24T08:00:00.000Z",
+        weeklyPercentUsed: 80,
+        resetsAt,
+      }),
+    });
+    const afterReset = buildUsageDashboard(h.store, new Date("2026-10-26T09:00:00.000Z"));
+    assert.equal(afterReset.computed.cycleEnded, true);
+    assert.equal(afterReset.computed.resetCountdown, null);
+    assert.equal(afterReset.computed.dailyBudgetLeft, null);
+    assert.equal(afterReset.computed.dayIndex, null);
+    assert.equal(afterReset.computed.runOutBeforeReset, null);
+  } finally {
+    await h.close();
+  }
+
+  const h2 = await harness();
+  try {
+    const resetsAt = "2026-10-24T09:00:00.000Z";
+    await fetch(`${h2.base}/api/agents/usage/import`, {
+      method: "POST",
+      headers: await importHeaders(),
+      body: JSON.stringify({
+        ...samplePayload,
+        asOf: "2026-10-18T12:00:00.000Z",
+        weeklyPercentUsed: 40,
+        resetsAt,
+      }),
+    });
+    const now = new Date("2026-10-21T12:00:00.000Z");
+    const dash = buildUsageDashboard(h2.store, now);
+    assert.equal(dash.computed.readingStale, true);
+    assert.equal(dash.computed.resetCountdown?.days, 2);
+    assert.equal(dash.computed.resetCountdown?.hours, 21);
+  } finally {
+    await h2.close();
+  }
+});
+
+test("agents usage never-fake: null resetsAt", async () => {
   const h = await harness();
   try {
     await fetch(`${h.base}/api/agents/usage/import`, {
@@ -251,21 +300,7 @@ test("agents usage never-fake: null resetsAt and cycle ended", async () => {
     const dash = buildUsageDashboard(h.store);
     assert.equal(dash.computed.metricsUnavailable, true);
     assert.equal(dash.computed.burnRatePerDay, null);
-
-    await fetch(`${h.base}/api/agents/usage/import`, {
-      method: "POST",
-      headers: await importHeaders(),
-      body: JSON.stringify({
-        ...samplePayload,
-        asOf: "2026-10-25T08:00:00.000Z",
-        weeklyPercentUsed: 10,
-        resetsAt: "2026-10-24T09:00:00.000Z",
-      }),
-    });
-    const ended = buildUsageDashboard(h.store);
-    assert.equal(ended.computed.cycleEnded, true);
-    assert.equal(ended.computed.dayIndex, null);
-    assert.equal(ended.computed.burnRatePerDay, null);
+    assert.ok(dash.chart.dailyIncrements.length <= 7);
   } finally {
     await h.close();
   }
@@ -291,9 +326,9 @@ test("agents usage bar slots mark missing byDay as noData", async () => {
 });
 
 test("agents usage pace math: jitter, burn floor, run-out before reset, behind pace", () => {
-  const readingAt = new Date("2026-10-21T12:00:00.000Z");
+  const now = new Date("2026-10-21T12:00:00.000Z");
   const resetsAt = "2026-10-24T09:00:00.000Z";
-  assert.equal(daysLeftUntilReset(readingAt, resetsAt), 3);
+  assert.equal(daysLeftUntilReset(now, resetsAt), 3);
   assert.equal(dayIndexInCycle(3, false), 5);
   assert.equal(paceStatus(30, baselineForDayIndex(5)), "behind");
   assert.ok(resetAtSameCycle("2026-10-24T09:00:00.000Z", "2026-10-24T09:02:00.000Z"));
@@ -323,8 +358,9 @@ test("agents usage pace math: jitter, burn floor, run-out before reset, behind p
   assert.ok(burn.avgPerDay !== null && burn.avgPerDay > 20);
   assert.equal(burn.lowConfidence, true);
 
-  const runOut = runOutBeforeReset(95, 40, readingAt, resetsAt);
-  assert.ok(runOut && (runOut.hours !== null || (runOut.days !== null && runOut.days < 1)));
+  const runOut = runOutBeforeReset(95, 40, now, resetsAt);
+  assert.ok(runOut && (runOut.hours !== null || runOut.days !== null));
+  assert.equal(runOutBeforeReset(50, 0.01, now, "2026-10-21T18:00:00.000Z"), null);
   assert.equal(dailyBudgetLeft(110, 2), 0);
   assert.equal(projectedAtReset(40, burn.avgPerDay, 3)! > 40, true);
   assert.equal(cycleEndedAtReading(new Date("2026-10-24T10:00:00.000Z"), resetsAt), true);
@@ -379,4 +415,107 @@ test("agents usage invalid asOf in view does not fall back to now", () => {
   const dash = buildUsageDashboard(store as never);
   assert.equal(dash.computed.metricsUnavailable, true);
   assert.equal(dash.computed.weeklyPercentUsed, null);
+});
+
+test("agents usage rejects JWT with invalid signature", async () => {
+  const h = await harness();
+  try {
+    const wrongKeys = await createTestCfAccessJwt();
+    const badJwt = await wrongKeys.signServiceTokenJwt(CF_SERVICE);
+    const res = await fetch(`${h.base}/api/agents/usage/import`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${IMPORT_TOKEN}`,
+        "cf-access-jwt-assertion": badJwt,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(samplePayload),
+    });
+    assert.equal(res.status, 401);
+  } finally {
+    await h.close();
+  }
+});
+
+test("agents usage rejects user email JWT", async () => {
+  const h = await harness();
+  try {
+    const emailJwt = await cfKeys.signEmailJwt("human@example.com");
+    const res = await fetch(`${h.base}/api/agents/usage/import`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${IMPORT_TOKEN}`,
+        "cf-access-jwt-assertion": emailJwt,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(samplePayload),
+    });
+    assert.equal(res.status, 401);
+  } finally {
+    await h.close();
+  }
+});
+
+test("agents usage import client id allow-list", async () => {
+  const h = await harness({ AGENTS_USAGE_IMPORT_CLIENT_IDS: "other-client" });
+  try {
+    const res = await fetch(`${h.base}/api/agents/usage/import`, {
+      method: "POST",
+      headers: await importHeaders(),
+      body: JSON.stringify(samplePayload),
+    });
+    assert.equal(res.status, 401);
+  } finally {
+    await h.close();
+  }
+});
+
+test("agents usage rejects check-in outside retention window", async () => {
+  const h = await harness();
+  try {
+    const res = await fetch(`${h.base}/api/agents/usage/import`, {
+      method: "POST",
+      headers: await importHeaders(),
+      body: JSON.stringify({
+        ...samplePayload,
+        checkins: [{ bot: "main", date: "2020-01-01", note: "old" }],
+      }),
+    });
+    assert.equal(res.status, 400);
+  } finally {
+    await h.close();
+  }
+});
+
+test("agents usage caps total stored check-ins", () => {
+  const rows = Array.from({ length: 3000 }, (_, i) => ({
+    bot: `bot-${i % 25}`,
+    date: `2026-09-${String((i % 28) + 1).padStart(2, "0")}`,
+    note: "x",
+  }));
+  assert.equal(retainCheckinsForTests(rows).length, USAGE_CHECKIN_MAX_TOTAL);
+});
+
+test("agents usage includes reset-day in bar slots", async () => {
+  const h = await harness();
+  try {
+    const resetsAt = "2026-10-24T09:00:00.000Z";
+    const resetDay = "2026-10-24";
+    await fetch(`${h.base}/api/agents/usage/import`, {
+      method: "POST",
+      headers: await importHeaders(),
+      body: JSON.stringify({
+        ...samplePayload,
+        resetsAt,
+        byDay: [{ date: resetDay, share: 9 }],
+      }),
+    });
+    const dash = buildUsageDashboard(h.store, new Date("2026-10-21T12:00:00.000Z"));
+    const slot = dash.chart.dailyIncrements.find((row) => row.date === resetDay);
+    assert.ok(slot);
+    assert.equal(slot?.value, 9);
+    assert.equal(buildCycleDayDates(resetsAt).at(-1), resetDay);
+  } finally {
+    await h.close();
+  }
 });

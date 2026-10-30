@@ -16,6 +16,12 @@ export const USAGE_CHECKIN_RETAIN_DAYS = 60;
 /** Max check-in rows kept per bot after import. */
 export const USAGE_CHECKIN_MAX_PER_BOT = 120;
 
+/** Max check-in rows kept overall (oldest dropped). */
+export const USAGE_CHECKIN_MAX_TOTAL = 2000;
+
+/** Latest reading older than this is flagged stale in the UI. */
+export const USAGE_READING_STALE_MS = 26 * 60 * 60 * 1000;
+
 /** resetsAt values within this window are treated as the same cycle. */
 export const RESET_AT_JITTER_MS = 5 * 60 * 1000;
 

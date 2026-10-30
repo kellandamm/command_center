@@ -187,7 +187,7 @@ function renderCheckins(rows){
 function formatRunOut(ro){
   if(!ro)return null;
   if(ro.days!==null&&ro.days>=1){var d=Math.round(ro.days*10)/10;return "Runs out early, ~"+String(d).replace(/\\.0$/,"")+" d left";}
-  if(ro.hours!==null)return "Runs out early, about "+ro.hours+" h left";
+  if(ro.hours!==null)return ro.hours===0?"Runs out early, <1 h left":"Runs out early, about "+ro.hours+" h left";
   return "Runs out early";
 }
 function renderUsage(data){
@@ -214,9 +214,10 @@ function renderUsage(data){
   var delta=c.baseline!==null?pct-c.baseline:null;
   var vsBase=delta===null?"Unavailable":Math.abs(Math.round(delta))+"% "+(delta>0?"over":"under")+" baseline";
   stats.appendChild(statCard("vs Baseline",vsBase,delta!==null?(delta>0?"(using it fast)":"(plenty left)"):""));
-  var rem=100-pct;
-  stats.appendChild(statCard("Remaining",fmtPct(rem,0),pct>100?fmtPct(pct-100,0)+" over cap":""));
-  var burnSub=c.burnLowConfidence?"low confidence (<6h of samples)":"";
+  var remDisp=c.remainingDisplay!==null?c.remainingDisplay:null;
+  var overSub=c.remainingOverCap!==null&&c.remainingOverCap>0?fmtPct(c.remainingOverCap,0)+" over cap":"";
+  stats.appendChild(statCard("Remaining",remDisp===null?"Unavailable":fmtPct(remDisp,0),overSub));
+  var burnSub=c.burnRatePerDay!==null&&c.burnLowConfidence?"low confidence (<6h of samples)":"";
   stats.appendChild(statCard("Avg / day",c.burnRatePerDay===null?"Unavailable":fmtPct(c.burnRatePerDay,1)+"/day",burnSub));
   var ro=c.runOutBeforeReset;
   if(ro&&c.projectedAtReset!==null&&c.projectedAtReset>100){
@@ -244,7 +245,11 @@ function renderUsage(data){
     log.appendChild(tr);
   });
   renderCheckins(data.checkins);
-  $("usage-footer").textContent="Target pace "+fmtPct(PACE,1)+"/day · weekly cap 100% · latest "+(data.latest?data.latest.asOf:"—");
+  function formatAge(ms){if(ms===null||ms===undefined)return "";var h=Math.floor(ms/3600000);if(h>=48)return Math.floor(h/24)+"d ago";if(h>=1)return h+"h ago";return "<1h ago";}
+  var footer="Target pace "+fmtPct(PACE,1)+"/day · weekly cap 100%";
+  if(c.lastReadingAt){footer+=" · last reading "+c.lastReadingAt+" ("+formatAge(c.lastReadingAgeMs)+")";}
+  if(c.readingStale){footer+=" · stale reading";}
+  $("usage-footer").textContent=footer;
 }
 function loadUsage(){return api("/api/agents/usage").then(renderUsage);}
 loadUsage().catch(function(err){$("usage-unavailable").hidden=false;$("usage-root").hidden=true;fail(err);});

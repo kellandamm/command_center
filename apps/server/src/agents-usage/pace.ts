@@ -111,7 +111,8 @@ export interface RunOutEstimate {
 function runOutParts(remainingPct: number, avgPerDay: number): RunOutEstimate {
   const days = remainingPct / avgPerDay;
   if (days >= 1) return { days, hours: null };
-  return { days: null, hours: Math.round(days * 24) };
+  const hours = Math.round(days * 24);
+  return { days: null, hours: hours < 1 ? 0 : hours };
 }
 
 /** When projection exceeds 100%, estimate time until cap at current average rate. */
@@ -181,14 +182,18 @@ export function formatPercent(value: number | null, digits = 1): string | null {
   return `${text}%`;
 }
 
-/** Seven calendar-day slots in the cycle (UTC dates ending the day before reset). */
+/** Seven calendar-day slots in the cycle (UTC dates, ending on the reset calendar day). */
 export function buildCycleDayDates(resetsAt: string | null): string[] {
   const reset = parseInstant(resetsAt);
   if (!reset) return [];
   const out: string[] = [];
-  for (let i = 7; i >= 1; i--) {
-    const d = new Date(reset.getTime() - i * MS_PER_DAY);
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(Date.UTC(reset.getUTCFullYear(), reset.getUTCMonth(), reset.getUTCDate() - i));
     out.push(d.toISOString().slice(0, 10));
   }
   return out;
+}
+
+export function readingAgeMs(readingAt: Date, now: Date): number {
+  return Math.max(0, now.getTime() - readingAt.getTime());
 }

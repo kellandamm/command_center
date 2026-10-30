@@ -1,23 +1,29 @@
 import { join } from "node:path";
+import { ValidationError } from "../settings";
 import { readJson, writeFileAtomic } from "../store";
-
-/** Test-only override for simulating failed persistence. */
-let agentsUsageWriteForTests: typeof writeFileAtomic | null = null;
-export function setAgentsUsageWriteForTests(fn: typeof writeFileAtomic | null): void {
-  agentsUsageWriteForTests = fn;
-}
 import {
   USAGE_CHECKIN_MAX_PER_BOT,
+  USAGE_CHECKIN_MAX_TOTAL,
   USAGE_CHECKIN_RETAIN_DAYS,
   USAGE_SNAPSHOT_HISTORY_MAX,
 } from "./constants";
 import type { AgentsUsageStoreFile, UsageCheckin, UsageSnapshot } from "./types";
 import type { UsageImportBody } from "./schema";
 
-function retainCheckins(rows: UsageCheckin[]): UsageCheckin[] {
-  const cutoff = new Date();
+/** Test-only override for simulating failed persistence. */
+let agentsUsageWriteForTests: typeof writeFileAtomic | null = null;
+export function setAgentsUsageWriteForTests(fn: typeof writeFileAtomic | null): void {
+  agentsUsageWriteForTests = fn;
+}
+
+export function checkinRetentionCutoffDate(now = new Date()): string {
+  const cutoff = new Date(now);
   cutoff.setUTCDate(cutoff.getUTCDate() - USAGE_CHECKIN_RETAIN_DAYS);
-  const cutoffKey = cutoff.toISOString().slice(0, 10);
+  return cutoff.toISOString().slice(0, 10);
+}
+
+function retainCheckins(rows: UsageCheckin[]): UsageCheckin[] {
+  const cutoffKey = checkinRetentionCutoffDate();
   const fresh = rows.filter((r) => r.date >= cutoffKey);
   const byBot = new Map<string, UsageCheckin[]>();
   for (const row of fresh) {
@@ -30,7 +36,8 @@ function retainCheckins(rows: UsageCheckin[]): UsageCheckin[] {
     list.sort((a, b) => b.date.localeCompare(a.date) || b.bot.localeCompare(a.bot));
     out.push(...list.slice(0, USAGE_CHECKIN_MAX_PER_BOT));
   }
-  return out;
+  out.sort((a, b) => b.date.localeCompare(a.date) || a.bot.localeCompare(b.bot));
+  return out.length > USAGE_CHECKIN_MAX_TOTAL ? out.slice(0, USAGE_CHECKIN_MAX_TOTAL) : out;
 }
 
 function trimSnapshots(rows: UsageSnapshot[]): UsageSnapshot[] {
@@ -82,7 +89,7 @@ export class AgentsUsageStore {
       const result = change(next);
       next.snapshots = trimSnapshots(next.snapshots);
       next.checkins = retainCheckins(next.checkins);
-    const writeFn = agentsUsageWriteForTests ?? writeFileAtomic;
+      const writeFn = agentsUsageWriteForTests ?? writeFileAtomic;
       await writeFn(this.path, JSON.stringify(next, null, 2));
       this.data = next;
       return result;
@@ -94,11 +101,12 @@ export class AgentsUsageStore {
     return run;
   }
 
-  /**
-   * Import snapshot (idempotent on normalized `asOf`: replaces existing row).
-   * Check-ins upsert on (bot, date): latest import wins for that pair.
-   */
   async importPayload(body: UsageImportBody): Promise<{ duplicate: boolean; snapshot: UsageSnapshot }> {
+    const cutoff = checkinRetentionCutoffDate();
+    if (body.checkins?.some((row) => row.date < cutoff)) {
+      throw new ValidationError("check-in date outside retention window");
+    }
+
     return this.mutate((draft) => {
       const existing = draft.snapshots.find((s) => s.asOf === body.asOf);
       const snapshot: UsageSnapshot = {
@@ -141,4 +149,9 @@ export class AgentsUsageStore {
       .slice(0, limit)
       .map((s) => ({ asOf: s.asOf, weeklyPercentUsed: s.weeklyPercentUsed, resetsAt: s.resetsAt }));
   }
+}
+
+/** @internal tests */
+export function retainCheckinsForTests(rows: UsageCheckin[]): UsageCheckin[] {
+  return retainCheckins(rows);
 }

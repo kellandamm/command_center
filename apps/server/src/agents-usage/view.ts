@@ -10,11 +10,13 @@ import {
   paceStatus,
   parseAsOfInstant,
   projectedAtReset,
+  readingAgeMs,
   resetCountdownParts,
   runOutBeforeReset,
   runOutEstimate,
   snapshotsInCycle,
 } from "./pace";
+import { USAGE_READING_STALE_MS } from "./constants";
 import type { AgentsUsageStore } from "./store";
 import type { UsageCheckin, UsageSnapshot } from "./types";
 
@@ -28,6 +30,9 @@ export interface UsageDashboardPayload {
     daysLeft: number | null;
     cycleEnded: boolean;
     cycleEndedMessage: string | null;
+    readingStale: boolean;
+    lastReadingAt: string | null;
+    lastReadingAgeMs: number | null;
     status: ReturnType<typeof paceStatus>;
     burnRatePerDay: number | null;
     burnLowConfidence: boolean;
@@ -36,6 +41,8 @@ export interface UsageDashboardPayload {
     runOutBeforeReset: ReturnType<typeof runOutBeforeReset>;
     dailyBudgetLeft: number | null;
     dailyBudgetOverCap: boolean;
+    remainingDisplay: number | null;
+    remainingOverCap: number | null;
     resetCountdown: ReturnType<typeof resetCountdownParts>;
     resetsAt: string | null;
     metricsUnavailable: boolean;
@@ -55,21 +62,25 @@ export function buildUsageDashboard(store: AgentsUsageStore, now = new Date()): 
   const latest = store.latestSnapshot() ?? null;
   const readingAt = latest ? parseAsOfInstant(latest.asOf) : null;
   const invalidAsOf = Boolean(latest && readingAt === null);
-  const at = readingAt ?? now;
 
-  const cycleEnded = latest && !invalidAsOf ? cycleEndedAtReading(at, latest.resetsAt) : false;
+  const cycleEnded = latest && !invalidAsOf && latest.resetsAt ? cycleEndedAtReading(now, latest.resetsAt) : false;
   const hasReset = Boolean(latest?.resetsAt);
   const current = invalidAsOf ? null : latest?.weeklyPercentUsed ?? null;
+  const readingAge = readingAt ? readingAgeMs(readingAt, now) : null;
+  const readingStale = readingAge !== null && readingAge > USAGE_READING_STALE_MS;
+
   const metricsUnavailable =
     !latest || invalidAsOf || !hasReset || cycleEnded || latest.weeklyPercentUsed === null;
 
-  const daysLeft = latest && hasReset && !cycleEnded && !invalidAsOf ? daysLeftUntilReset(at, latest.resetsAt) : null;
+  const daysLeft = latest && hasReset && !cycleEnded && !invalidAsOf ? daysLeftUntilReset(now, latest.resetsAt) : null;
   const dayIndex = dayIndexInCycle(daysLeft, cycleEnded);
-  const baseline = latest && hasReset && !cycleEnded && !invalidAsOf ? baselineForReading(at, latest.resetsAt) : null;
+  const baseline = latest && hasReset && !cycleEnded && !invalidAsOf ? baselineForReading(now, latest.resetsAt) : null;
 
   const history = latest && hasReset && !cycleEnded && !invalidAsOf ? snapshotsInCycle(store.listSnapshots(), latest) : [];
 
-  const burn = metricsUnavailable ? { avgPerDay: null, sampleCount: 0, elapsedMs: 0, lowConfidence: true } : burnRateFromHistory(history);
+  const burn = metricsUnavailable
+    ? { avgPerDay: null, sampleCount: 0, elapsedMs: 0, lowConfidence: false }
+    : burnRateFromHistory(history);
 
   const cumulative = history.map((s) => {
     const pointAt = parseAsOfInstant(s.asOf);
@@ -84,7 +95,11 @@ export function buildUsageDashboard(store: AgentsUsageStore, now = new Date()): 
   });
 
   const byDayMap = new Map((latest?.byDay ?? []).map((row) => [row.date, row.share]));
-  const slotDates = latest?.resetsAt ? buildCycleDayDates(latest.resetsAt) : (latest?.byDay ?? []).map((r) => r.date);
+  const slotDates = (
+    latest?.resetsAt
+      ? buildCycleDayDates(latest.resetsAt)
+      : [...(latest?.byDay ?? []).map((r) => r.date)].sort()
+  ).slice(0, 7);
   const dailyIncrements = slotDates.map((date) => {
     if (!byDayMap.has(date)) {
       return { date, value: null, baseline: 100 / 7, noData: true };
@@ -100,12 +115,15 @@ export function buildUsageDashboard(store: AgentsUsageStore, now = new Date()): 
 
   const budgetRaw = metricsUnavailable ? null : dailyBudgetLeft(current, daysLeft);
   const dailyBudgetOverCap = budgetRaw === 0;
+  const remainingRaw = current === null ? null : 100 - current;
+  const remainingDisplay = remainingRaw === null ? null : Math.max(0, remainingRaw);
+  const remainingOverCap = remainingRaw !== null && remainingRaw < 0 ? -remainingRaw : null;
 
   const projection = metricsUnavailable ? null : projectedAtReset(current, burn.avgPerDay, daysLeft);
   const runOutEarly =
     metricsUnavailable || projection === null || projection <= 100
       ? null
-      : runOutBeforeReset(current, burn.avgPerDay, at, latest!.resetsAt);
+      : runOutBeforeReset(current, burn.avgPerDay, now, latest!.resetsAt);
 
   return {
     latest,
@@ -117,15 +135,20 @@ export function buildUsageDashboard(store: AgentsUsageStore, now = new Date()): 
       daysLeft,
       cycleEnded,
       cycleEndedMessage: cycleEnded ? "Reset passed, awaiting new reading" : null,
+      readingStale,
+      lastReadingAt: latest?.asOf ?? null,
+      lastReadingAgeMs: readingAge,
       status: paceStatus(current, baseline),
       burnRatePerDay: metricsUnavailable ? null : burn.avgPerDay,
-      burnLowConfidence: burn.lowConfidence,
+      burnLowConfidence: burn.avgPerDay !== null && burn.lowConfidence,
       projectedAtReset: projection,
       runOut: metricsUnavailable ? { days: null, hours: null } : runOutEstimate(current, burn.avgPerDay),
       runOutBeforeReset: runOutEarly,
       dailyBudgetLeft: budgetRaw,
       dailyBudgetOverCap,
-      resetCountdown: latest && hasReset && !cycleEnded ? resetCountdownParts(at, latest.resetsAt) : null,
+      remainingDisplay,
+      remainingOverCap,
+      resetCountdown: latest && hasReset && !cycleEnded ? resetCountdownParts(now, latest.resetsAt) : null,
       resetsAt: latest?.resetsAt ?? null,
       metricsUnavailable,
     },

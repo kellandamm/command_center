@@ -57,6 +57,8 @@ export interface Config {
   meetingsImportToken: string | null;
   /** Bearer token for POST /api/agents/usage/import; ≥ 24 chars when set. */
   agentsUsageImportToken: string | null;
+  /** Optional allow-list of Access service-token common_name values for usage import. */
+  agentsUsageImportClientIds: string[];
   /** HMAC key for Hobie queue producer (create/read tasks). Min 32 chars when set. */
   queueHmacKeyProducer: string | null;
   /** HMAC key for homelab worker (claim/result/proposals). Min 32 chars when set. */
@@ -231,6 +233,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     hobiePollToken,
     meetingsImportToken,
     agentsUsageImportToken,
+    agentsUsageImportClientIds: parseCommaList(env.AGENTS_USAGE_IMPORT_CLIENT_IDS),
     queueHmacKeyProducer: blank(env.QUEUE_HMAC_KEY_PRODUCER),
     queueHmacKeyWorker: blank(env.QUEUE_HMAC_KEY_WORKER),
     mcpMaxHobiePending: Math.min(50, Math.max(1, Number(env.MCP_MAX_HOBIE_PENDING ?? 20) || 20)),
