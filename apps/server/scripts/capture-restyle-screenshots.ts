@@ -43,6 +43,11 @@ const SHOTS: Shot[] = [
 
 async function waitUsageReady(p: Page) {
   await p.waitForFunction(() => { const r = document.getElementById("usage-root"); return r && !r.hidden; }, undefined, { timeout: 25_000 });
+  await p.waitForFunction(() => {
+    const cap = document.querySelector("#usage-line-chart line.line-cap");
+    if (!cap) return false;
+    return cap.getAttribute("stroke-dasharray") === "none";
+  }, undefined, { timeout: 10_000 });
 }
 async function waitUsageReadyDark(p: Page) {
   await p.evaluate(() => { document.documentElement.classList.add("dark"); localStorage.setItem("cc-theme", "dark"); });

@@ -429,6 +429,80 @@ test("dashboard: leaving mobile viewport clears open sheet inert state", { timeo
   }
 });
 
+test("dashboard: mobile sheet sets inert on sidebar inset while open", { timeout: 120_000 }, async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "cc-dash-mobile-inset-"));
+  const port = 5200 + Math.floor(Math.random() * 500);
+  const base = `http://127.0.0.1:${port}`;
+  await new Promise<void>((resolve, reject) => {
+    const seed = spawn("pnpm", ["exec", "tsx", "scripts/seed-dashboard-screenshot.ts"], {
+      cwd: join(import.meta.dirname, ".."),
+      env: { ...process.env, DATA_DIR: dataDir },
+      stdio: "inherit",
+    });
+    seed.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`seed ${code}`))));
+  });
+  const app = startServer(dataDir, port);
+  const browser = await chromium.launch();
+  try {
+    await waitForServer(base);
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.goto(`${base}/`);
+    await page.waitForSelector("#dashboard-grid", { timeout: 20_000 });
+    const insetClosed = await page.evaluate(() => document.querySelector(".sidebar-inset")?.hasAttribute("inert") ?? false);
+    assert.equal(insetClosed, false);
+    await page.locator("#sidebar-toggle").click();
+    await page.waitForFunction(() => document.querySelector(".app-shell")?.getAttribute("data-mobile-sidebar") === "open");
+    const insetOpen = await page.evaluate(() => document.querySelector(".sidebar-inset")?.hasAttribute("inert") ?? false);
+    assert.equal(insetOpen, true);
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => document.querySelector(".app-shell")?.getAttribute("data-mobile-sidebar") === "closed");
+    const insetAfter = await page.evaluate(() => document.querySelector(".sidebar-inset")?.hasAttribute("inert") ?? false);
+    assert.equal(insetAfter, false);
+  } finally {
+    await browser.close();
+    app.kill("SIGTERM");
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("dashboard: fast mobile sheet close cancels delayed sidebar focus", { timeout: 120_000 }, async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "cc-dash-mobile-focus-cancel-"));
+  const port = 5300 + Math.floor(Math.random() * 500);
+  const base = `http://127.0.0.1:${port}`;
+  await new Promise<void>((resolve, reject) => {
+    const seed = spawn("pnpm", ["exec", "tsx", "scripts/seed-dashboard-screenshot.ts"], {
+      cwd: join(import.meta.dirname, ".."),
+      env: { ...process.env, DATA_DIR: dataDir },
+      stdio: "inherit",
+    });
+    seed.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`seed ${code}`))));
+  });
+  const app = startServer(dataDir, port);
+  const browser = await chromium.launch();
+  try {
+    await waitForServer(base);
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.goto(`${base}/`);
+    await page.waitForSelector("#dashboard-grid", { timeout: 20_000 });
+    await page.locator("#sidebar-toggle").click();
+    await page.waitForFunction(() => document.querySelector(".app-shell")?.getAttribute("data-mobile-sidebar") === "open");
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => document.querySelector(".app-shell")?.getAttribute("data-mobile-sidebar") === "closed");
+    await page.waitForTimeout(350);
+    const focusId = await page.evaluate(() => document.activeElement?.id ?? "");
+    assert.equal(focusId, "sidebar-toggle");
+    const focusInSidebar = await page.evaluate(() => {
+      const sidebar = document.querySelector(".sidebar");
+      return !!(sidebar && document.activeElement && sidebar.contains(document.activeElement));
+    });
+    assert.equal(focusInSidebar, false);
+  } finally {
+    await browser.close();
+    app.kill("SIGTERM");
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("dashboard: Ctrl+B toggles desktop sidebar but not from quick-add input", { timeout: 120_000 }, async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "cc-dash-ctrlb-"));
   const port = 5100 + Math.floor(Math.random() * 500);
