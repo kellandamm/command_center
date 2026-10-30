@@ -55,6 +55,10 @@ export interface Config {
   hobiePollToken: string | null;
   /** Bearer token for POST /api/meetings/import (Hobie sync); ≥ 24 chars when set. */
   meetingsImportToken: string | null;
+  /** Bearer token for POST /api/agents/usage/import; ≥ 24 chars when set. */
+  agentsUsageImportToken: string | null;
+  /** Optional allow-list of Access service-token common_name values for usage import. */
+  agentsUsageImportClientIds: string[];
   /** HMAC key for Hobie queue producer (create/read tasks). Min 32 chars when set. */
   queueHmacKeyProducer: string | null;
   /** HMAC key for homelab worker (claim/result/proposals). Min 32 chars when set. */
@@ -166,6 +170,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (meetingsImportToken && meetingsImportToken.length < 24) {
     throw new Error("MEETINGS_IMPORT_TOKEN must be at least 24 characters.");
   }
+  const agentsUsageImportToken = blank(env.AGENTS_USAGE_IMPORT_TOKEN);
+  if (agentsUsageImportToken && agentsUsageImportToken.length < 24) {
+    throw new Error("AGENTS_USAGE_IMPORT_TOKEN must be at least 24 characters.");
+  }
   const connectionsMasterKey = blank(env.CONNECTIONS_MASTER_KEY);
   if (connectionsMasterKey && !/^[a-f0-9]{64}$/i.test(connectionsMasterKey)) {
     throw new Error("CONNECTIONS_MASTER_KEY must be 32 random bytes encoded as 64 hexadecimal characters.");
@@ -224,6 +232,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     bookmarksImportAllowedClientIds: parseCommaList(env.BOOKMARKS_IMPORT_ALLOWED_CLIENT_IDS),
     hobiePollToken,
     meetingsImportToken,
+    agentsUsageImportToken,
+    agentsUsageImportClientIds: parseCommaList(env.AGENTS_USAGE_IMPORT_CLIENT_IDS),
     queueHmacKeyProducer: blank(env.QUEUE_HMAC_KEY_PRODUCER),
     queueHmacKeyWorker: blank(env.QUEUE_HMAC_KEY_WORKER),
     mcpMaxHobiePending: Math.min(50, Math.max(1, Number(env.MCP_MAX_HOBIE_PENDING ?? 20) || 20)),

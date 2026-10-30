@@ -10,7 +10,7 @@ import {
 import type { Config } from "../config";
 import { mcpClientIdForCfAccessClientId, mcpConfigured, resolveMcpClientFromBearer } from "../config";
 
-export type McpAuthResult = { ok: true; clientId: string } | { ok: false; status: 401 | 403; reason: string };
+export type McpAuthResult = { ok: true; clientId: string } | { ok: false; status: 401 | 403 | 503; reason: string };
 
 let integrationJwtVerifier: CfAccessJwtVerifier | null | undefined;
 

@@ -114,7 +114,7 @@ test("read later: pages, redirects, and extension download", async () => {
 test("Agent: all sections share navigation; legacy context and queue actions are preserved", async () => {
   const h = await harness();
   try {
-    for (const view of ["board", "queue", "wins", "assistant", "activity"]) {
+    for (const view of ["board", "queue", "usage", "wins", "assistant", "activity"]) {
       const response = await fetch(`${h.base}/agent?view=${view}`, { headers: admin });
       assert.equal(response.status, 200);
       const html = await response.text();
