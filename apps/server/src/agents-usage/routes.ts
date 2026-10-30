@@ -5,6 +5,7 @@ import { ValidationError } from "../settings";
 import { USAGE_IMPORT_MAX_BYTES } from "./constants";
 import { authenticateAgentsUsageImport } from "./auth";
 import { usageImportBodySchema } from "./schema";
+import { OWNER_ACTION_FORBIDDEN } from "../owner-auth";
 import type { AgentsUsageStore } from "./store";
 import { buildUsageDashboard } from "./view";
 
@@ -66,8 +67,14 @@ export function handleAgentsUsageGetRoutes(
   req: IncomingMessage,
   res: ServerResponse,
   path: string,
+  owner: boolean,
 ): boolean {
   if (req.method !== "GET" && req.method !== "HEAD") return false;
+  if (!path.startsWith("/api/agents/usage")) return false;
+  if (!owner) {
+    json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
+    return true;
+  }
   if (path === "/api/agents/usage") {
     json(res, 200, buildUsageDashboard(store));
     return true;

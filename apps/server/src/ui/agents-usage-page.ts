@@ -15,6 +15,7 @@ const usageCss = `
 .pill{display:inline-flex;align-items:center;gap:.35rem;padding:.2rem .55rem;border-radius:999px;font-size:.75rem;font-weight:600}
 .pill.on-pace{background:color-mix(in srgb,var(--primary) 18%,transparent);color:var(--primary)}
 .pill.ahead{background:color-mix(in srgb,var(--warning) 22%,transparent);color:var(--warning)}
+.pill.behind{background:color-mix(in srgb,var(--primary) 18%,transparent);color:var(--primary)}
 .pill.unknown{background:var(--muted);color:var(--muted-foreground)}
 .usage-charts{display:grid;grid-template-columns:1fr;gap:1rem;margin:1.25rem 0}
 .usage-chart svg{width:100%;height:auto;display:block}
@@ -138,17 +139,20 @@ function renderBarChart(rows){
   var svg=$("usage-bar-chart");svg.replaceChildren();
   var w=700,h=200,p=28;
   if(!rows.length){svg.appendChild(textEl(w/2,h/2,"No data"));return;}
-  var slot=(w-2*p)/rows.length;
+  var slot=(w-2*p)/7;
   rows.forEach(function(row,i){
-    var bh=(h-2*p)*Math.min(1,row.value/100);
-    var x=p+slot*i+slot*0.15,bw=slot*0.7;
+    var x=p+slot*i+slot*0.1,bw=slot*0.8;
     var baseY=h-p-(h-2*p)*Math.min(1,row.baseline/100);
     var bl=document.createElementNS("http://www.w3.org/2000/svg","line");
     bl.setAttribute("x1",String(x));bl.setAttribute("x2",String(x+bw));bl.setAttribute("y1",String(baseY));bl.setAttribute("y2",String(baseY));
     bl.setAttribute("stroke","var(--muted-foreground)");bl.setAttribute("stroke-dasharray","4 3");svg.appendChild(bl);
-    var rect=document.createElementNS("http://www.w3.org/2000/svg","rect");
-    rect.setAttribute("x",String(x));rect.setAttribute("width",String(bw));rect.setAttribute("y",String(h-p-bh));rect.setAttribute("height",String(bh));
-    rect.setAttribute("class",row.value>row.baseline?"bar-over":"bar-under");svg.appendChild(rect);
+    if(row.noData||row.value===null){svg.appendChild(textEl(x+bw/2,h/2,"No data"));}
+    else{
+      var bh=(h-2*p)*Math.min(1,row.value/100);
+      var rect=document.createElementNS("http://www.w3.org/2000/svg","rect");
+      rect.setAttribute("x",String(x));rect.setAttribute("width",String(bw));rect.setAttribute("y",String(h-p-bh));rect.setAttribute("height",String(bh));
+      rect.setAttribute("class",row.value>row.baseline?"bar-over":"bar-under");svg.appendChild(rect);
+    }
     var lab=document.createElementNS("http://www.w3.org/2000/svg","text");
     lab.setAttribute("x",String(x+bw/2));lab.setAttribute("y",String(h-8));lab.setAttribute("text-anchor","middle");lab.setAttribute("fill","var(--muted-foreground)");lab.setAttribute("font-size","10");
     lab.textContent=row.date.slice(5);svg.appendChild(lab);
@@ -180,33 +184,54 @@ function renderCheckins(rows){
     sec.appendChild(list);box.appendChild(sec);
   });
 }
+function formatRunOut(ro){
+  if(!ro)return null;
+  if(ro.days!==null&&ro.days>=1){var d=Math.round(ro.days*10)/10;return "Runs out early, ~"+String(d).replace(/\\.0$/,"")+" d left";}
+  if(ro.hours!==null)return "Runs out early, about "+ro.hours+" h left";
+  return "Runs out early";
+}
 function renderUsage(data){
   var c=data.computed,pct=c.weeklyPercentUsed;
-  var unavailable=pct===null&&!data.latest;
-  $("usage-unavailable").hidden=!unavailable;
-  $("usage-root").hidden=unavailable;
-  if(unavailable)return;
-  if(pct===null){$("usage-unavailable").hidden=false;$("usage-root").hidden=true;$("usage-unavailable").querySelector("p").innerHTML='<strong>Unavailable</strong> — latest reading failed or reported null weekly percent.';return;}
-  var pill=$("usage-status-pill");
-  pill.className="pill "+(c.status==="ahead"?"ahead":c.status==="on_pace"?"on-pace":"unknown");
-  pill.textContent=c.status==="ahead"?"▲ AHEAD OF PACE":c.status==="on_pace"?"▼ ON PACE":"Unavailable";
-  renderRing(pct,c.baseline,c.dayIndex,c.daysLeft);
+  if(!data.latest||pct===null){
+    $("usage-unavailable").hidden=false;$("usage-root").hidden=true;
+    $("usage-unavailable").querySelector("p").innerHTML='<strong>Unavailable</strong> — no successful reading yet (null weekly percent is never shown as 0%).';
+    return;
+  }
+  $("usage-unavailable").hidden=true;$("usage-root").hidden=false;
+  if(c.cycleEnded){
+    $("usage-status-pill").className="pill unknown";
+    $("usage-status-pill").textContent=c.cycleEndedMessage||"Reset passed";
+    renderRing(pct,null,null,null);
+    $("usage-ring-center").textContent=c.cycleEndedMessage||"Reset passed, awaiting new reading";
+  }else{
+    var pill=$("usage-status-pill");
+    var pillCls=c.status==="ahead"?"ahead":c.status==="behind"?"behind":c.status==="on_pace"?"on-pace":"unknown";
+    pill.className="pill "+pillCls;
+    pill.textContent=c.status==="ahead"?"▲ AHEAD OF PACE":c.status==="behind"?"▼ BEHIND PACE":c.status==="on_pace"?"▼ ON PACE":"Unavailable";
+    renderRing(pct,c.baseline,c.dayIndex,c.daysLeft);
+  }
   var stats=$("usage-stats");stats.replaceChildren();
   var delta=c.baseline!==null?pct-c.baseline:null;
   var vsBase=delta===null?"Unavailable":Math.abs(Math.round(delta))+"% "+(delta>0?"over":"under")+" baseline";
   stats.appendChild(statCard("vs Baseline",vsBase,delta!==null?(delta>0?"(using it fast)":"(plenty left)"):""));
   var rem=100-pct;
   stats.appendChild(statCard("Remaining",fmtPct(rem,0),pct>100?fmtPct(pct-100,0)+" over cap":""));
-  stats.appendChild(statCard("Avg / day",c.burnRatePerDay===null?"Unavailable":fmtPct(c.burnRatePerDay,1)+"/day",""));
-  var proj=c.projectedAtReset;
-  stats.appendChild(statCard(proj!==null&&proj>100?"Projected run-out":"Projected (7d)",proj===null?"Unavailable":fmtPct(proj,0),""));
-  if(c.resetsAt===null){
-    stats.appendChild(statCard("Reset in","Reset unknown","No countdown without resetsAt"));
-    stats.appendChild(statCard("Daily budget left","Unavailable","Reset unknown"));
+  var burnSub=c.burnLowConfidence?"low confidence (<6h of samples)":"";
+  stats.appendChild(statCard("Avg / day",c.burnRatePerDay===null?"Unavailable":fmtPct(c.burnRatePerDay,1)+"/day",burnSub));
+  var ro=c.runOutBeforeReset;
+  if(ro&&c.projectedAtReset!==null&&c.projectedAtReset>100){
+    stats.appendChild(statCard("Projected run-out",formatRunOut(ro)||"Runs out early","before weekly reset"));
+  }else{
+    stats.appendChild(statCard("Projected (7d)",c.projectedAtReset===null?"Unavailable":fmtPct(c.projectedAtReset,0),""));
+  }
+  if(c.resetsAt===null||c.metricsUnavailable){
+    stats.appendChild(statCard("Reset in",c.resetsAt===null?"Reset unknown":"Unavailable",c.resetsAt===null?"No countdown without resetsAt":""));
+    stats.appendChild(statCard("Daily budget left","Unavailable",c.resetsAt===null?"Reset unknown":""));
   }else{
     var rc=c.resetCountdown,rcText=rc?rc.days+"d "+rc.hours+"h":"—";
     stats.appendChild(statCard("Reset in",rcText,c.resetsAt));
-    stats.appendChild(statCard("Daily budget left",c.dailyBudgetLeft===null?"Unavailable":fmtPct(c.dailyBudgetLeft,1)+"/day",c.daysLeft!==null?"over "+c.daysLeft+"d to reset (incl. today)":""));
+    var bud=c.dailyBudgetOverCap?"over cap":fmtPct(c.dailyBudgetLeft,1)+"/day";
+    stats.appendChild(statCard("Daily budget left",c.dailyBudgetLeft===null?"Unavailable":bud,c.daysLeft!==null?"over "+c.daysLeft+"d to reset (incl. today)":""));
   }
   renderLineChart(data.chart.cumulative);
   renderBarChart(data.chart.dailyIncrements);

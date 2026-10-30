@@ -11,30 +11,63 @@ import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
 import { SettingsStore } from "../src/settings";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
+import { createTestCfAccessJwt, TEST_CF_AUD, TEST_CF_TEAM } from "./cf-access-jwt";
+import {
+  setAgentsUsageCfAccessVerifierForTests,
+} from "../src/agents-usage/auth";
+import { parseNormalizeInstant } from "../src/agents-usage/datetime";
 import {
   baselineForDayIndex,
   burnRateFromHistory,
+  cycleEndedAtReading,
   dailyBudgetLeft,
   dayIndexInCycle,
   daysLeftUntilReset,
+  paceStatus,
   projectedAtReset,
-  resetCountdownParts,
-  runOutEstimate,
+  resetAtSameCycle,
+  runOutBeforeReset,
+  snapshotsInCycle,
 } from "../src/agents-usage/pace";
+import { buildUsageDashboard } from "../src/agents-usage/view";
 import type { UsageSnapshot } from "../src/agents-usage/types";
+import { setAgentsUsageWriteForTests } from "../src/agents-usage/store";
 
 const ADMIN_TOKEN = "a".repeat(32);
 const IMPORT_TOKEN = "u".repeat(32);
-const sessionAuthz = { authorization: `Bearer ${ADMIN_TOKEN}`, "content-type": "application/json", "x-ah": "1" };
-const importAuthz = { authorization: `Bearer ${IMPORT_TOKEN}`, "content-type": "application/json" };
+const MCP_TOKEN = "p".repeat(32);
+const CF_SERVICE = "cf-usage-test";
+
+const ownerAuthz = { authorization: `Bearer ${ADMIN_TOKEN}`, "content-type": "application/json", "x-ah": "1" };
+const anonAuthz = { "content-type": "application/json", "x-ah": "1" };
+
+let cfKeys: Awaited<ReturnType<typeof createTestCfAccessJwt>>;
+
+afterEach(() => {
+  setAgentsUsageCfAccessVerifierForTests(undefined);
+  setAgentsUsageWriteForTests(null);
+});
+
+async function importHeaders(bearer = IMPORT_TOKEN) {
+  const jwt = await cfKeys.signServiceTokenJwt(CF_SERVICE);
+  return {
+    authorization: `Bearer ${bearer}`,
+    "cf-access-jwt-assertion": jwt,
+    "content-type": "application/json",
+  };
+}
 
 async function harness(env: Record<string, string> = {}) {
+  cfKeys = await createTestCfAccessJwt();
+  setAgentsUsageCfAccessVerifierForTests(cfKeys.verifier);
   const dir = await mkdtemp(join(tmpdir(), "cc-usage-"));
   const cfg = loadConfig({
     DATA_DIR: dir,
     ADMIN_TOKEN,
     AGENTS_USAGE_IMPORT_TOKEN: IMPORT_TOKEN,
-    ALLOW_INSECURE_NO_AUTH: "1",
+    CF_ACCESS_TEAM_DOMAIN: TEST_CF_TEAM,
+    CF_ACCESS_AUD: TEST_CF_AUD,
+    OWNER_EMAILS: "owner@example.com",
     ...env,
   });
   const settings = new SettingsStore(dir);
@@ -44,7 +77,7 @@ async function harness(env: Record<string, string> = {}) {
   const integration = await openIntegrationStores(dir, cfg);
   const server = createApp({
     cfg,
-    auth: makeAuthenticator(cfg),
+    auth: makeAuthenticator(cfg, async (jwt) => ({ email: jwt === "owner" ? "owner@example.com" : "reader@example.com" })),
     settings,
     dailyBriefing,
     notes,
@@ -56,7 +89,7 @@ async function harness(env: Record<string, string> = {}) {
     await closeIntegrationServer(server, integration);
     await rm(dir, { recursive: true, force: true });
   };
-  return { base, close, store: integration.agentsUsage };
+  return { base, close, store: integration.agentsUsage, cfg: dir };
 }
 
 const samplePayload = {
@@ -69,153 +102,281 @@ const samplePayload = {
   checkins: [{ bot: "main", date: "2026-10-21", note: "All good" }],
 };
 
-test("agents usage import: auth, validation, dedupe, null handling, history order", async () => {
+test("agents usage import requires JWT and bearer together", async () => {
   const h = await harness();
   try {
-    const noTokenCfg = await harness({ AGENTS_USAGE_IMPORT_TOKEN: "" });
+    const noToken = await harness({ AGENTS_USAGE_IMPORT_TOKEN: "" });
     try {
-      const unset = await fetch(`${noTokenCfg.base}/api/agents/usage/import`, {
+      const res = await fetch(`${noToken.base}/api/agents/usage/import`, {
         method: "POST",
-        headers: importAuthz,
+        headers: await importHeaders(),
         body: JSON.stringify(samplePayload),
       });
-      assert.equal(unset.status, 503);
+      assert.equal(res.status, 503);
     } finally {
-      await noTokenCfg.close();
+      await noToken.close();
     }
 
-    const unauth = await fetch(`${h.base}/api/agents/usage/import`, {
+    const hdr = await importHeaders();
+    const { authorization: _omit, ...jwtOnlyHeaders } = hdr;
+    const jwtOnly = await fetch(`${h.base}/api/agents/usage/import`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: jwtOnlyHeaders,
       body: JSON.stringify(samplePayload),
     });
-    assert.equal(unauth.status, 401);
+    assert.equal(jwtOnly.status, 401);
 
-    const wrong = await fetch(`${h.base}/api/agents/usage/import`, {
+    const bearerOnly = await fetch(`${h.base}/api/agents/usage/import`, {
       method: "POST",
-      headers: { authorization: "Bearer wrong", "content-type": "application/json" },
+      headers: { authorization: `Bearer ${IMPORT_TOKEN}`, "content-type": "application/json" },
       body: JSON.stringify(samplePayload),
     });
-    assert.equal(wrong.status, 401);
+    assert.equal(bearerOnly.status, 401);
 
-    const created = await fetch(`${h.base}/api/agents/usage/import`, {
+    const mcpBearer = await fetch(`${h.base}/api/agents/usage/import`, {
       method: "POST",
-      headers: importAuthz,
+      headers: {
+        authorization: `Bearer ${MCP_TOKEN}`,
+        "cf-access-jwt-assertion": await cfKeys.signServiceTokenJwt(CF_SERVICE),
+        "content-type": "application/json",
+      },
       body: JSON.stringify(samplePayload),
     });
-    assert.equal(created.status, 200);
-    const createdBody = (await created.json()) as { duplicate?: boolean; asOf?: string };
-    assert.equal(createdBody.duplicate, false);
-    assert.equal(createdBody.asOf, samplePayload.asOf);
+    assert.equal(mcpBearer.status, 401);
 
-    const dup = await fetch(`${h.base}/api/agents/usage/import`, {
+    const ok = await fetch(`${h.base}/api/agents/usage/import`, {
       method: "POST",
-      headers: importAuthz,
-      body: JSON.stringify({ ...samplePayload, weeklyPercentUsed: 44 }),
+      headers: await importHeaders(),
+      body: JSON.stringify(samplePayload),
     });
-    assert.equal(dup.status, 200);
-    assert.equal(((await dup.json()) as { duplicate: boolean }).duplicate, true);
-    assert.equal(h.store.getSnapshot(samplePayload.asOf)?.weeklyPercentUsed, 44);
-
-    const nullReading = await fetch(`${h.base}/api/agents/usage/import`, {
-      method: "POST",
-      headers: importAuthz,
-      body: JSON.stringify({
-        ...samplePayload,
-        asOf: "2026-10-21T05:00:00.000Z",
-        weeklyPercentUsed: null,
-        checkins: [{ bot: "main", date: "2026-10-21", note: "Failed read" }],
-      }),
-    });
-    assert.equal(nullReading.status, 200);
-    assert.equal(h.store.getSnapshot("2026-10-21T05:00:00.000Z")?.weeklyPercentUsed, null);
-
-    const dash = await fetch(`${h.base}/api/agents/usage`, { headers: sessionAuthz });
-    assert.equal(dash.status, 200);
-    const dashBody = (await dash.json()) as { computed: { weeklyPercentUsed: number | null } };
-    assert.equal(dashBody.computed.weeklyPercentUsed, null);
-
-    const history = await fetch(`${h.base}/api/agents/usage/history`, { headers: sessionAuthz });
-    const histBody = (await history.json()) as { snapshots: UsageSnapshot[] };
-    assert.deepEqual(
-      histBody.snapshots.map((s) => s.asOf),
-      ["2026-10-21T04:00:00.000Z", "2026-10-21T05:00:00.000Z"],
-    );
-
-    const bad = await fetch(`${h.base}/api/agents/usage/import`, {
-      method: "POST",
-      headers: importAuthz,
-      body: JSON.stringify({ asOf: "x", weeklyPercentUsed: 1, resetsAt: null, byBot: [], byRoutine: [], byDay: [] }),
-    });
-    assert.equal(bad.status, 400);
+    assert.equal(ok.status, 200);
   } finally {
     await h.close();
   }
 });
 
-test("agents usage pace math", () => {
-  const now = new Date("2026-10-21T12:00:00.000Z");
+test("agents usage normalizes asOf and dedupes equivalent instants", async () => {
+  const h = await harness();
+  try {
+    const headers = await importHeaders();
+    const first = await fetch(`${h.base}/api/agents/usage/import`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ ...samplePayload, asOf: "2026-10-21T04:00:00Z" }),
+    });
+    assert.equal(first.status, 200);
+    const second = await fetch(`${h.base}/api/agents/usage/import`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ ...samplePayload, asOf: "2026-10-21T04:00:00.000Z", weeklyPercentUsed: 43 }),
+    });
+    assert.equal(second.status, 200);
+    assert.equal(((await second.json()) as { duplicate: boolean }).duplicate, true);
+    assert.equal(h.store.listSnapshots().length, 1);
+    assert.equal(h.store.getSnapshot("2026-10-21T04:00:00.000Z")?.weeklyPercentUsed, 43);
+    assert.equal(parseNormalizeInstant("2026-10-21T04:00:00Z", "asOf"), "2026-10-21T04:00:00.000Z");
+  } finally {
+    await h.close();
+  }
+});
+
+test("agents usage rejects invalid datetimes, duplicate byDay, and blank notes", async () => {
+  const h = await harness();
+  try {
+    const headers = await importHeaders();
+    const badOffset = await fetch(`${h.base}/api/agents/usage/import`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ ...samplePayload, asOf: "2026-10-21T04:00:00" }),
+    });
+    assert.equal(badOffset.status, 400);
+
+    const dupDay = await fetch(`${h.base}/api/agents/usage/import`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        ...samplePayload,
+        byDay: [
+          { date: "2026-10-20", share: 1 },
+          { date: "2026-10-20", share: 2 },
+        ],
+      }),
+    });
+    assert.equal(dupDay.status, 400);
+
+    const blankNote = await fetch(`${h.base}/api/agents/usage/import`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ ...samplePayload, checkins: [{ bot: "x", date: "2026-10-21", note: "   " }] }),
+    });
+    assert.equal(blankNote.status, 400);
+  } finally {
+    await h.close();
+  }
+});
+
+test("agents usage GET routes are owner-only", async () => {
+  const h = await harness();
+  try {
+    await fetch(`${h.base}/api/agents/usage/import`, {
+      method: "POST",
+      headers: await importHeaders(),
+      body: JSON.stringify(samplePayload),
+    });
+    const denied = await fetch(`${h.base}/api/agents/usage`, {
+      headers: { ...ownerAuthz, cookie: "CF_Authorization=reader" },
+    });
+    assert.equal(denied.status, 403);
+    const ok = await fetch(`${h.base}/api/agents/usage`, {
+      headers: { ...ownerAuthz, cookie: "CF_Authorization=owner" },
+    });
+    assert.equal(ok.status, 200);
+  } finally {
+    await h.close();
+  }
+});
+
+test("agents usage never-fake: null resetsAt and cycle ended", async () => {
+  const h = await harness();
+  try {
+    await fetch(`${h.base}/api/agents/usage/import`, {
+      method: "POST",
+      headers: await importHeaders(),
+      body: JSON.stringify({
+        ...samplePayload,
+        resetsAt: null,
+        asOf: "2026-10-21T08:00:00.000Z",
+      }),
+    });
+    const dash = buildUsageDashboard(h.store);
+    assert.equal(dash.computed.metricsUnavailable, true);
+    assert.equal(dash.computed.burnRatePerDay, null);
+
+    await fetch(`${h.base}/api/agents/usage/import`, {
+      method: "POST",
+      headers: await importHeaders(),
+      body: JSON.stringify({
+        ...samplePayload,
+        asOf: "2026-10-25T08:00:00.000Z",
+        weeklyPercentUsed: 10,
+        resetsAt: "2026-10-24T09:00:00.000Z",
+      }),
+    });
+    const ended = buildUsageDashboard(h.store);
+    assert.equal(ended.computed.cycleEnded, true);
+    assert.equal(ended.computed.dayIndex, null);
+    assert.equal(ended.computed.burnRatePerDay, null);
+  } finally {
+    await h.close();
+  }
+});
+
+test("agents usage bar slots mark missing byDay as noData", async () => {
+  const h = await harness();
+  try {
+    await fetch(`${h.base}/api/agents/usage/import`, {
+      method: "POST",
+      headers: await importHeaders(),
+      body: JSON.stringify({
+        ...samplePayload,
+        byDay: [{ date: "2026-10-21", share: 15 }],
+      }),
+    });
+    const dash = buildUsageDashboard(h.store);
+    assert.ok(dash.chart.dailyIncrements.some((row) => row.noData));
+    assert.ok(dash.chart.dailyIncrements.some((row) => !row.noData && row.value === 15));
+  } finally {
+    await h.close();
+  }
+});
+
+test("agents usage pace math: jitter, burn floor, run-out before reset, behind pace", () => {
+  const readingAt = new Date("2026-10-21T12:00:00.000Z");
   const resetsAt = "2026-10-24T09:00:00.000Z";
-  const daysLeft = daysLeftUntilReset(now, resetsAt);
-  assert.equal(daysLeft, 3);
-  assert.equal(dayIndexInCycle(daysLeft), 5);
-  assert.ok(Math.abs(baselineForDayIndex(5)! - (100 / 7) * 5) < 0.001);
+  assert.equal(daysLeftUntilReset(readingAt, resetsAt), 3);
+  assert.equal(dayIndexInCycle(3, false), 5);
+  assert.equal(paceStatus(30, baselineForDayIndex(5)), "behind");
+  assert.ok(resetAtSameCycle("2026-10-24T09:00:00.000Z", "2026-10-24T09:02:00.000Z"));
 
   const history: UsageSnapshot[] = [
     {
-      asOf: "2026-10-19T04:00:00.000Z",
+      asOf: "2026-10-21T10:00:00.000Z",
       weeklyPercentUsed: 10,
       resetsAt,
       byBot: [],
       byRoutine: [],
       byDay: [],
-      importedAt: "2026-10-19T04:00:00.000Z",
+      importedAt: "2026-10-21T10:00:00.000Z",
     },
     {
-      asOf: "2026-10-21T04:00:00.000Z",
-      weeklyPercentUsed: 40,
-      resetsAt,
+      asOf: "2026-10-21T12:00:00.000Z",
+      weeklyPercentUsed: 20,
+      resetsAt: "2026-10-24T09:01:00.000Z",
       byBot: [],
       byRoutine: [],
       byDay: [],
-      importedAt: "2026-10-21T04:00:00.000Z",
+      importedAt: "2026-10-21T12:00:00.000Z",
     },
   ];
-  const burn = burnRateFromHistory(now, history);
-  assert.ok(burn.avgPerDay !== null && burn.avgPerDay > 0);
-  assert.equal(projectedAtReset(40, burn.avgPerDay, daysLeft)! > 40, true);
-  assert.equal(dailyBudgetLeft(40, daysLeft)! > 0, true);
-  assert.equal(resetCountdownParts(now, null), null);
-  const rc = resetCountdownParts(now, resetsAt);
-  assert.ok(rc && rc.days >= 2);
-  const runout = runOutEstimate(90, 20);
-  assert.ok(runout.hours !== null || runout.days !== null);
+  assert.equal(snapshotsInCycle(history, history[1]).length, 2);
+  const burn = burnRateFromHistory(history);
+  assert.ok(burn.avgPerDay !== null && burn.avgPerDay > 20);
+  assert.equal(burn.lowConfidence, true);
+
+  const runOut = runOutBeforeReset(95, 40, readingAt, resetsAt);
+  assert.ok(runOut && (runOut.hours !== null || (runOut.days !== null && runOut.days < 1)));
+  assert.equal(dailyBudgetLeft(110, 2), 0);
+  assert.equal(projectedAtReset(40, burn.avgPerDay, 3)! > 40, true);
+  assert.equal(cycleEndedAtReading(new Date("2026-10-24T10:00:00.000Z"), resetsAt), true);
 });
 
-test("agents usage checkins upsert per bot and date", async () => {
+test("agents usage store rolls back memory when disk write fails", async () => {
   const h = await harness();
   try {
     await fetch(`${h.base}/api/agents/usage/import`, {
       method: "POST",
-      headers: importAuthz,
-      body: JSON.stringify({
-        ...samplePayload,
-        checkins: [{ bot: "main", date: "2026-10-21", note: "first" }],
-      }),
+      headers: await importHeaders(),
+      body: JSON.stringify(samplePayload),
     });
-    await fetch(`${h.base}/api/agents/usage/import`, {
-      method: "POST",
-      headers: importAuthz,
-      body: JSON.stringify({
-        ...samplePayload,
-        asOf: "2026-10-21T06:00:00.000Z",
-        checkins: [{ bot: "main", date: "2026-10-21", note: "second" }],
-      }),
+    setAgentsUsageWriteForTests(async () => {
+      throw new Error("disk full");
     });
-    const rows = h.store.listCheckins().filter((c) => c.bot === "main" && c.date === "2026-10-21");
-    assert.equal(rows.length, 1);
-    assert.equal(rows[0]?.note, "second");
+    try {
+      await assert.rejects(
+        () =>
+          h.store.importPayload({
+            ...samplePayload,
+            asOf: "2026-10-22T04:00:00.000Z",
+            weeklyPercentUsed: 50,
+          }),
+        /disk full/,
+      );
+    } finally {
+      setAgentsUsageWriteForTests(null);
+    }
+    assert.equal(h.store.listSnapshots().length, 1);
+    assert.equal(h.store.getSnapshot("2026-10-21T04:00:00.000Z")?.weeklyPercentUsed, 42);
   } finally {
     await h.close();
   }
+});
+
+test("agents usage invalid asOf in view does not fall back to now", () => {
+  const store = {
+    latestSnapshot: () => ({
+      asOf: "not-a-date",
+      weeklyPercentUsed: 40,
+      resetsAt: "2026-10-24T09:00:00.000Z",
+      byBot: [],
+      byRoutine: [],
+      byDay: [],
+      importedAt: "2026-10-21T04:00:00.000Z",
+    }),
+    listSnapshots: () => [],
+    listCheckins: () => [],
+    dailyLog: () => [],
+  };
+  const dash = buildUsageDashboard(store as never);
+  assert.equal(dash.computed.metricsUnavailable, true);
+  assert.equal(dash.computed.weeklyPercentUsed, null);
 });
