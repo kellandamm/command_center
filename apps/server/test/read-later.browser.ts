@@ -154,9 +154,19 @@ test("Read Later and Agent: compact density, folders, tags, pagination, and work
     await page.locator("#ask-question").fill("What matters here?");
     await page.getByRole("button", { name: "Ask", exact: true }).click();
     await page.waitForFunction(() => document.querySelector("#ask-answer")?.textContent?.includes("An answer"));
-    for (const view of ["board", "queue", "wins", "assistant", "activity"]) {
-      await page.locator(`.agent-tabs a[href="/agent?view=${view}"]`).click();
-      await page.waitForSelector(`.agent-tabs a[href="/agent?view=${view}"][aria-current=page]`);
+    for (const view of ["board", "queue", "wins", "assistant", "activity"] as const) {
+      const href = view === "queue" ? "/agent/queue" : `/agent?view=${view}`;
+      await page.locator(`.sidebar-nav a[href="${href}"], .agent-tabs-mobile a[href="${href}"]`).first().click();
+      await page.waitForFunction(
+        (v) => {
+          const h = v === "queue" ? "/agent/queue" : `/agent?view=${v}`;
+          return (
+            document.querySelector(`.sidebar-nav a.sidebar-sub.on[href="${h}"]`) ||
+            document.querySelector(`.agent-tabs-mobile a[href="${h}"][aria-current=page]`)
+          );
+        },
+        view,
+      );
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${view} mobile overflow`);
     }
     await page.goto("http://app.test/agent?view=queue");

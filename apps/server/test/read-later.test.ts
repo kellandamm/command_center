@@ -118,9 +118,12 @@ test("Agent: all sections share navigation; legacy context and queue actions are
       const response = await fetch(`${h.base}/agent?view=${view}`, { headers: admin });
       assert.equal(response.status, 200);
       const html = await response.text();
-      assert.match(html, /href="\/agent" class="on"/);
-      assert.ok(html.includes(`href="/agent?view=${view}" aria-current="page"`));
-      assert.doesNotMatch(html, /href="\/(?:board|wins|assistant|activity)" class="on"/);
+      const subHref =
+        view === "assistant"
+          ? "/agent?view=assistant"
+          : `/agent?view=${view}`;
+      assert.ok(html.includes(`href="${subHref}" class="sidebar-sub on"`));
+      assert.doesNotMatch(html, /<a href="\/(?:board|wins|assistant|activity)" class="on"/);
     }
     for (const [from, target] of [
       ["/board", "/agent?view=board"], ["/hobie", "/agent?view=queue"],
