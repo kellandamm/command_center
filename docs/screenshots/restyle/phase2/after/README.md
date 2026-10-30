@@ -2,4 +2,4 @@
 
 Bookmarks, Calendar, Notes, Settings at 1440×900 and 390×844 (light + dark).
 
-Git: `002d1a07e8450bf49eb669e45dbc0c886bfb5a23`
+Git: `895786588577d21b6bd45412586dc817d5b84f61`
