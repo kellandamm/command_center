@@ -10,6 +10,7 @@ export const DEFAULT_COLLAPSED_PANEL_IDS = new Set<string>([
   "focus",
   "activity",
   "hobie",
+  "agents-usage",
 ]);
 
 /** Compact layout for the personal dashboard panels. */
@@ -27,6 +28,7 @@ export const DEFAULT_PANEL_LAYOUT: PanelLayoutEntry[] = [
   { id: "notes", x: 6, y: 6, w: 3, h: 2, collapsed: true },
   { id: "host-health", x: 0, y: 8, w: 3, h: 2, collapsed: true },
   { id: "recallio", x: 3, y: 8, w: 3, h: 2, collapsed: true },
+  { id: "agents-usage", x: 6, y: 8, w: 3, h: 3, collapsed: true },
 ];
 
 const DEFAULT_BY_ID = new Map(DEFAULT_PANEL_LAYOUT.map((p) => [p.id, p]));

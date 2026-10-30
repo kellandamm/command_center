@@ -3,20 +3,24 @@ import { DASHBOARD_GRID_LAYOUT_HELPERS } from "./dashboard-grid-layout";
 /** Dashboard grid layout (native CSS grid + pointer drag/resize; zero extra deps). */
 
 export const dashboardGridCss = `
-.dashboard-toolbar{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;margin-bottom:1rem}
-.dashboard-toolbar .dim{margin:0}
+.dashboard-toolbar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin-bottom:.75rem;flex-shrink:0}
+.dashboard-toolbar .dashboard-toolbar-hint{margin:0;font-size:.8125rem}
+.dashboard-toolbar .dashboard-import-label{cursor:pointer;margin:0}
+.dashboard-quick-add-bar{margin-bottom:.75rem;flex-shrink:0}
+.dashboard-quick-add-bar .quick-add-wrap{max-width:none;width:100%}
+.dashboard-page .voice-inbox{margin-bottom:.75rem;flex-shrink:0;max-width:none;padding:.75rem 1rem}
+.dashboard-page .voice-inbox .voice-inbox-list{margin-top:.5rem}
 .app-shell:has(.dashboard-page){height:100vh;max-height:100vh;overflow:hidden}
 .page-content:has(.dashboard-page){
   flex:1 1 0;min-height:0;display:flex;flex-direction:column;padding:1rem 1.25rem .5rem;box-sizing:border-box;
-  overflow:hidden}
-.dashboard-page{flex:1 1 0;min-height:0;display:flex;flex-direction:column}
-.dashboard-page .page-header{margin-bottom:.5rem;flex-shrink:0}
+  overflow:hidden;max-width:none;width:100%}
+.dashboard-page{flex:1 1 0;min-height:0;display:flex;flex-direction:column;width:100%;max-width:90rem;margin:0 auto}
+.dashboard-page .page-header{margin-bottom:.75rem;flex-shrink:0}
 .dashboard-page .page-header p{margin:.2rem 0 0}
-.dashboard-page .dashboard-toolbar{margin-bottom:.5rem;flex-shrink:0}
 .dashboard-grid{
-  flex:none;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));
+  width:100%;flex:1 1 auto;min-height:0;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));
   gap:var(--dash-gap,6px);position:relative;touch-action:none}
-.dashboard-grid.is-packed{display:block;gap:0}
+.dashboard-grid.is-packed{display:block;gap:0;width:100%}
 .dashboard-grid.is-packed .dashboard-item{
   grid-column:unset;grid-row:unset;margin:0;min-height:0}
 .dashboard-item{
@@ -121,8 +125,10 @@ ${DASHBOARD_GRID_LAYOUT_HELPERS}
     var page=document.querySelector(".dashboard-page");
     if(!page)return;
     var header=page.querySelector(".page-header");
+    var quickAdd=page.querySelector(".dashboard-quick-add-bar");
+    var voiceInbox=page.querySelector("#voice-inbox:not([hidden])");
     var toolbar=page.querySelector(".dashboard-toolbar");
-    var chrome=(header?header.offsetHeight:0)+(toolbar?toolbar.offsetHeight:0)+10;
+    var chrome=(header?header.offsetHeight:0)+(quickAdd?quickAdd.offsetHeight:0)+(voiceInbox?voiceInbox.offsetHeight:0)+(toolbar?toolbar.offsetHeight:0)+16;
     var avail=Math.max(160,page.clientHeight-chrome-6);
     var stripRows=0,flexRows=0;
     for(var r=0;r<maxEnd;r++){

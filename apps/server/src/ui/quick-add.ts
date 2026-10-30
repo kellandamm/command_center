@@ -1,8 +1,9 @@
 export const quickAddCss = `
-.quick-add-bar{margin-bottom:1rem}
-.quick-add-wrap{position:relative;max-width:36rem}
-.quick-add-row{display:flex;gap:.35rem;align-items:center}
-.quick-add-row input{flex:1;min-width:8rem}
+.quick-add-bar{margin-bottom:0}
+.quick-add-wrap{position:relative;max-width:36rem;width:100%}
+.quick-add-row{display:flex;gap:.5rem;align-items:stretch}
+.quick-add-row input{flex:1;min-width:8rem;min-height:2.25rem}
+.quick-add-row .btn,.quick-add-row button{align-self:stretch;display:inline-flex;align-items:center}
 .quick-add-preview{border:1px solid var(--border);border-radius:calc(var(--radius) - 2px);padding:0;background:var(--card);box-shadow:0 4px 16px rgba(0,0,0,.08)}
 .quick-add-preview.quick-add-dropdown{position:absolute;top:calc(100% + .25rem);left:0;right:0;z-index:30;max-height:min(70vh,24rem);display:flex;flex-direction:column;overflow:hidden}
 .quick-add-preview-hint{margin:0;padding:.5rem .65rem .25rem;font-size:.8125rem;color:var(--muted-foreground);border-bottom:1px solid var(--border)}
@@ -14,6 +15,7 @@ export const quickAddCss = `
 .quick-add-actions{display:flex;gap:.35rem;flex-wrap:wrap;padding:.5rem .65rem;border-top:1px solid var(--border);background:var(--card);flex-shrink:0}
 .quick-add-status:empty{display:none}
 .voice-inbox{margin-bottom:1rem;max-width:36rem}
+.voice-inbox.card{padding:.75rem 1rem;margin-bottom:0}
 .voice-inbox-header{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
 .voice-inbox-badge{font-size:.75rem;font-weight:600;padding:.1rem .45rem;border-radius:999px;background:var(--primary);color:var(--primary-foreground)}
 .voice-inbox-list{list-style:none;margin:.35rem 0 0;padding:0;display:flex;flex-direction:column;gap:.35rem}

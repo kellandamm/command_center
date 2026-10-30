@@ -3,11 +3,11 @@ function mountVoiceInbox(quickAddApi){
   var root=document.getElementById("voice-inbox");if(!root)return;
   var list=root.querySelector(".voice-inbox-list");
   var badge=root.querySelector(".voice-inbox-badge");
-  var section=root.querySelector(".voice-inbox-panel");
   function render(rows,timezone){
     var count=rows.length;
+    root.hidden=!count;
+    if(!count)return;
     if(badge){badge.textContent=String(count);badge.hidden=!count;}
-    if(section)section.hidden=!count;
     if(!list)return;
     list.replaceChildren();
     rows.forEach(function(row){
@@ -28,7 +28,7 @@ function mountVoiceInbox(quickAddApi){
     });
   }
   function refresh(){
-    return api("/api/voice-captures").then(function(data){render(data.captures||[],data.timezone);}).catch(function(err){if(badge)badge.hidden=true;if(section)section.hidden=false;if(list)list.textContent="Voice inbox unavailable: "+err.message;});
+    return api("/api/voice-captures").then(function(data){render(data.captures||[],data.timezone);}).catch(function(){root.hidden=true;});
   }
   refresh();
   return {refresh:refresh};

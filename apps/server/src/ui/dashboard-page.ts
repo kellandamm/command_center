@@ -13,6 +13,9 @@ import { notesDashboardScript } from "../panels/notes";
 import { recallioDashboardScript } from "../panels/recallio";
 import { tasksDashboardScript } from "../panels/tasks";
 import { weatherDashboardScript } from "../panels/weather";
+import { agentsUsagePanelDashboardScript } from "../panels/agents-usage";
+import { agentsUsagePanelCss } from "./agents-usage-client";
+import { button } from "./components";
 import { dashboardGridCss, dashboardGridScript } from "./dashboard-grid";
 import { page, type NavLink } from "./layout";
 import { quickAddCss, quickAddScript } from "./quick-add";
@@ -58,7 +61,7 @@ const PANEL_SCRIPTS = [
   attentionDashboardScript,
   heatmapDashboardScript,
   launchpadDashboardScript,
-  focusDashboardScript,
+  agentsUsagePanelDashboardScript,
 ];
 
 function dashboardItemsHtml(): string {
@@ -84,25 +87,25 @@ export function dashboardPage(nav?: NavLink[]): string {
     title: "Command center",
     active: "/",
     nav,
-    extraCss: dashboardGridCss + dashboardPanelCss + quickAddCss,
+    extraCss: dashboardGridCss + dashboardPanelCss + quickAddCss + agentsUsagePanelCss,
     body: `<div class="dashboard-page">
 <header class="page-header"><h1>Dashboard</h1><p class="dim">Drag panels, pin what matters, and jump in quickly.</p></header>
 <div class="dashboard-quick-add-bar quick-add-bar">
 <div id="dashboard-quick-add" class="quick-add-wrap" aria-label="Quick add">
-  <div class="quick-add-row"><input class="quick-add-input" type="text" placeholder="Quick add — e.g. call mom tomorrow 3pm" autocomplete="off" /><button type="button" class="ghost quick-add-parse">Preview</button></div>
+  <div class="quick-add-row"><input class="quick-add-input" type="text" placeholder="Quick add — e.g. call mom tomorrow 3pm" autocomplete="off" />${button({ label: "Preview", variant: "outline", size: "sm", className: "quick-add-parse" })}</div>
   <p class="quick-add-status dim" role="status"></p>
   <div class="quick-add-preview quick-add-dropdown" hidden></div>
 </div>
 </div>
-<div id="voice-inbox" class="voice-inbox" aria-label="Voice inbox">
+<section id="voice-inbox" class="voice-inbox card" hidden aria-label="Voice inbox">
   <div class="voice-inbox-header"><strong>Voice inbox</strong><span class="voice-inbox-badge" hidden>0</span></div>
-  <div class="voice-inbox-panel" hidden><ul class="voice-inbox-list"></ul></div>
-</div>
+  <ul class="voice-inbox-list"></ul>
+</section>
 <div class="dashboard-toolbar row">
-  <button type="button" class="ghost" id="dashboard-reset-layout">Reset layout</button>
-  <a class="ghost" id="dashboard-export-layout" href="/api/dashboard-layout/export.json">Export layout</a>
-  <label class="ghost dashboard-import-label"><input type="file" id="dashboard-import-layout" accept="application/json" hidden />Import layout</label>
-  <span class="dim">Layout saves automatically.</span>
+  ${button({ label: "Reset layout", variant: "outline", size: "sm", attrs: { id: "dashboard-reset-layout" } })}
+  ${button({ label: "Export layout", variant: "outline", size: "sm", href: "/api/dashboard-layout/export.json", attrs: { id: "dashboard-export-layout" } })}
+  <label class="btn btn-outline btn-sm dashboard-import-label"><input type="file" id="dashboard-import-layout" accept="application/json" hidden />Import layout</label>
+  <span class="dim dashboard-toolbar-hint">Layout saves automatically.</span>
 </div>
 <div id="dashboard-grid" class="dashboard-grid">${dashboardItemsHtml()}</div>
 </div>`,

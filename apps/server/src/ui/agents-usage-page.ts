@@ -1,5 +1,6 @@
 import type { NavLink } from "./layout";
 import { page } from "./layout";
+import { AGENTS_USAGE_CLIENT_HELPERS } from "./agents-usage-client";
 
 const usageCss = `
 .usage-hero{display:grid;grid-template-columns:minmax(220px,1fr) 2fr;gap:1.25rem;margin-bottom:1.5rem}
@@ -66,16 +67,10 @@ export function agentsUsagePage(nav?: NavLink[]): string {
 
 function usageScript(): string {
   return `
+${AGENTS_USAGE_CLIENT_HELPERS}
 function $(id){return document.getElementById(id);}
 function element(tag,text,cls){var e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;}
 function fail(err){console.error(err);var box=$("usage-unavailable");if(box){box.hidden=false;box.querySelector("p").textContent=err&&err.message?err.message:String(err);}}
-var PACE=${100 / 7};
-function fmtPct(v,digits){
-  if(v===null||v===undefined||!Number.isFinite(v))return "Unavailable";
-  var n=digits===0?Math.round(v):Math.round(v*10)/10;
-  var s=digits===0?String(n):n.toFixed(1).replace(/\\.0$/,"");
-  return s+"%";
-}
 function statCard(title,value,sub){
   var el=document.createElement("div");el.className="usage-stat";
   el.innerHTML="<h3>"+esc(title)+"</h3><div class=\\"value\\">"+esc(value)+"</div>"+(sub?"<div class=\\"sub\\">"+esc(sub)+"</div>":"");
@@ -109,7 +104,7 @@ function renderRing(pct,baseline,dayIndex,daysLeft){
   if(pct===null){center.textContent="Unavailable";}
   else{
     var left=100-pct;
-    center.innerHTML="Day "+(dayIndex!==null?dayIndex:"?")+" / 7<br>"+fmtPct(Math.max(0,left),0)+" left<br><span class=\\"dim\\">Baseline "+fmtPct(baseline,0)+"</span>";
+    center.innerHTML="Day "+(dayIndex!==null?dayIndex:"?")+" / 7<br>"+usageFmtPct(Math.max(0,left),0)+" left<br><span class=\\"dim\\">Baseline "+usageFmtPct(baseline,0)+"</span>";
   }
 }
 function renderLineChart(points){
@@ -163,7 +158,7 @@ function fillTable(tbody,rows,labelKey){
   if(!rows.length){tbody.innerHTML='<tr><td colspan=2 class=dim>No data</td></tr>';return;}
   rows.forEach(function(r){
     var tr=document.createElement("tr");
-    tr.innerHTML="<td>"+esc(r[labelKey])+"</td><td>"+esc(fmtPct(r.share,1))+"</td>";
+    tr.innerHTML="<td>"+esc(r[labelKey])+"</td><td>"+esc(usageFmtPct(r.share,1))+"</td>";
     tbody.appendChild(tr);
   });
 }
@@ -215,15 +210,15 @@ function renderUsage(data){
   var vsBase=delta===null?"Unavailable":Math.abs(Math.round(delta))+"% "+(delta>0?"over":"under")+" baseline";
   stats.appendChild(statCard("vs Baseline",vsBase,delta!==null?(delta>0?"(using it fast)":"(plenty left)"):""));
   var remDisp=c.remainingDisplay!==null?c.remainingDisplay:null;
-  var overSub=c.remainingOverCap!==null&&c.remainingOverCap>0?fmtPct(c.remainingOverCap,0)+" over cap":"";
-  stats.appendChild(statCard("Remaining",remDisp===null?"Unavailable":fmtPct(remDisp,0),overSub));
+  var overSub=c.remainingOverCap!==null&&c.remainingOverCap>0?usageFmtPct(c.remainingOverCap,0)+" over cap":"";
+  stats.appendChild(statCard("Remaining",remDisp===null?"Unavailable":usageFmtPct(remDisp,0),overSub));
   var burnSub=c.burnRatePerDay!==null&&c.burnLowConfidence?"low confidence (<6h of samples)":"";
-  stats.appendChild(statCard("Avg / day",c.burnRatePerDay===null?"Unavailable":fmtPct(c.burnRatePerDay,1)+"/day",burnSub));
+  stats.appendChild(statCard("Avg / day",c.burnRatePerDay===null?"Unavailable":usageFmtPct(c.burnRatePerDay,1)+"/day",burnSub));
   var ro=c.runOutBeforeReset;
   if(ro&&c.projectedAtReset!==null&&c.projectedAtReset>100){
     stats.appendChild(statCard("Projected run-out",formatRunOut(ro)||"Runs out early","before weekly reset"));
   }else{
-    stats.appendChild(statCard("Projected (7d)",c.projectedAtReset===null?"Unavailable":fmtPct(c.projectedAtReset,0),""));
+    stats.appendChild(statCard("Projected (7d)",c.projectedAtReset===null?"Unavailable":usageFmtPct(c.projectedAtReset,0),""));
   }
   if(c.resetsAt===null||c.metricsUnavailable){
     stats.appendChild(statCard("Reset in",c.resetsAt===null?"Reset unknown":"Unavailable",c.resetsAt===null?"No countdown without resetsAt":""));
@@ -231,7 +226,7 @@ function renderUsage(data){
   }else{
     var rc=c.resetCountdown,rcText=rc?rc.days+"d "+rc.hours+"h":"—";
     stats.appendChild(statCard("Reset in",rcText,c.resetsAt));
-    var bud=c.dailyBudgetOverCap?"over cap":fmtPct(c.dailyBudgetLeft,1)+"/day";
+    var bud=c.dailyBudgetOverCap?"over cap":usageFmtPct(c.dailyBudgetLeft,1)+"/day";
     stats.appendChild(statCard("Daily budget left",c.dailyBudgetLeft===null?"Unavailable":bud,c.daysLeft!==null?"over "+c.daysLeft+"d to reset (incl. today)":""));
   }
   renderLineChart(data.chart.cumulative);
@@ -241,13 +236,12 @@ function renderUsage(data){
   var log=$("usage-log");log.replaceChildren();
   data.dailyLog.forEach(function(row){
     var tr=document.createElement("tr");
-    tr.innerHTML="<td>"+esc(row.asOf)+"</td><td>"+esc(row.weeklyPercentUsed===null?"Unavailable":fmtPct(row.weeklyPercentUsed,1))+"</td><td>"+esc(row.resetsAt===null?"Reset unknown":row.resetsAt)+"</td>";
+    tr.innerHTML="<td>"+esc(row.asOf)+"</td><td>"+esc(row.weeklyPercentUsed===null?"Unavailable":usageFmtPct(row.weeklyPercentUsed,1))+"</td><td>"+esc(row.resetsAt===null?"Reset unknown":row.resetsAt)+"</td>";
     log.appendChild(tr);
   });
   renderCheckins(data.checkins);
-  function formatAge(ms){if(ms===null||ms===undefined)return "";var h=Math.floor(ms/3600000);if(h>=48)return Math.floor(h/24)+"d ago";if(h>=1)return h+"h ago";return "<1h ago";}
-  var footer="Target pace "+fmtPct(PACE,1)+"/day · weekly cap 100%";
-  if(c.lastReadingAt){footer+=" · last reading "+c.lastReadingAt+" ("+formatAge(c.lastReadingAgeMs)+")";}
+  var footer="Target pace "+usageFmtPct(USAGE_PACE,1)+"/day · weekly cap 100%";
+  if(c.lastReadingAt){footer+=" · last reading "+c.lastReadingAt+" ("+usageFormatAge(c.lastReadingAgeMs)+")";}
   if(c.readingStale){footer+=" · stale reading";}
   $("usage-footer").textContent=footer;
 }
