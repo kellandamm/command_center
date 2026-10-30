@@ -319,8 +319,12 @@ const THEME_SCRIPT = `
     return !!(ov&&ov.classList.contains("open"));
   }
   function clearInsetInertIfAllowed(){
-    if(inset&&!commandPaletteOpen())inset.removeAttribute("inert");
+    if(!inset)return;
+    if(commandPaletteOpen())return;
+    if(isMobile()&&shell.getAttribute("data-mobile-sidebar")==="open")return;
+    inset.removeAttribute("inert");
   }
+  window.ccClearInsetInertIfAllowed=clearInsetInertIfAllowed;
   function cancelFocusWait(){
     if(!focusWait)return;
     if(focusWait.timer)clearTimeout(focusWait.timer);
@@ -393,6 +397,7 @@ const THEME_SCRIPT = `
   function sidebarShortcutBlocked(){
     var el=document.activeElement;
     if(!el||!el.tagName)return false;
+    if(el.id==="knowledge-body")return false;
     var tag=el.tagName;
     if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT")return true;
     if(el.isContentEditable)return true;

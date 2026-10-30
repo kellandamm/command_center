@@ -52,7 +52,7 @@ export const COMMAND_PALETTE_SCRIPT = `
   function sidebarShortcutBlocked(){
     var el=document.activeElement;
     if(!el||!el.tagName)return false;
-    if(el.id==="command-palette-input")return false;
+    if(el.id==="command-palette-input"||el.id==="knowledge-body")return false;
     var tag=el.tagName;
     if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT")return true;
     if(el.isContentEditable)return true;
@@ -73,7 +73,10 @@ export const COMMAND_PALETTE_SCRIPT = `
     }else if(active===last||!panel.contains(active)){ev.preventDefault();first.focus();}
   }
   function setInert(on){
-    if(inset){if(on)inset.setAttribute("inert","");else inset.removeAttribute("inert");}
+    if(!inset)return;
+    if(on)inset.setAttribute("inert","");
+    else if(typeof window.ccClearInsetInertIfAllowed==="function")window.ccClearInsetInertIfAllowed();
+    else inset.removeAttribute("inert");
   }
   function setActiveIndex(next){
     activeIndex=next;
@@ -244,6 +247,8 @@ export const COMMAND_PALETTE_SCRIPT = `
     if(ev.key==="Escape"&&open){ev.preventDefault();close();return;}
     if((ev.metaKey||ev.ctrlKey)&&ev.key.toLowerCase()==="k"){
       if(sidebarShortcutBlocked())return;
+      var switcher=document.getElementById("knowledge-switcher");
+      if(switcher&&switcher.open)return;
       ev.preventDefault();
       if(open)close(); else openPalette();
     }

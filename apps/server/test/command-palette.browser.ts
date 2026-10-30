@@ -261,6 +261,81 @@ test("command palette browser: non-owner has no budget hits or Budget nav", { ti
   await app.close();
 });
 
+test("command palette browser: mobile drawer stays inert after palette close via Ctrl+K", { timeout: 120_000 }, async () => {
+  const app = await openPaletteServer();
+  await withBrowser(async (browser) => {
+    const context = await browser.newContext();
+    await context.addCookies([
+      { name: "CF_Authorization", value: app.ownerJwt, domain: "127.0.0.1", path: "/" },
+    ]);
+    const page = await context.newPage();
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.goto(`${app.base}/`);
+    await page.waitForSelector("#sidebar-toggle");
+    await page.locator("#sidebar-toggle").click();
+    await page.waitForFunction(
+      () => document.querySelector(".app-shell")?.getAttribute("data-mobile-sidebar") === "open",
+    );
+    assert.equal(await page.evaluate(() => document.querySelector(".sidebar-inset")?.hasAttribute("inert")), true);
+    await openPalette(page);
+    await page.keyboard.press("Control+k");
+    await page.waitForFunction(() => !document.getElementById("command-palette-overlay")?.classList.contains("open"));
+    assert.equal(
+      await page.evaluate(() => document.querySelector(".app-shell")?.getAttribute("data-mobile-sidebar")),
+      "open",
+    );
+    assert.equal(await page.evaluate(() => document.querySelector(".sidebar-inset")?.hasAttribute("inert")), true);
+  });
+  await app.close();
+});
+
+test("command palette browser: mobile drawer stays inert after palette overlay click close", { timeout: 120_000 }, async () => {
+  const app = await openPaletteServer();
+  await withBrowser(async (browser) => {
+    const context = await browser.newContext();
+    await context.addCookies([
+      { name: "CF_Authorization", value: app.ownerJwt, domain: "127.0.0.1", path: "/" },
+    ]);
+    const page = await context.newPage();
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.goto(`${app.base}/`);
+    await page.waitForSelector("#sidebar-toggle");
+    await page.locator("#sidebar-toggle").click();
+    await page.waitForFunction(
+      () => document.querySelector(".app-shell")?.getAttribute("data-mobile-sidebar") === "open",
+    );
+    await openPalette(page);
+    await page.locator("#command-palette-overlay").click({ position: { x: 8, y: 8 } });
+    await page.waitForFunction(() => !document.getElementById("command-palette-overlay")?.classList.contains("open"));
+    assert.equal(
+      await page.evaluate(() => document.querySelector(".app-shell")?.getAttribute("data-mobile-sidebar")),
+      "open",
+    );
+    assert.equal(await page.evaluate(() => document.querySelector(".sidebar-inset")?.hasAttribute("inert")), true);
+  });
+  await app.close();
+});
+
+test("command palette browser: notes body Ctrl+K opens palette and Esc restores editor focus", { timeout: 120_000 }, async () => {
+  const app = await openPaletteServer();
+  await withBrowser(async (browser) => {
+    const context = await browser.newContext();
+    await context.addCookies([
+      { name: "CF_Authorization", value: app.ownerJwt, domain: "127.0.0.1", path: "/" },
+    ]);
+    const page = await context.newPage();
+    await page.goto(`${app.base}/notes`);
+    await page.waitForSelector("#knowledge-body");
+    await page.locator("#knowledge-body").focus();
+    await page.keyboard.press("Control+k");
+    await page.waitForSelector("#command-palette-overlay.open");
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => !document.getElementById("command-palette-overlay")?.classList.contains("open"));
+    await page.waitForFunction(() => document.activeElement?.id === "knowledge-body");
+  });
+  await app.close();
+});
+
 test("command palette browser: notes switcher open blocks Cmd+K palette", { timeout: 120_000 }, async () => {
   const app = await openPaletteServer();
   await withBrowser(async (browser) => {
@@ -276,6 +351,26 @@ test("command palette browser: notes switcher open blocks Cmd+K palette", { time
     await page.keyboard.press("Control+k");
     await sleep(300);
     assert.equal(await page.evaluate(() => document.getElementById("command-palette-overlay")?.classList.contains("open")), false);
+    await page.keyboard.press("Control+k");
+    await sleep(300);
+    assert.equal(await page.evaluate(() => document.getElementById("command-palette-overlay")?.classList.contains("open")), false);
+  });
+  await app.close();
+});
+
+test("command palette browser: notes switcher blocks Cmd+K when focus is on switcher button", { timeout: 120_000 }, async () => {
+  const app = await openPaletteServer();
+  await withBrowser(async (browser) => {
+    const context = await browser.newContext();
+    await context.addCookies([
+      { name: "CF_Authorization", value: app.ownerJwt, domain: "127.0.0.1", path: "/" },
+    ]);
+    const page = await context.newPage();
+    await page.goto(`${app.base}/notes`);
+    await page.waitForSelector("#knowledge-switch");
+    await page.locator("#knowledge-switch").click();
+    await page.waitForSelector("#knowledge-switcher[open]");
+    await page.locator("#knowledge-switch-close").focus();
     await page.keyboard.press("Control+k");
     await sleep(300);
     assert.equal(await page.evaluate(() => document.getElementById("command-palette-overlay")?.classList.contains("open")), false);

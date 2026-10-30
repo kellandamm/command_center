@@ -707,10 +707,12 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     else if(key==="k"){
       var target=event.target;
       var tag=target&&target.tagName;
-      if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT")return;
+      if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT"){
+        if(!(target&&target.id==="knowledge-body"))return;
+      }
       if($("knowledge-switcher").open)return;
-      if(typeof window.ccOpenCommandPalette==="function"){event.preventDefault();window.ccOpenCommandPalette();return;}
-      event.preventDefault();switcher();
+      event.preventDefault();
+      if(typeof window.ccOpenCommandPalette==="function")window.ccOpenCommandPalette();
     }
     else if(key==="f"&&!event.shiftKey){event.preventDefault();$("knowledge-find-panel").open=true;$("knowledge-find").focus();}
     else if(["1","2","3"].indexOf(key)>=0){event.preventDefault();setMode({1:"source",2:"split",3:"preview"}[key]);}

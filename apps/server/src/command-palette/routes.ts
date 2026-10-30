@@ -40,7 +40,8 @@ export async function handleCommandPaletteRoutes(
 ): Promise<boolean> {
   if (path !== "/api/command-palette/search" || (req.method !== "GET" && req.method !== "HEAD")) return false;
   const qRaw = url.searchParams.get("q") ?? "";
-  const q = qRaw.length > MAX_QUERY_LENGTH ? qRaw.slice(0, MAX_QUERY_LENGTH) : qRaw;
+  const trimmed = qRaw.trim();
+  const q = trimmed.length > MAX_QUERY_LENGTH ? trimmed.slice(0, MAX_QUERY_LENGTH) : trimmed;
   const limitRaw = url.searchParams.get("limit");
   const limit = limitRaw != null ? Number(limitRaw) : undefined;
   if (req.method === "HEAD") {
