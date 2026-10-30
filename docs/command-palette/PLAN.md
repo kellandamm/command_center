@@ -6,6 +6,8 @@ Global **command palette** for Command Center: fuzzy navigation, quick actions, 
 
 **Cross-cutting:** no new dependencies or env vars; budget data never in briefings or push notifications.
 
+**Build order:** **Command palette PR first**, then **Budget PR B** (rollup, dashboard panel, net worth UI per `docs/budget/PLAN.md`), then subscriptions and downstream feature PRs.
+
 ---
 
 ## Scope
@@ -126,12 +128,12 @@ Single PR: `command-palette/`, `budget/owner-access.ts` (extract), `ui/command-p
 
 ---
 
-## Open questions for Kellan
+## Decisions (Kellan)
 
-1. Todoist task group hidden when `todoistConfigured(cfg)` is false, or show board-only tasks?
-2. Include Read Later (`ReadLaterService`) in v1?
-3. `Ctrl+Shift+P` alias or Cmd+K only?
-4. Quick actions: include briefing refresh (`POST /api/daily-briefing/refresh`) or navigation-only?
+1. **Todoist off:** Show **board** tasks in palette; hide Todoist group when `!todoistConfigured(cfg)`.
+2. **Read Later:** Defer library corpus to a later iteration.
+3. **Shortcut:** **Cmd+K / Ctrl+K** only (no `Ctrl+Shift+P` alias).
+4. **Quick actions:** **Navigation-only** (no briefing refresh action in v1).
 
 ---
 

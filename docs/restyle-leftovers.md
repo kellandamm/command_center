@@ -42,8 +42,6 @@ After PR #85 (shell), #87 (phase 2), and Budget PR A on `main`: gray surfaces, r
 | `apps/server/src/ui/connections-page.ts` | Inline styles in body |
 | `apps/server/src/ui/share-page.ts` | No `pageHeader` / card helpers |
 | `apps/server/src/ui/whiteboard-page.ts` | Excalidraw shell (separate from SSR primitives) |
-| `apps/server/src/ui/sources-page.ts` | Migrate to phase-2 `pageHeader` shell |
-| `apps/server/src/ui/spaces-page.ts` | Migrate to phase-2 `pageHeader` shell |
 
 ## New feature pages (these plans)
 

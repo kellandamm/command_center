@@ -1,16 +1,16 @@
 # Home maintenance & documents vault — implementation plan
 
-**Owner-only** maintenance reminders (ntfy + quiet hours) and a **documents/warranties vault**. Vault bytes and metadata **never** go to AI. Infra/env changes need Kellan’s approval (bottom)—agents document only until yes.
+**Owner-only** maintenance reminders (ntfy + quiet hours) and a **documents/warranties vault**. Vault bytes and metadata **never** go to AI.
+
+**Infra (approved):** Kellan approved **`home-vault/blobs/` on the existing `DATA_DIR` volume**, **`home.sqlite` backup bullet in `SELFHOST.md`**, and **25 MB per-file upload cap**. The feature PR adds application code and `SELFHOST.md` text only—not live server or compose changes.
 
 **Out of scope:** email triage, agent memory, direct bank connection, LLM on uploads, budget/subscription linkage.
 
 **Cross-cutting:** no new dependencies or env vars in v1; budget data never in briefings or push (maintenance reminders are separate from budget alerts).
 
-**Build order:** One PR after subscriptions (soft); may parallel goals once volume approved.
+**Build order:** One PR after subscriptions (soft); may parallel goals.
 
 ---
-
-## Scope
 
 | In | Out |
 |----|-----|
@@ -82,6 +82,8 @@ Generic title/body only—no filenames or receipt amounts in ntfy body.
 
 `apps/server/src/ui/home-vault-page.ts` — `/home?view=maintenance|vault`; `#85` components.
 
+**Nav:** Add sidebar tab **`home`** in `nav-tabs.ts` (workspace group, e.g. order ~68). **`visibleNavTabs`:** show **Home** only when **`homeVaultAvailable(cfg) && who.owner === true`** (owner-only vault—hide tab for non-owners and when gate off). Extend `visibleSidebarTabs` opts parallel to `budget` (`nav-tabs.ts`).
+
 **PWA:** extend `pwa.ts` line 74 guard for `/home` and `/home/` (mirror `/budget`).
 
 ---
@@ -107,30 +109,26 @@ Generic title/body only—no filenames or receipt amounts in ntfy body.
 
 ---
 
-## PR breakdown
-
-Single PR: `home/` module, `ui/home-vault-page.ts`, `notify/tick.ts` hook, `pwa.ts`, `http.ts`, tests.
+Single PR: `home/` module, `ui/home-vault-page.ts`, `notify/tick.ts` hook, `pwa.ts`, `http.ts`, `nav-tabs.ts`, tests, **`SELFHOST.md` backup bullet** (text).
 
 ---
 
-## Needs Kellan’s approval
+## Deploy steps (Kellan / Infra Ops)
 
-| Change | Why |
-|--------|-----|
-| `home-vault/blobs/` on `homepage-data` | Backup size |
-| `home.sqlite` in `SELFHOST.md` | Ops |
-| `compose.yml` extra mount (if not using `DATA_DIR`) | Infra |
-| Upload cap / MIME expansion | Security |
-| Optional `HOME_VAULT_*` env | New config—flag only |
+When the home-vault **build PR** is ready to ship, **Infra Ops via Hobie** (not the docs/feature agent) applies:
+
+1. Ensure **`DATA_DIR` / `homepage-data` volume** has capacity for `home-vault/blobs/` (approved layout—no extra mount if using existing `DATA_DIR`).
+2. Deploy the new server image / restart Command Center so `home.sqlite` and blob dirs are created on first owner open.
+3. **`compose.yml`:** only if production uses a path outside `DATA_DIR`—otherwise no compose edit required (Kellan approved volume use, not a separate mount).
 
 ---
 
-## Open questions for Kellan
+## Decisions (Kellan)
 
-1. Nav tab “Home” vs Settings-only link?
-2. Seed default maintenance templates?
-3. ntfy `click` URL via `appPublicUrl` → `/home?view=maintenance`?
-4. Warranty expiry warning lead (30/60/90 days)?
+1. **Nav:** Dedicated **Home** sidebar tab; **owner-only visibility** (see UI).
+2. **Templates:** No seeded maintenance templates in v1.
+3. **ntfy click:** Use `appPublicUrl` → `/home?view=maintenance` when configured.
+4. **Warranty expiry warning:** **60 days** before expiry in UI (`badge` / warning token).
 
 ---
 
