@@ -173,14 +173,13 @@ pre.briefing.bad{color:var(--destructive);background:transparent;border-color:co
 .settings-tabs{display:flex;gap:.35rem;margin-bottom:1rem;flex-wrap:wrap}
 .settings-tabs button.ghost.on{background:var(--selected);color:var(--selected-foreground);border-color:color-mix(in srgb,var(--primary) 28%,var(--border))}
 .settings-tab-panel{display:none}.settings-tab-panel.on{display:block}
-.settings-options-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr));gap:.75rem}
-.settings-option{min-width:0;margin:0;padding:.75rem;border:1px solid var(--border);border-radius:var(--radius)}
+.settings-options-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr));gap:.75rem;align-items:stretch}
+.settings-option{min-width:0;margin:0;padding:.75rem;border:1px solid var(--border);border-radius:var(--radius);display:flex;flex-direction:column;height:100%;box-sizing:border-box}
 .settings-option legend{padding:0 .25rem;font-size:.875rem;font-weight:600}
 .settings-option>label:first-child{margin:.1rem 0 .35rem;font-size:.875rem;font-weight:600}
 .settings-option>p{margin:.25rem 0 0;font-size:.75rem}
 .settings-option label.choice-row{font-size:.8125rem}
 .settings-options-grid select{max-width:100%}
-.settings-card#tab-views{max-width:70rem}
 .compact .page-header{margin-bottom:.85rem}
 .compact .panel-grid,.compact .briefing-grid{gap:.65rem}
 @media(max-width:768px){:root{--page-pad:1rem}}
