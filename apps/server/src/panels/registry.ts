@@ -11,6 +11,7 @@ import { attentionPanel } from "./attention";
 import { heatmapPanel } from "./heatmap";
 import { launchpadPanel } from "./launchpad";
 import { focusPanel } from "./focus";
+import { agentsUsagePanel } from "./agents-usage";
 import type { PanelModule } from "./types";
 
 /** Register panels here: one module file + one line in this array. */
@@ -28,6 +29,7 @@ export const panels: PanelModule[] = [
   notesPanel,
   hostHealthPanel,
   recallioPanel,
+  agentsUsagePanel,
 ];
 
 export function panelById(id: string): PanelModule | undefined {

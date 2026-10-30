@@ -3,11 +3,17 @@ function mountVoiceInbox(quickAddApi){
   var root=document.getElementById("voice-inbox");if(!root)return;
   var list=root.querySelector(".voice-inbox-list");
   var badge=root.querySelector(".voice-inbox-badge");
-  var section=root.querySelector(".voice-inbox-panel");
+  var unavailable=root.querySelector(".voice-inbox-unavailable");
+  function setUnavailable(show){
+    if(unavailable)unavailable.hidden=!show;
+    if(show&&list)list.replaceChildren();
+  }
   function render(rows,timezone){
+    setUnavailable(false);
     var count=rows.length;
+    root.hidden=!count;
+    if(!count)return;
     if(badge){badge.textContent=String(count);badge.hidden=!count;}
-    if(section)section.hidden=!count;
     if(!list)return;
     list.replaceChildren();
     rows.forEach(function(row){
@@ -28,7 +34,18 @@ function mountVoiceInbox(quickAddApi){
     });
   }
   function refresh(){
-    return api("/api/voice-captures").then(function(data){render(data.captures||[],data.timezone);}).catch(function(err){if(badge)badge.hidden=true;if(section)section.hidden=false;if(list)list.textContent="Voice inbox unavailable: "+err.message;});
+    return api("/api/voice-captures").then(function(data){render(data.captures||[],data.timezone);}).catch(function(err){
+      var msg=err&&err.message?String(err.message):"";
+      if(/HTTP 403\\b/i.test(msg)||/verified owner login/i.test(msg)||/owner login/i.test(msg)){
+        root.hidden=true;
+        if(badge)badge.hidden=true;
+        setUnavailable(false);
+        return;
+      }
+      root.hidden=false;
+      if(badge)badge.hidden=true;
+      setUnavailable(true);
+    });
   }
   refresh();
   return {refresh:refresh};

@@ -229,12 +229,56 @@ test("agents usage GET routes are owner-only", async () => {
       headers: { ...ownerAuthz, cookie: "CF_Authorization=reader" },
     });
     assert.equal(denied.status, 403);
+    const adminOnly = await fetch(`${h.base}/api/agents/usage`, { headers: ownerAuthz });
+    assert.equal(adminOnly.status, 403);
     const ok = await fetch(`${h.base}/api/agents/usage`, {
       headers: { ...ownerAuthz, cookie: "CF_Authorization=owner" },
     });
     assert.equal(ok.status, 200);
+    const historyDenied = await fetch(`${h.base}/api/agents/usage/history`, { headers: ownerAuthz });
+    assert.equal(historyDenied.status, 403);
+    const checkinsDenied = await fetch(`${h.base}/api/agents/usage/checkins`, { headers: ownerAuthz });
+    assert.equal(checkinsDenied.status, 403);
   } finally {
     await h.close();
+  }
+});
+
+test("agents usage GET routes deny non-owner when OWNER_EMAILS unset", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-usage-open-"));
+  cfKeys = await createTestCfAccessJwt();
+  setAgentsUsageCfAccessVerifierForTests(cfKeys.verifier);
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    ADMIN_TOKEN,
+    CF_ACCESS_TEAM_DOMAIN: TEST_CF_TEAM,
+    CF_ACCESS_AUD: TEST_CF_AUD,
+    ALLOW_INSECURE_NO_AUTH: "1",
+  });
+  const settings = new SettingsStore(dir);
+  await settings.load();
+  const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
+  const notes = await NotesStore.open(dir);
+  const integration = await openIntegrationStores(dir, cfg);
+  const server = createApp({
+    cfg,
+    auth: makeAuthenticator(cfg, async (token) => cfKeys.verifier(token)),
+    settings,
+    dailyBriefing,
+    notes,
+    ...integration,
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    const readerJwt = await cfKeys.signEmailJwt("reader@example.com");
+    const res = await fetch(`${base}/api/agents/usage`, {
+      headers: { ...anonAuthz, cookie: `CF_Authorization=${readerJwt}` },
+    });
+    assert.equal(res.status, 403);
+  } finally {
+    await closeIntegrationServer(server, integration);
+    await rm(dir, { recursive: true, force: true });
   }
 });
 
