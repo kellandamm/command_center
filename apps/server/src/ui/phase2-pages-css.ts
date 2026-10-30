@@ -8,8 +8,13 @@ export const PHASE2_PAGE_CSS = `
   box-shadow:0 0 0 1px color-mix(in srgb,var(--foreground) 6%,transparent),0 1px 2px rgba(0,0,0,.04)}
 html.dark .phase2-shell{box-shadow:0 0 0 1px color-mix(in srgb,var(--foreground) 10%,transparent),0 1px 2px rgba(0,0,0,.35)}
 .settings-page .settings-stack{display:flex;flex-direction:column;gap:1.25rem;width:100%;max-width:48rem}
-.settings-page .settings-tabs,.settings-page .settings-subtabs{margin:0 0 .75rem}
-.settings-page .settings-subtabs{display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:1rem}
+.settings-page .settings-tabs{margin:0 0 .75rem}
+.settings-page .settings-subtabs{
+  display:inline-flex;flex-wrap:wrap;gap:.15rem;padding:.2rem;margin:0 0 1rem;
+  border:1px solid var(--border);border-radius:calc(var(--radius) - 2px);background:var(--muted)}
+.settings-page .settings-subtabs [role=tab]{font-size:.8125rem;padding:.35rem .7rem;min-height:2rem;border-radius:calc(var(--radius) - 4px)}
+.settings-page .settings-subtabs [role=tab].on{background:var(--card);color:var(--foreground);box-shadow:0 1px 2px rgba(0,0,0,.05)}
+html.dark .settings-page .settings-subtabs [role=tab].on{box-shadow:0 1px 2px rgba(0,0,0,.25)}
 .settings-page .settings-card{max-width:none;margin:0}
 .settings-section-panel{display:none}
 .settings-section-panel.on{display:block}

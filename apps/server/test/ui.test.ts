@@ -178,7 +178,8 @@ test("ui: settings script maps legacy view hashes", () => {
   const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)].map((m) => m[1]!);
   const settingsScript = scripts[scripts.length - 1]!;
   assert.match(settingsScript, /VIEW_SUBTABS=\["views","topics","schedule","tabs"\]/);
-  assert.match(settingsScript, /setSettingsSection\("views",name\)/);
+  assert.match(settingsScript, /setSettingsSection\("views",name,false\)/);
+  assert.match(settingsScript, /bindSettingsTablist/);
 });
 
 test("ui: settings connection rows are accessible links", () => {
