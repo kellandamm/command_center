@@ -25,15 +25,23 @@ const repoRoot = join(serverDir, "../..");
 const mode = process.argv.includes("--before") ? "before" : "after";
 const outRoot = join(repoRoot, "docs/screenshots/restyle", mode);
 
-type Shot = { name: string; path: string; marker: string; viewport: { width: number; height: number }; theme?: "light" | "dark"; prepare?: (page: Page) => Promise<void> };
+type Shot = {
+  name: string;
+  path: string;
+  marker: string;
+  viewport: { width: number; height: number };
+  theme?: "light" | "dark";
+  fullPage?: boolean;
+  prepare?: (page: Page) => Promise<void>;
+};
 
 const SHOTS: Shot[] = [
   { name: "dashboard-1440-light", path: "/", marker: "Dashboard", viewport: { width: 1440, height: 900 }, prepare: async (p) => { await p.waitForSelector("#dashboard-grid", { timeout: 20_000 }); } },
   { name: "dashboard-1440-dark", path: "/", marker: "Dashboard", viewport: { width: 1440, height: 900 }, theme: "dark", prepare: async (p) => { await p.evaluate(() => { document.documentElement.classList.add("dark"); localStorage.setItem("cc-theme", "dark"); }); await p.waitForSelector("#dashboard-grid", { timeout: 20_000 }); } },
   { name: "dashboard-mobile-light", path: "/", marker: "Dashboard", viewport: { width: 390, height: 844 }, prepare: async (p) => { await p.waitForSelector("#dashboard-grid", { timeout: 20_000 }); } },
   { name: "dashboard-mobile-dark", path: "/", marker: "Dashboard", viewport: { width: 390, height: 844 }, theme: "dark", prepare: async (p) => { await p.evaluate(() => { document.documentElement.classList.add("dark"); localStorage.setItem("cc-theme", "dark"); }); await p.waitForSelector("#dashboard-grid", { timeout: 20_000 }); } },
-  { name: "agents-usage-1440-light", path: "/agent?view=usage", marker: "Agent usage", viewport: { width: 1440, height: 900 }, prepare: waitUsageReady },
-  { name: "agents-usage-1440-dark", path: "/agent?view=usage", marker: "Agent usage", viewport: { width: 1440, height: 900 }, theme: "dark", prepare: waitUsageReadyDark },
+  { name: "agents-usage-1440-light", path: "/agent?view=usage", marker: "Agent usage", viewport: { width: 1440, height: 900 }, fullPage: true, prepare: waitUsageReady },
+  { name: "agents-usage-1440-dark", path: "/agent?view=usage", marker: "Agent usage", viewport: { width: 1440, height: 900 }, theme: "dark", fullPage: true, prepare: waitUsageReadyDark },
   { name: "agents-usage-mobile-light", path: "/agent?view=usage", marker: "Agent usage", viewport: { width: 390, height: 844 }, prepare: waitUsageReady },
   { name: "agents-usage-mobile-dark", path: "/agent?view=usage", marker: "Agent usage", viewport: { width: 390, height: 844 }, theme: "dark", prepare: waitUsageReadyDark },
   { name: "notes-1440-light", path: "/notes", marker: "Notes", viewport: { width: 1440, height: 900 }, prepare: async (p) => { await p.waitForSelector("#knowledge-note-list", { timeout: 20_000 }); } },
@@ -48,6 +56,7 @@ async function waitUsageReady(p: Page) {
     if (!cap) return false;
     return cap.getAttribute("stroke-dasharray") === "none";
   }, undefined, { timeout: 10_000 });
+  await p.locator(".usage-charts").scrollIntoViewIfNeeded();
 }
 async function waitUsageReadyDark(p: Page) {
   await p.evaluate(() => { document.documentElement.classList.add("dark"); localStorage.setItem("cc-theme", "dark"); });
@@ -174,7 +183,7 @@ async function main() {
         if (!dark) throw new Error(`not dark: ${shot.name}`);
       }
       const outPath = join(outRoot, `${shot.name}.png`);
-      await page.screenshot({ path: outPath, fullPage: false });
+      await page.screenshot({ path: outPath, fullPage: shot.fullPage ?? false });
       console.log("wrote", outPath);
       await page.close();
     }
