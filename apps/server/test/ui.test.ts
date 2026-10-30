@@ -175,7 +175,7 @@ test("ui: settings tab panels sit directly under the tablist", () => {
 
 test("ui: settings script maps legacy view hashes", () => {
   const html = settingsPage();
-  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]!);
+  const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)].map((m) => m[1]!);
   const settingsScript = scripts[scripts.length - 1]!;
   assert.match(settingsScript, /VIEW_SUBTABS=\["views","topics","schedule","tabs"\]/);
   assert.match(settingsScript, /setSettingsSection\("views",name\)/);
@@ -187,17 +187,18 @@ test("ui: settings connection rows are accessible links", () => {
     ["/settings/connections", "Manage service connections and keys"],
     ["/settings/calendars", "Manage calendars and subscriptions"],
   ] as const) {
-    const re = new RegExp(
-      `<a class="settings-link-row" href="${href.replace(/\//g, "\\/")}"[^>]*>[\\s\\S]*?${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
-    );
-    assert.match(html, re, `expected link row for ${href}`);
+    const linkStart = html.indexOf(`<a class="settings-link-row" href="${href}"`);
+    assert.notEqual(linkStart, -1, `expected link row for ${href}`);
+    const linkEnd = html.indexOf("</a>", linkStart);
+    assert.notEqual(linkEnd, -1, `expected link row closing tag for ${href}`);
+    assert.ok(html.slice(linkStart, linkEnd).includes(label), `expected link label for ${href}`);
   }
 });
 
 test("ui: retained dashboard, settings and briefing scripts parse without retired integrations", () => {
   for (const html of [dashboardPage(), settingsPage(), dailyBriefingPage()]) {
     assert.doesNotMatch(html, /\/api\/(?:feeds|rss|news|summaries|ai-security|briefing\/generate)/);
-    for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+    for (const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)) {
       assert.doesNotThrow(() => new Script(match[1]!));
     }
   }
@@ -229,7 +230,7 @@ test("ui: Notes centers writing with preview, formatting, focus, and collapsed p
   }
   assert.match(html, /<details class="notes-properties">/);
   assert.match(html, /Changes save automatically/);
-  for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+  for (const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)) {
     assert.doesNotThrow(() => new Script(match[1]!));
   }
 });
@@ -244,7 +245,7 @@ test("ui: Bookmarks is a separate grouped launchpad with search, import and layo
   }
   assert.match(html, /Download backup/);
   assert.doesNotMatch(html, /favicon|google\.com\/s2/);
-  for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+  for (const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)) {
     assert.doesNotThrow(() => new Script(match[1]!));
   }
 });
