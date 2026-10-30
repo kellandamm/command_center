@@ -16,7 +16,6 @@ const CSS = `
 html.dark{
   ${formatThemeVars(THEME_DARK)};
 }
-${COMPONENT_CSS}
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;background:var(--background);color:var(--foreground);
   font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
@@ -63,6 +62,7 @@ button.ghost[aria-pressed=true],.btn.ghost[aria-pressed=true],button.ghost.on,.b
   background:var(--selected);color:var(--selected-foreground);border-color:color-mix(in srgb,var(--primary) 28%,var(--border))}
 button.icon-btn{min-width:2.25rem;padding:.5rem}
 button:disabled{opacity:.5;cursor:default}
+${COMPONENT_CSS}
 label.field-label{display:block;margin:1rem 0 .35rem;font-size:.875rem;font-weight:500}
 label{display:block;margin:1rem 0 .35rem;font-size:.875rem;font-weight:500}
 label.choice-row,label.row.choice-row{
