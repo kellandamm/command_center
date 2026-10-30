@@ -42,6 +42,7 @@ import { handleWinsRoutes } from "./wins/routes";
 import type { WinsRollupService } from "./wins/rollup-service";
 import { boardPage } from "./ui/board-page";
 import { agentQueuePage } from "./ui/agent-queue-page";
+import { agentsUsagePage } from "./ui/agents-usage-page";
 import { winsPage } from "./ui/wins-page";
 import { noteToolsPage, notesPage } from "./ui/notes-page";
 import { sourceDetailPage, sourcesPage } from "./ui/sources-page";
@@ -52,6 +53,8 @@ import { handleReadLaterRoutes } from "./read-later/routes";
 import { ReadLaterService } from "./read-later/service";
 import { CaptureAccess } from "./read-later/capture-access";
 import { handleMeetingImportRoute } from "./meetings/routes";
+import { handleAgentsUsageImportRoute, handleAgentsUsageGetRoutes } from "./agents-usage/routes";
+import type { AgentsUsageStore } from "./agents-usage/store";
 import { getMeetingSummaryQueue } from "./meetings/summary-queue";
 import { handleXBookmarkApiRoutes, handleXBookmarkImport, isXBookmarkImportPayload } from "./read-later/x-bookmarks-routes";
 import type { XBookmarksService } from "./read-later/x-bookmarks-service";
@@ -113,6 +116,7 @@ export interface App {
   calendar?: CalendarWorkspace;
   shareLinks: ShareLinksStore;
   voiceCaptures: VoiceCaptureStore;
+  agentsUsage: AgentsUsageStore;
 }
 
 const SECURITY: Record<string, string> = {
@@ -245,6 +249,11 @@ export function createApp(app: App): Server {
         return;
       }
 
+      if (method === "POST" && path === "/api/agents/usage/import") {
+        await handleAgentsUsageImportRoute(app.cfg, app.agentsUsage, req, res);
+        return;
+      }
+
       if (method === "POST" && path === "/api/capture/audio") {
         const token = bearerToken(req);
         if (!token || !(await captureAccess.accepts(token))) {
@@ -344,7 +353,7 @@ export function createApp(app: App): Server {
       if (get && /^\/spaces\/[^/]+$/.test(path)) return send(res, 200, spaceDetailPage(nav()), undefined, extra);
       if (get && path === "/agent") {
         const view = url.searchParams.get("view") ?? "board";
-        const render = { board: boardPage, queue: agentQueuePage, wins: winsPage, assistant: assistantPage, activity: activityPage };
+        const render = { board: boardPage, queue: agentQueuePage, wins: winsPage, assistant: assistantPage, activity: activityPage, usage: agentsUsagePage };
         if (!Object.hasOwn(render, view)) return json(res, 400, { error: "unknown Agent view" });
         return send(res, 200, render[view as keyof typeof render](nav()), undefined, extra);
       }
@@ -511,6 +520,8 @@ export function createApp(app: App): Server {
         email: who.email,
         serviceToken: who.serviceToken,
       }, readBody)) return;
+      if (handleAgentsUsageGetRoutes(app.agentsUsage, req, res, path)) return;
+
       if (path.startsWith("/api/board") || path.startsWith("/api/wins")) {
         const bodyForApi = get ? undefined : await readBody(req);
         if (await handleBoardRoutes(app.board, app.hobieQueue, app.wins, app.cfg, req, res, path, bodyForApi)) return;

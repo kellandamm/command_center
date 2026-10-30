@@ -241,6 +241,7 @@ const THEME_SCRIPT = `
 export function page(opts: { title: string; body: string; active?: string; script?: string; nav?: NavLink[]; extraCss?: string; extraHead?: string }): string {
   const agentSections = [
     ["/board", "board", "Board"], ["/agent/queue", "queue", "Queue"],
+    ["/agent/usage", "usage", "Usage"],
     ["/wins", "wins", "Wins"], ["/assistant", "assistant", "Assistant"], ["/activity", "activity", "Activity"],
   ];
   const agentSection = agentSections.find(([path]) => path === opts.active);
