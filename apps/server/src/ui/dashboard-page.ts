@@ -15,7 +15,7 @@ import { tasksDashboardScript } from "../panels/tasks";
 import { weatherDashboardScript } from "../panels/weather";
 import { agentsUsagePanelDashboardScript } from "../panels/agents-usage";
 import { agentsUsagePanelCss } from "./agents-usage-client";
-import { button } from "./components";
+import { button, pageHeader } from "./components";
 import { dashboardGridCss, dashboardGridScript } from "./dashboard-grid";
 import { page, type NavLink } from "./layout";
 import { quickAddCss, quickAddScript } from "./quick-add";
@@ -45,6 +45,16 @@ export const dashboardPanelCss = `
 .launchpad-form input{flex:1;min-width:6rem}
 .focus-timer{font-size:1.25rem;font-weight:600;margin:.25rem 0}
 .focus-controls{gap:.75rem;flex-wrap:wrap}
+.page-header-menu{position:relative}
+.page-header-menu>summary{list-style:none;cursor:pointer}
+.page-header-menu>summary::-webkit-details-marker{display:none}
+.page-header-menu-panel{
+  position:absolute;right:0;top:calc(100% + .35rem);min-width:12rem;padding:.35rem;display:flex;flex-direction:column;gap:.25rem;
+  background:var(--card);border-radius:calc(var(--radius) - 2px);
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--foreground) 8%,transparent),0 8px 24px rgba(0,0,0,.12);z-index:30}
+.page-header-menu-panel .btn,.page-header-menu-panel .dashboard-import-btn{justify-content:flex-start;width:100%}
+#panel-daily-briefing .dashboard-panel-body{padding-bottom:1rem}
+#panel-daily-briefing .ui-empty{padding:1rem .5rem 1.25rem}
 `;
 
 const PANEL_SCRIPTS = [
@@ -83,13 +93,22 @@ export function dashboardPage(nav?: NavLink[]): string {
     panels.filter((p) => p.pageHref).map((p) => [p.id, p.pageHref!]),
   );
   const panelTitles = Object.fromEntries(panels.map((p) => [p.id, p.title]));
+  const layoutActions = `<details class="page-header-menu">
+  <summary class="btn btn-outline btn-sm">Layout</summary>
+  <div class="page-header-menu-panel">
+    ${button({ label: "Reset layout", variant: "outline", size: "sm", attrs: { id: "dashboard-reset-layout" } })}
+    ${button({ label: "Export layout", variant: "outline", size: "sm", href: "/api/dashboard-layout/export.json", attrs: { id: "dashboard-export-layout" } })}
+    <input type="file" id="dashboard-import-layout" accept="application/json" hidden />
+    ${button({ label: "Import layout", variant: "outline", size: "sm", className: "dashboard-import-btn", attrs: { id: "dashboard-import-layout-btn" } })}
+  </div>
+</details>`;
   return page({
     title: "Command center",
     active: "/",
     nav,
     extraCss: dashboardGridCss + dashboardPanelCss + quickAddCss + agentsUsagePanelCss,
     body: `<div class="dashboard-page">
-<header class="page-header"><h1>Dashboard</h1><p class="dim">Drag panels, pin what matters, and jump in quickly.</p></header>
+${pageHeader({ title: "Dashboard", description: "Drag panels, pin what matters, and jump in quickly.", actionsHtml: layoutActions })}
 <div class="dashboard-quick-add-bar quick-add-bar">
 <div id="dashboard-quick-add" class="quick-add-wrap" aria-label="Quick add">
   <div class="quick-add-row"><input class="quick-add-input" type="text" placeholder="Quick add — e.g. call mom tomorrow 3pm" autocomplete="off" />${button({ label: "Preview", variant: "outline", size: "sm", className: "quick-add-parse" })}</div>
@@ -102,25 +121,23 @@ export function dashboardPage(nav?: NavLink[]): string {
   <p class="voice-inbox-unavailable dim" hidden>Voice inbox unavailable</p>
   <ul class="voice-inbox-list"></ul>
 </section>
-<div class="dashboard-toolbar row">
-  ${button({ label: "Reset layout", variant: "outline", size: "sm", attrs: { id: "dashboard-reset-layout" } })}
-  ${button({ label: "Export layout", variant: "outline", size: "sm", href: "/api/dashboard-layout/export.json", attrs: { id: "dashboard-export-layout" } })}
-  <label class="btn btn-outline btn-sm dashboard-import-label"><input type="file" id="dashboard-import-layout" accept="application/json" hidden />Import layout</label>
-  <span class="dim dashboard-toolbar-hint">Layout saves automatically.</span>
-</div>
+<p class="dim dashboard-layout-hint" style="margin:0;font-size:.8125rem">Layout saves automatically.</p>
 <div id="dashboard-grid" class="dashboard-grid">${dashboardItemsHtml()}</div>
 </div>`,
     script: `
 var PANEL_PAGE_LINKS=${JSON.stringify(pageLinks)};
 var PANEL_TITLES=${JSON.stringify(panelTitles)};
 ${dashboardGridScript()}
+document.getElementById("dashboard-import-layout-btn")?.addEventListener("click",function(){
+  document.getElementById("dashboard-import-layout")?.click();
+});
 document.getElementById("dashboard-import-layout")?.addEventListener("change",function(ev){
   var input=ev.target;var file=input.files&&input.files[0];if(!file)return;
   file.text().then(function(text){
     return api("/api/dashboard-layout/import","POST",JSON.parse(text));
   }).then(function(r){if(r.layout&&window.applyDashboardLayout)window.applyDashboardLayout(r.layout);})
   .catch(function(err){alert(err.message||"Import failed");})
-  .finally(function(){input.value="";});
+  .finally(function(){input.value="";document.querySelector(".page-header-menu[open]")?.removeAttribute("open");});
 });
 ${PANEL_SCRIPTS.map((fn) => fn()).join("\n")}
 ${quickAddScript}

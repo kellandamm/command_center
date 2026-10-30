@@ -1,33 +1,32 @@
 import type { NavLink } from "./layout";
 import { page } from "./layout";
 import { AGENTS_USAGE_CLIENT_HELPERS } from "./agents-usage-client";
+import { CHART_SVG_CLIENT } from "./chart-svg";
+import { pageHeader } from "./components";
 
 const usageCss = `
-.usage-hero{display:grid;grid-template-columns:minmax(220px,1fr) 2fr;gap:1.25rem;margin-bottom:1.5rem}
+.usage-hero{display:grid;grid-template-columns:minmax(220px,1fr) 2fr;gap:var(--grid-gap);margin-bottom:var(--section-gap)}
 @media(max-width:900px){.usage-hero{grid-template-columns:1fr}}
 .usage-ring-wrap{display:flex;flex-direction:column;align-items:center;gap:.75rem}
 .usage-ring-legend{font-size:.85rem;color:var(--muted-foreground);text-align:center}
-.usage-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.75rem}
-@media(max-width:700px){.usage-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.usage-stat{padding:1rem;border:1px solid var(--border);border-radius:.75rem;background:var(--card)}
-.usage-stat h3{margin:0 0 .35rem;font-size:.75rem;font-weight:600;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.04em}
-.usage-stat .value{font-size:1.35rem;font-weight:600}
-.usage-stat .sub{font-size:.8rem;color:var(--muted-foreground);margin-top:.25rem}
+.usage-charts{display:grid;grid-template-columns:1fr;gap:var(--grid-gap);margin:var(--section-gap) 0}
+.usage-chart svg{width:100%;height:auto;display:block}
+.usage-table{width:100%;border-collapse:collapse;font-size:.875rem}
+.usage-table th,.usage-table td{padding:.5rem .5rem .5rem 1rem;border-bottom:1px solid var(--border);text-align:left}
+.usage-table th{color:var(--muted-foreground);font-weight:500;font-size:.75rem;background:color-mix(in srgb,var(--muted) 50%,transparent)}
+.usage-table .num{text-align:right}
 .pill{display:inline-flex;align-items:center;gap:.35rem;padding:.2rem .55rem;border-radius:999px;font-size:.75rem;font-weight:600}
 .pill.on-pace{background:color-mix(in srgb,var(--primary) 18%,transparent);color:var(--primary)}
 .pill.ahead{background:color-mix(in srgb,var(--warning) 22%,transparent);color:var(--warning)}
 .pill.behind{background:color-mix(in srgb,var(--primary) 18%,transparent);color:var(--primary)}
 .pill.unknown{background:var(--muted);color:var(--muted-foreground)}
-.usage-charts{display:grid;grid-template-columns:1fr;gap:1rem;margin:1.25rem 0}
-.usage-chart svg{width:100%;height:auto;display:block}
-.usage-table{width:100%;border-collapse:collapse;font-size:.875rem}
-.usage-table th,.usage-table td{padding:.45rem .5rem;border-bottom:1px solid var(--border);text-align:left}
-.usage-table th{color:var(--muted-foreground);font-weight:500}
 .bar-over{fill:var(--warning)}
-.bar-under{fill:var(--primary)}
-.line-usage{stroke:var(--primary);fill:none;stroke-width:2}
-.line-baseline{stroke:var(--muted-foreground);fill:none;stroke-width:1.5;stroke-dasharray:4 3}
-.line-cap{stroke:var(--muted-foreground);opacity:.6}
+.bar-under{fill:var(--chart-1)}
+.line-usage{stroke:var(--chart-1);fill:none;stroke-width:2}
+.line-baseline{stroke:var(--chart-2);fill:none;stroke-width:1.5;stroke-dasharray:4 3}
+.line-cap{stroke:var(--foreground);stroke-width:1;opacity:.35}
+.usage-stat-card .stat-value{font-size:1.625rem;font-variant-numeric:tabular-nums}
+.usage-stat-card .stat-hint{white-space:nowrap}
 `;
 
 export function agentsUsagePage(nav?: NavLink[]): string {
@@ -36,7 +35,7 @@ export function agentsUsagePage(nav?: NavLink[]): string {
     active: "/agent/usage",
     nav,
     extraCss: usageCss,
-    body: `<header class="page-header"><h1>Agent usage</h1><p class="dim">Weekly Grok Build quota from automated check-ins.</p></header>
+    body: `${pageHeader({ title: "Agent usage", description: "Weekly Grok Build quota from automated check-ins." })}
 <div id="usage-unavailable" class="card" hidden><p><strong>Unavailable</strong> — no successful reading yet. Imports with <code>weeklyPercentUsed: null</code> stay unavailable (never shown as 0%).</p></div>
 <div id="usage-root" hidden>
 <section class="usage-hero card">
@@ -45,7 +44,7 @@ export function agentsUsagePage(nav?: NavLink[]): string {
 <div id="usage-ring-center" class="usage-ring-legend"></div>
 <span id="usage-status-pill" class="pill unknown">Unavailable</span>
 </div>
-<div class="usage-stats" id="usage-stats"></div>
+<div class="stat-grid" id="usage-stats"></div>
 </section>
 <section class="card usage-charts">
 <h2 style="margin-top:0">Cumulative vs baseline</h2>
@@ -68,12 +67,13 @@ export function agentsUsagePage(nav?: NavLink[]): string {
 function usageScript(): string {
   return `
 ${AGENTS_USAGE_CLIENT_HELPERS}
+${CHART_SVG_CLIENT}
 function $(id){return document.getElementById(id);}
 function element(tag,text,cls){var e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;}
 function fail(err){console.error(err);var box=$("usage-unavailable");if(box){box.hidden=false;box.querySelector("p").textContent=err&&err.message?err.message:String(err);}}
 function statCard(title,value,sub){
-  var el=document.createElement("div");el.className="usage-stat";
-  el.innerHTML="<h3>"+esc(title)+"</h3><div class=\\"value\\">"+esc(value)+"</div>"+(sub?"<div class=\\"sub\\">"+esc(sub)+"</div>":"");
+  var el=document.createElement("article");el.className="stat-card card card-sm usage-stat-card";
+  el.innerHTML="<div class=\\"stat-card-top\\"><span class=\\"stat-label dim\\">"+esc(title)+"</span></div><div class=\\"stat-value tabular-nums\\">"+esc(value)+"</div>"+(sub?"<p class=\\"stat-hint dim\\">"+esc(sub)+"</p>":"");
   return el;
 }
 function renderRing(pct,baseline,dayIndex,daysLeft){
@@ -86,7 +86,7 @@ function renderRing(pct,baseline,dayIndex,daysLeft){
     var used=Math.min(100,pct),circ=2*Math.PI*r;
     var arc=document.createElementNS("http://www.w3.org/2000/svg","circle");
     arc.setAttribute("cx",String(cx));arc.setAttribute("cy",String(cy));arc.setAttribute("r",String(r));
-    arc.setAttribute("fill","none");arc.setAttribute("stroke",pct>(baseline||0)?"var(--warning)":"var(--primary)");
+    arc.setAttribute("fill","none");arc.setAttribute("stroke",pct>(baseline||0)?"var(--warning)":"var(--chart-1)");
     arc.setAttribute("stroke-width","10");arc.setAttribute("stroke-linecap","round");
     arc.setAttribute("stroke-dasharray",String(circ*used/100)+" "+String(circ));
     arc.setAttribute("transform","rotate(-90 "+cx+" "+cy+")");
@@ -108,46 +108,15 @@ function renderRing(pct,baseline,dayIndex,daysLeft){
   }
 }
 function renderLineChart(points){
-  var svg=$("usage-line-chart");svg.replaceChildren();
-  var w=700,h=220,p=28,maxY=100;
-  var cap=document.createElementNS("http://www.w3.org/2000/svg","line");
-  cap.setAttribute("x1",String(p));cap.setAttribute("x2",String(w-p));cap.setAttribute("y1",String(p));cap.setAttribute("y2",String(p));
-  cap.setAttribute("class","line-cap");svg.appendChild(cap);
-  if(!points.length){svg.appendChild(textEl(w/2,h/2,"No data"));return;}
-  var xs=points.map(function(_,i){return p+(w-2*p)*((i+0.5)/Math.max(7,points.length));});
-  function y(v){return v===null?null:p+(h-2*p)*(1-v/maxY);}
-  var basePts=points.map(function(pt,i){return pt.baseline===null?null:xs[i]+","+y(pt.baseline);}).filter(Boolean).join(" ");
-  if(basePts){var bl=document.createElementNS("http://www.w3.org/2000/svg","polyline");bl.setAttribute("points",basePts);bl.setAttribute("class","line-baseline");svg.appendChild(bl);}
-  var seg="";
-  points.forEach(function(pt,i){
-    if(pt.value===null)return;
-    var coord=xs[i]+","+y(pt.value);
-    if(!seg)seg=coord; else seg+=" "+coord;
-    var dot=document.createElementNS("http://www.w3.org/2000/svg","circle");
-    dot.setAttribute("cx",String(xs[i]));dot.setAttribute("cy",String(y(pt.value)));dot.setAttribute("r","4");
-    dot.setAttribute("fill",pt.value>(pt.baseline||0)?"var(--warning)":"var(--primary)");svg.appendChild(dot);
-  });
-  if(seg){var ln=document.createElementNS("http://www.w3.org/2000/svg","polyline");ln.setAttribute("points",seg);ln.setAttribute("class","line-usage");svg.appendChild(ln);}
+  chartRenderLine($("usage-line-chart"),points,700,220,28,100);
 }
-function textEl(x,y,t){var el=document.createElementNS("http://www.w3.org/2000/svg","text");el.setAttribute("x",String(x));el.setAttribute("y",String(y));el.setAttribute("text-anchor","middle");el.setAttribute("fill","var(--muted-foreground)");el.textContent=t;return el;}
 function renderBarChart(rows){
-  var svg=$("usage-bar-chart");svg.replaceChildren();
-  var w=700,h=200,p=28;
-  if(!rows.length){svg.appendChild(textEl(w/2,h/2,"No data"));return;}
-  var slot=(w-2*p)/7;
+  var svg=$("usage-bar-chart");
+  chartRenderBars(svg,rows,700,200,28,100);
+  if(!rows.length)return;
+  var w=700,h=200,p=28,slot=(w-2*p)/7;
   rows.forEach(function(row,i){
     var x=p+slot*i+slot*0.1,bw=slot*0.8;
-    var baseY=h-p-(h-2*p)*Math.min(1,row.baseline/100);
-    var bl=document.createElementNS("http://www.w3.org/2000/svg","line");
-    bl.setAttribute("x1",String(x));bl.setAttribute("x2",String(x+bw));bl.setAttribute("y1",String(baseY));bl.setAttribute("y2",String(baseY));
-    bl.setAttribute("stroke","var(--muted-foreground)");bl.setAttribute("stroke-dasharray","4 3");svg.appendChild(bl);
-    if(row.noData||row.value===null){svg.appendChild(textEl(x+bw/2,h/2,"No data"));}
-    else{
-      var bh=(h-2*p)*Math.min(1,row.value/100);
-      var rect=document.createElementNS("http://www.w3.org/2000/svg","rect");
-      rect.setAttribute("x",String(x));rect.setAttribute("width",String(bw));rect.setAttribute("y",String(h-p-bh));rect.setAttribute("height",String(bh));
-      rect.setAttribute("class",row.value>row.baseline?"bar-over":"bar-under");svg.appendChild(rect);
-    }
     var lab=document.createElementNS("http://www.w3.org/2000/svg","text");
     lab.setAttribute("x",String(x+bw/2));lab.setAttribute("y",String(h-8));lab.setAttribute("text-anchor","middle");lab.setAttribute("fill","var(--muted-foreground)");lab.setAttribute("font-size","10");
     lab.textContent=row.date.slice(5);svg.appendChild(lab);
@@ -207,8 +176,9 @@ function renderUsage(data){
   }
   var stats=$("usage-stats");stats.replaceChildren();
   var delta=c.baseline!==null?pct-c.baseline:null;
-  var vsBase=delta===null?"Unavailable":Math.abs(Math.round(delta))+"% "+(delta>0?"over":"under")+" baseline";
-  stats.appendChild(statCard("vs Baseline",vsBase,delta!==null?(delta>0?"(using it fast)":"(plenty left)"):""));
+  var vsMain=delta===null?"Unavailable":Math.abs(Math.round(delta))+"%";
+  var vsSub=delta===null?"":(delta>0?"over baseline · using it fast":"under baseline · plenty left");
+  stats.appendChild(statCard("vs Baseline",vsMain,vsSub));
   var remDisp=c.remainingDisplay!==null?c.remainingDisplay:null;
   var overSub=c.remainingOverCap!==null&&c.remainingOverCap>0?usageFmtPct(c.remainingOverCap,0)+" over cap":"";
   stats.appendChild(statCard("Remaining",remDisp===null?"Unavailable":usageFmtPct(remDisp,0),overSub));

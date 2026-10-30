@@ -72,7 +72,7 @@ html.dark .calendar-app{--calendar-red:#f3838b;--calendar-blue:#82b5f0;--calenda
 .calendar-mini{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:.15rem}
 .calendar-mini>span{text-align:center;font-size:.65rem;color:var(--dim)}
 .calendar-mini button{position:relative;border:0;border-radius:50%;padding:0;min-height:1.65rem;font-size:.7rem;color:var(--fg);background:transparent}
-.calendar-mini button:hover{background:var(--accent)}.calendar-mini button.outside{color:var(--dim)}
+.calendar-mini button:hover{background:var(--muted)}.calendar-mini button.outside{color:var(--dim)}
 .calendar-mini button.today{box-shadow:inset 0 0 0 1px var(--calendar-red);color:var(--calendar-red)}
 .calendar-mini button[aria-pressed=true]{background:var(--calendar-red);color:var(--background)}
 .calendar-mini button.has-events::after{content:"";position:absolute;width:3px;height:3px;border-radius:50%;background:currentColor;bottom:2px;left:calc(50% - 1.5px)}
@@ -83,7 +83,7 @@ html.dark .calendar-app{--calendar-red:#f3838b;--calendar-blue:#82b5f0;--calenda
 .calendar-agenda-head h2{margin:0;font-size:.8rem}.calendar-agenda-head span{font-size:.7rem}
 .calendar-agenda{max-height:28rem;overflow:auto;margin-top:.5rem}.calendar-agenda-date{font-size:.65rem;text-transform:uppercase;letter-spacing:.05em;margin:1rem 0 .3rem;color:var(--dim)}
 .calendar-agenda-event{display:flex;align-items:flex-start;gap:.5rem;width:100%;justify-content:flex-start;text-align:left;background:transparent;color:var(--fg);padding:.5rem .15rem;font-weight:400;min-width:0}
-.calendar-agenda-event:hover{background:var(--accent)}.calendar-agenda-event .calendar-dot{margin-top:.35rem}.calendar-agenda-event strong{font-size:.8rem;font-weight:500;display:block;overflow-wrap:anywhere}
+.calendar-agenda-event:hover{background:var(--muted)}.calendar-agenda-event .calendar-dot{margin-top:.35rem}.calendar-agenda-event strong{font-size:.8rem;font-weight:500;display:block;overflow-wrap:anywhere}
 .calendar-agenda-event small{font-size:.7rem;color:var(--dim);display:block}
 .calendar-main{min-width:0;display:flex;flex-direction:column}
 .calendar-toolbar{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:1rem;border-bottom:1px solid var(--border);flex-wrap:wrap}

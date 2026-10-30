@@ -19,6 +19,9 @@ test("ui: dashboard renders draggable grid panels and v1 widgets", () => {
   const html = dashboardPage();
   assert.match(html, /class="app-shell"/);
   assert.match(html, /class="sidebar-nav"/);
+  assert.match(html, /class="topbar-breadcrumb"/);
+  assert.match(html, /id="sidebar-toggle"/);
+  assert.match(html, /ui-page-header/);
   assert.match(html, /id="dashboard-grid"/);
   assert.match(html, /id="dashboard-reset-layout"/);
   assert.match(html, /id="panel-tasks"/);
@@ -38,6 +41,16 @@ test("ui: dashboard renders draggable grid panels and v1 widgets", () => {
   assert.match(html, /\/api\/dashboard-layout\/import/);
   assert.match(html, /id="theme-toggle"/);
   assert.doesNotMatch(html, /class="dashboard-overview"/);
+});
+
+test("ui: shell breadcrumb and sidebar persistence script", () => {
+  const html = dashboardPage();
+  assert.match(html, /localStorage\.getItem\("cc-sidebar"\)/);
+  assert.match(html, /localStorage\.setItem\(key,next\)/);
+  assert.match(html, /sidebarShortcutBlocked/);
+  assert.match(html, /page-header-menu\[open\]/);
+  assert.match(html, /id="dashboard-import-layout-btn"/);
+  assert.match(html, /aria-current="page">Dashboard<\/span>/);
 });
 
 test("ui: daily briefing page has source sections and nav link", () => {
@@ -157,9 +170,8 @@ test("ui: retained dashboard, settings and briefing scripts parse without retire
 });
 
 test("ui: full sidebar pages render", () => {
-  assert.match(boardPage(), /href="\/agent" class="on"/);
-  assert.match(boardPage(), /href="\/agent\?view=board" aria-current="page"/);
-  assert.match(winsPage(), /href="\/agent\?view=wins" aria-current="page"/);
+  assert.match(boardPage(), /href="\/agent\?view=board" class="sidebar-sub on"/);
+  assert.match(winsPage(), /href="\/agent\?view=wins" class="sidebar-sub on"/);
   assert.match(notesPage(), /id="knowledge-note-list"/);
   assert.match(noteToolsPage(undefined, false), /Export Markdown/);
   assert.match(noteToolsPage(undefined, true), /Connections/);

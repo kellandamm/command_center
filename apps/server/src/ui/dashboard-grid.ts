@@ -3,15 +3,12 @@ import { DASHBOARD_GRID_LAYOUT_HELPERS } from "./dashboard-grid-layout";
 /** Dashboard grid layout (native CSS grid + pointer drag/resize; zero extra deps). */
 
 export const dashboardGridCss = `
-.dashboard-toolbar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin-bottom:.75rem;flex-shrink:0}
-.dashboard-toolbar .dashboard-toolbar-hint{margin:0;font-size:.8125rem}
-.dashboard-toolbar .dashboard-import-label{cursor:pointer;margin:0}
 .dashboard-page .dashboard-quick-add-bar.quick-add-bar{margin-bottom:.75rem;flex-shrink:0}
 .dashboard-quick-add-bar .quick-add-wrap{max-width:none;width:100%}
 .dashboard-page .voice-inbox{margin-bottom:.75rem;flex-shrink:0;max-width:none;padding:.75rem 1rem}
 .dashboard-page .voice-inbox .voice-inbox-list{margin-top:.5rem}
 .app-shell:has(.dashboard-page){height:100vh;max-height:100vh;overflow:hidden}
-.page-content:has(.dashboard-page){
+.page-body:has(.dashboard-page),.page-body-inner:has(.dashboard-page){
   flex:1 1 0;min-height:0;display:flex;flex-direction:column;padding:1rem 1.25rem .5rem;box-sizing:border-box;
   overflow:hidden;max-width:none;width:100%}
 .dashboard-page{flex:1 1 0;min-height:0;display:flex;flex-direction:column;width:100%;max-width:none;margin:0}
@@ -19,7 +16,7 @@ export const dashboardGridCss = `
 .dashboard-page .page-header p{margin:.2rem 0 0}
 .dashboard-grid{
   width:100%;flex:1 1 auto;min-height:0;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));
-  gap:var(--dash-gap,6px);position:relative;touch-action:none}
+  gap:var(--grid-gap);position:relative;touch-action:none}
 .dashboard-grid.is-packed{display:block;gap:0;width:100%}
 .dashboard-grid.is-packed .dashboard-item{
   grid-column:unset;grid-row:unset;margin:0;min-height:0}
@@ -38,7 +35,7 @@ export const dashboardGridCss = `
 .dashboard-item>.card{
   flex:1;min-height:0;display:flex;flex-direction:column;margin:0;padding:0;overflow:hidden}
 .dashboard-panel-chrome{
-  display:flex;align-items:center;gap:.35rem;padding:.5rem .75rem;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:.35rem;padding:0 var(--card-pad);min-height:3rem;border-bottom:1px solid var(--border);
   flex-shrink:0;background:var(--card)}
 .dashboard-panel-chrome h2{margin:0;font-size:.875rem;font-weight:600;flex:1;min-width:0}
 .dashboard-drag-handle{
@@ -50,7 +47,7 @@ export const dashboardGridCss = `
 .dashboard-collapse{
   border:0;background:transparent;color:var(--muted-foreground);min-width:2rem;min-height:2rem;
   padding:.25rem;border-radius:calc(var(--radius) - 4px);font-size:1rem;line-height:1;cursor:pointer}
-.dashboard-panel-body{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto;padding:.5rem .65rem .65rem;display:flex;flex-direction:column;gap:.35rem;overscroll-behavior:contain}
+.dashboard-panel-body{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto;padding:var(--card-pad);display:flex;flex-direction:column;gap:.35rem;overscroll-behavior:contain}
 .dashboard-panel-body .panel-scroll-region{flex:0 0 auto;min-height:0;overflow:visible}
 @media(min-width:769px){
   .dashboard-item:not(.is-collapsed) .dashboard-panel-body{max-height:100%}
@@ -68,7 +65,7 @@ export const dashboardGridCss = `
 #panel-notes .dim{font-size:.75rem;margin:0}
 @media(max-width:768px){
   .app-shell:has(.dashboard-page){height:auto;max-height:none;overflow:visible}
-  .page-content:has(.dashboard-page){overflow:visible;flex:none;min-height:auto}
+  .page-body:has(.dashboard-page),.page-body-inner:has(.dashboard-page),.page-body:has(.dashboard-page),.page-body-inner:has(.dashboard-page){overflow:visible;flex:none;min-height:auto}
   .dashboard-page{flex:none;min-height:auto}
   .dashboard-grid{grid-template-columns:repeat(6,minmax(0,1fr));height:auto!important;max-height:none!important;grid-template-rows:none!important}
   .dashboard-grid.is-stacked .dashboard-item{height:auto!important;max-height:none!important}
@@ -127,8 +124,8 @@ ${DASHBOARD_GRID_LAYOUT_HELPERS}
     var header=page.querySelector(".page-header");
     var quickAdd=page.querySelector(".dashboard-quick-add-bar");
     var voiceInbox=page.querySelector("#voice-inbox:not([hidden])");
-    var toolbar=page.querySelector(".dashboard-toolbar");
-    var chrome=(header?header.offsetHeight:0)+(quickAdd?quickAdd.offsetHeight:0)+(voiceInbox?voiceInbox.offsetHeight:0)+(toolbar?toolbar.offsetHeight:0)+16;
+    var layoutHint=page.querySelector(".dashboard-layout-hint");
+    var chrome=(header?header.offsetHeight:0)+(quickAdd?quickAdd.offsetHeight:0)+(voiceInbox?voiceInbox.offsetHeight:0)+(layoutHint?layoutHint.offsetHeight:0)+16;
     var avail=Math.max(160,page.clientHeight-chrome-6);
     var stripRows=0,flexRows=0;
     for(var r=0;r<maxEnd;r++){

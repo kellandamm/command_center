@@ -292,3 +292,156 @@ test("dashboard: bootstrap without layout API and breakpoint reflow", { timeout:
     await rm(dataDir, { recursive: true, force: true });
   }
 });
+
+test("dashboard: Esc closes mobile sidebar and layout menu; Ctrl+B ignored in textarea", { timeout: 120_000 }, async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "cc-dash-a11y-"));
+  const port = 4800 + Math.floor(Math.random() * 500);
+  const base = `http://127.0.0.1:${port}`;
+  await new Promise<void>((resolve, reject) => {
+    const seed = spawn("pnpm", ["exec", "tsx", "scripts/seed-dashboard-screenshot.ts"], {
+      cwd: join(import.meta.dirname, ".."),
+      env: { ...process.env, DATA_DIR: dataDir },
+      stdio: "inherit",
+    });
+    seed.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`seed ${code}`))));
+  });
+  const app = startServer(dataDir, port);
+  const browser = await chromium.launch();
+  try {
+    await waitForServer(base);
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.goto(`${base}/`);
+    await page.waitForSelector("#dashboard-grid", { timeout: 20_000 });
+    await page.locator("#sidebar-toggle").click();
+    await page.waitForFunction(() => document.querySelector(".app-shell")?.getAttribute("data-mobile-sidebar") === "open");
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => document.querySelector(".app-shell")?.getAttribute("data-mobile-sidebar") === "closed");
+    const focusAfterEsc = await page.evaluate(() => document.activeElement?.id ?? "");
+    assert.equal(focusAfterEsc, "sidebar-toggle");
+
+    await page.locator(".page-header-menu summary").click();
+    await page.waitForSelector(".page-header-menu[open]");
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => !document.querySelector(".page-header-menu[open]"));
+    const menuFocus = await page.evaluate(() => document.activeElement?.matches(".page-header-menu summary") ?? false);
+    assert.ok(menuFocus);
+  } finally {
+    await browser.close();
+    app.kill("SIGTERM");
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("dashboard: mobile sheet focus stays in sidebar on Tab", { timeout: 120_000 }, async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "cc-dash-mobile-focus-"));
+  const port = 4900 + Math.floor(Math.random() * 500);
+  const base = `http://127.0.0.1:${port}`;
+  await new Promise<void>((resolve, reject) => {
+    const seed = spawn("pnpm", ["exec", "tsx", "scripts/seed-dashboard-screenshot.ts"], {
+      cwd: join(import.meta.dirname, ".."),
+      env: { ...process.env, DATA_DIR: dataDir },
+      stdio: "inherit",
+    });
+    seed.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`seed ${code}`))));
+  });
+  const app = startServer(dataDir, port);
+  const browser = await chromium.launch();
+  try {
+    await waitForServer(base);
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.goto(`${base}/`);
+    await page.waitForSelector("#dashboard-grid", { timeout: 20_000 });
+    await page.locator("#sidebar-toggle").click();
+    await page.waitForFunction(() => document.querySelector(".app-shell")?.getAttribute("data-mobile-sidebar") === "open");
+    await page.waitForFunction(() => {
+      const sidebar = document.querySelector(".sidebar");
+      const active = document.activeElement;
+      return !!(sidebar && active && sidebar.contains(active));
+    }, undefined, { timeout: 3000 });
+    const themeBeforeTab = await page.evaluate(() => document.activeElement?.id === "theme-toggle");
+    assert.equal(themeBeforeTab, false);
+    await page.keyboard.press("Tab");
+    const stillInSidebar = await page.evaluate(() => {
+      const sidebar = document.querySelector(".sidebar");
+      const active = document.activeElement;
+      return !!(sidebar && active && sidebar.contains(active) && active.id !== "theme-toggle");
+    });
+    assert.ok(stillInSidebar);
+  } finally {
+    await browser.close();
+    app.kill("SIGTERM");
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("dashboard: leaving mobile viewport clears open sheet inert state", { timeout: 120_000 }, async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "cc-dash-mobile-resize-"));
+  const port = 5000 + Math.floor(Math.random() * 500);
+  const base = `http://127.0.0.1:${port}`;
+  await new Promise<void>((resolve, reject) => {
+    const seed = spawn("pnpm", ["exec", "tsx", "scripts/seed-dashboard-screenshot.ts"], {
+      cwd: join(import.meta.dirname, ".."),
+      env: { ...process.env, DATA_DIR: dataDir },
+      stdio: "inherit",
+    });
+    seed.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`seed ${code}`))));
+  });
+  const app = startServer(dataDir, port);
+  const browser = await chromium.launch();
+  try {
+    await waitForServer(base);
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.goto(`${base}/`);
+    await page.waitForSelector("#dashboard-grid", { timeout: 20_000 });
+    await page.locator("#sidebar-toggle").click();
+    await page.waitForFunction(() => document.querySelector(".app-shell")?.getAttribute("data-mobile-sidebar") === "open");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.waitForFunction(
+      () =>
+        document.querySelector(".app-shell")?.getAttribute("data-mobile-sidebar") === "closed" &&
+        !document.querySelector(".sidebar")?.hasAttribute("inert") &&
+        !document.querySelector(".sidebar")?.hasAttribute("aria-hidden"),
+    );
+    await page.locator('.sidebar-nav a[href="/notes"]').click();
+    await page.waitForURL(/\/notes/);
+  } finally {
+    await browser.close();
+    app.kill("SIGTERM");
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("dashboard: Ctrl+B toggles desktop sidebar but not from quick-add input", { timeout: 120_000 }, async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "cc-dash-ctrlb-"));
+  const port = 5100 + Math.floor(Math.random() * 500);
+  const base = `http://127.0.0.1:${port}`;
+  await new Promise<void>((resolve, reject) => {
+    const seed = spawn("pnpm", ["exec", "tsx", "scripts/seed-dashboard-screenshot.ts"], {
+      cwd: join(import.meta.dirname, ".."),
+      env: { ...process.env, DATA_DIR: dataDir },
+      stdio: "inherit",
+    });
+    seed.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`seed ${code}`))));
+  });
+  const app = startServer(dataDir, port);
+  const browser = await chromium.launch();
+  try {
+    await waitForServer(base);
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await page.goto(`${base}/`);
+    await page.waitForSelector("#dashboard-grid", { timeout: 20_000 });
+    await page.locator(".dashboard-quick-add-bar input").click();
+    const before = await page.locator(".app-shell").getAttribute("data-sidebar-state");
+    await page.keyboard.press("Control+b");
+    assert.equal(await page.locator(".app-shell").getAttribute("data-sidebar-state"), before);
+    await page.locator("body").click({ position: { x: 8, y: 8 } });
+    const expanded = await page.locator(".app-shell").getAttribute("data-sidebar-state");
+    await page.keyboard.press("Control+b");
+    const after = await page.locator(".app-shell").getAttribute("data-sidebar-state");
+    assert.notEqual(after, expanded);
+  } finally {
+    await browser.close();
+    app.kill("SIGTERM");
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});

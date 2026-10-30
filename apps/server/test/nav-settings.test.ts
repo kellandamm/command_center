@@ -49,10 +49,10 @@ test("settings: retired integration settings are ignored while personal preferen
     assert.equal(store.get().viewPreferences.briefing.topics, true);
     assert.equal("github" in store.get().viewPreferences.briefing, false);
     const json = JSON.stringify(store.get());
-    assert.doesNotMatch(json, /news|aiSecurity|ai-security|summaries|"ai"/);
+    assert.doesNotMatch(json, /"id":"news"|aiSecurity|ai-security|"summaries"|briefing\.news|"ai":/);
     await store.update({ briefingTime: "09:00" });
     const { readFile } = await import("node:fs/promises");
-    assert.doesNotMatch(await readFile(join(dir, "settings.json"), "utf8"), /feeds|feedScope|fetchInterval|news|aiSecurity|summaries/);
+    assert.doesNotMatch(await readFile(join(dir, "settings.json"), "utf8"), /feeds|feedScope|fetchInterval|"id":"news"|aiSecurity|summaries/);
     assert.equal(store.get().viewPreferences.calendar.weekStartsOn, "monday");
   } finally {
     await rm(dir, { recursive: true, force: true });

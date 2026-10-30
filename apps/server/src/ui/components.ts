@@ -4,7 +4,7 @@ export { esc };
 
 export type ButtonVariant = "default" | "secondary" | "outline" | "ghost" | "destructive" | "link";
 export type ButtonSize = "default" | "sm" | "lg" | "icon";
-export type BadgeVariant = "default" | "secondary" | "outline" | "destructive" | "warning";
+export type BadgeVariant = "default" | "secondary" | "outline" | "destructive" | "warning" | "ok" | "info" | "neutral";
 
 type Attrs = Record<string, string | number | boolean | undefined | null>;
 
@@ -54,11 +54,66 @@ export function cardContent(body: string): string {
   return `<div class="ui-card-content">${body}</div>`;
 }
 
-export function card(opts: { title?: string; description?: string; body: string; className?: string; id?: string }): string {
+export function card(opts: {
+  title?: string;
+  description?: string;
+  body: string;
+  className?: string;
+  id?: string;
+  size?: "default" | "sm";
+  actionHtml?: string;
+}): string {
   const idAttr = opts.id ? ` id="${esc(opts.id)}"` : "";
+  const sizeClass = opts.size === "sm" ? " card-sm" : "";
   const extra = opts.className ? ` ${esc(opts.className)}` : "";
-  const header = opts.title ? cardHeader(opts.title, opts.description) : opts.description ? `<p class="ui-card-desc dim">${esc(opts.description)}</p>` : "";
-  return `<section class="card${extra}"${idAttr}>${header}${cardContent(opts.body)}</section>`;
+  const action = opts.actionHtml ? `<div class="ui-card-action">${opts.actionHtml}</div>` : "";
+  const headerInner = opts.title
+    ? `<h2 class="ui-card-title">${esc(opts.title)}</h2>${opts.description ? `<p class="ui-card-desc dim">${esc(opts.description)}</p>` : ""}`
+    : opts.description
+      ? `<p class="ui-card-desc dim">${esc(opts.description)}</p>`
+      : "";
+  const header = headerInner ? `<div class="ui-card-header-row">${headerInner}${action}</div>` : action;
+  const headerWrap = header ? `<div class="ui-card-header">${header}</div>` : "";
+  return `<section class="card${sizeClass}${extra}"${idAttr}>${headerWrap}${cardContent(opts.body)}</section>`;
+}
+
+export function pageHeader(opts: { title: string; description?: string; actionsHtml?: string }): string {
+  const desc = opts.description ? `<p class="dim page-header-desc">${esc(opts.description)}</p>` : "";
+  const actions = opts.actionsHtml ? `<div class="page-header-actions">${opts.actionsHtml}</div>` : "";
+  return `<header class="page-header ui-page-header"><div class="page-header-main"><h1>${esc(opts.title)}</h1>${desc}</div>${actions}</header>`;
+}
+
+export function statCard(opts: {
+  label: string;
+  value: string;
+  delta?: string;
+  deltaDir?: "up" | "down" | "warn";
+  hint?: string;
+  iconHtml?: string;
+}): string {
+  const delta =
+    opts.delta && opts.deltaDir
+      ? `<span class="stat-delta stat-delta-${esc(opts.deltaDir)}">${esc(opts.delta)}</span>`
+      : "";
+  const hint = opts.hint ? `<p class="stat-hint dim">${esc(opts.hint)}</p>` : "";
+  const ic = opts.iconHtml ? `<span class="stat-icon">${opts.iconHtml}</span>` : "";
+  return `<article class="stat-card card card-sm">
+  <div class="stat-card-top"><span class="stat-label dim">${esc(opts.label)}</span>${ic}</div>
+  <div class="stat-value tabular-nums">${esc(opts.value)}</div>
+  ${delta}
+  ${hint}
+</article>`;
+}
+
+export function statGrid(body: string): string {
+  return `<div class="stat-grid">${body}</div>`;
+}
+
+export function skeleton(opts?: { lines?: number; className?: string }): string {
+  const lines = Math.max(1, opts?.lines ?? 3);
+  const extra = opts?.className ? ` ${esc(opts.className)}` : "";
+  const rows = Array.from({ length: lines }, (_, i) => `<span class="skeleton-line${i === 0 ? " skeleton-line-wide" : ""}"></span>`).join("");
+  return `<div class="skeleton${extra}" aria-hidden="true">${rows}</div>`;
 }
 
 /** Dashboard panel shell (title lives in grid chrome). */
@@ -66,9 +121,15 @@ export function panelCard(id: string, body: string): string {
   return `<section class="card" id="${esc(id)}">${cardContent(body)}</section>`;
 }
 
-export function badge(label: string, variant: BadgeVariant = "default"): string {
-  const cls = variant === "default" ? "ui-badge" : `ui-badge ui-badge-${variant}`;
-  return `<span class="${cls}">${esc(label)}</span>`;
+export function badge(label: string, variant: BadgeVariant = "default", opts?: { dot?: boolean }): string {
+  const cls =
+    variant === "default"
+      ? "ui-badge"
+      : variant === "ok" || variant === "info" || variant === "neutral"
+        ? `ui-badge ui-badge-soft ui-badge-${variant}`
+        : `ui-badge ui-badge-${variant}`;
+  const dot = opts?.dot ? '<span class="ui-badge-dot" aria-hidden="true"></span>' : "";
+  return `<span class="${cls}">${dot}${esc(label)}</span>`;
 }
 
 export function tabs(items: Array<{ id: string; label: string; href: string }>, activeId: string): string {
@@ -111,14 +172,15 @@ export function dialog(opts: { id: string; title: string; body: string; footer?:
 </dialog>`;
 }
 
-export function emptyState(opts: { title: string; description?: string; actionHtml?: string }): string {
+export function emptyState(opts: { title: string; description?: string; actionHtml?: string; iconHtml?: string }): string {
   const desc = opts.description ? `<p class="ui-empty-desc dim">${esc(opts.description)}</p>` : "";
   const action = opts.actionHtml ?? "";
-  return `<div class="ui-empty" role="status"><p class="ui-empty-title">${esc(opts.title)}</p>${desc}${action}</div>`;
+  const ic = opts.iconHtml ? `<div class="ui-empty-icon" aria-hidden="true">${opts.iconHtml}</div>` : "";
+  return `<div class="ui-empty" role="status">${ic}<p class="ui-empty-title">${esc(opts.title)}</p>${desc}${action}</div>`;
 }
 
 export function loadingState(message = "Loading…"): string {
-  return `<div class="ui-loading" role="status" aria-busy="true"><span class="ui-loading-text dim">${esc(message)}</span></div>`;
+  return `<div class="ui-loading" role="status" aria-busy="true">${skeleton({ lines: 3 })}<span class="visually-hidden">${esc(message)}</span></div>`;
 }
 
 export function errorState(message: string): string {
@@ -127,5 +189,5 @@ export function errorState(message: string): string {
 
 /** Markup for client-rendered empty states (matches emptyState classes). */
 export function emptyStateHtml(title: string): string {
-  return `<div class="ui-empty" role="status"><p class="ui-empty-title">${esc(title)}</p></div>`;
+  return emptyState({ title });
 }
