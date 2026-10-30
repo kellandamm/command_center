@@ -173,6 +173,8 @@ export function parseDate(raw: string, format: DateFormat): string | null {
   if (!s) return null;
   const space = s.indexOf(" ");
   if (space > 0) s = s.slice(0, space);
+  const isoTime = s.indexOf("T");
+  if (isoTime > 0) s = s.slice(0, isoTime);
   if (format === "YYYY-MM-DD") {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
     const [ys, ms, ds] = s.split("-");
@@ -229,7 +231,15 @@ export function parseMoney(raw: string): number | null {
     if (segs.length === 2 && segs[1]!.length <= 2) s = `${segs[0]!.replace(/\./g, "")}.${segs[1]}`;
     else if (/^\d{1,3}(,\d{3})+\.\d+$/.test(s)) s = s.replace(/,/g, "");
     else if (/^\d{1,3}(,\d{3}){2,}$/.test(s)) s = s.replace(/,/g, "");
-    else if (segs.length === 2 && segs[1]!.length === 3 && /^\d+$/.test(segs[0]!)) return null;
+    else if (
+      segs.length === 2 &&
+      segs[1]!.length === 3 &&
+      /^\d+$/.test(segs[0]!) &&
+      /^\d+$/.test(segs[1]!) &&
+      segs[0]!.length >= 2
+    ) {
+      s = `${segs[0]!.replace(/\./g, "")}${segs[1]!}`;
+    } else if (segs.length === 2 && segs[1]!.length === 3 && /^\d+$/.test(segs[0]!)) return null;
     else return null;
   } else if (dot >= 0) {
     const segs = s.split(".");

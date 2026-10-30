@@ -56,9 +56,21 @@ test("budget csv: invalid calendar dates rejected; epoch date allowed", () => {
   assert.equal(parseDate("1970-01-01", "YYYY-MM-DD"), "1970-01-01");
 });
 
+test("budget csv: parseMoney US thousands and European decimals", () => {
+  assert.equal(parseMoney("12,345"), 1_234_500);
+  assert.equal(parseMoney("12,345.67"), 1_234_567);
+  assert.equal(parseMoney("1,23"), 123);
+  assert.equal(parseMoney("1,234"), null);
+});
+
+test("budget csv: parseDate accepts ISO date-times", () => {
+  assert.equal(parseDate("2026-10-30T12:00:00", "YYYY-MM-DD"), "2026-10-30");
+  assert.equal(parseDate("2026-10-30T12:00:00Z", "YYYY-MM-DD"), "2026-10-30");
+  assert.equal(parseDate("2026-02-31T00:00:00", "YYYY-MM-DD"), null);
+});
+
 test("budget csv: parseMoney rejects ambiguous and scientific forms", () => {
   assert.equal(parseMoney("1.234"), null);
-  assert.equal(parseMoney("1,234"), null);
   assert.equal(parseMoney("1e3"), null);
   assert.equal(parseMoney("0x10"), null);
   assert.equal(parseMoney("1.234,56"), 123_456);

@@ -83,6 +83,17 @@ const SHOTS: Shot[] = [
   ...shotsFor("settings", "/settings", "Settings", async (p) => {
     await p.waitForSelector("#settings-features-list", { timeout: 20_000 });
   }),
+  {
+    name: "settings-views-subtabs-1440-light",
+    path: "/settings",
+    marker: "Settings",
+    viewport: { width: 1440, height: 900 },
+    prepare: async (p) => {
+      await p.waitForSelector("#settings-tab-views", { timeout: 20_000 });
+      await p.click("#settings-tab-views");
+      await p.waitForSelector(".settings-subtabs", { timeout: 10_000 });
+    },
+  },
 ];
 
 function sleep(ms: number) {
@@ -199,7 +210,7 @@ async function main() {
     await browser.close();
     await writeFile(
       join(outRoot, "README.md"),
-      `# Phase 2 restyle ${mode} screenshots\n\nBookmarks, Calendar, Notes, Settings at 1440×900 and 390×844 (light + dark).\n\nGit: \`${gitSha}\`\n`,
+      `# Phase 2 restyle ${mode} screenshots\n\nBookmarks, Calendar, Notes, Settings at 1440×900 and 390×844 (light + dark).\n\nGit commit: see \`git-sha.txt\`.\n`,
     );
   } finally {
     await closeServer();

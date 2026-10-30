@@ -12,9 +12,14 @@ html.dark .phase2-shell{box-shadow:0 0 0 1px color-mix(in srgb,var(--foreground)
 .settings-page .settings-subtabs{
   display:inline-flex;flex-wrap:wrap;gap:.15rem;padding:.2rem;margin:0 0 1rem;
   border:1px solid var(--border);border-radius:calc(var(--radius) - 2px);background:var(--muted)}
-.settings-page .settings-subtabs [role=tab]{font-size:.8125rem;padding:.35rem .7rem;min-height:2rem;border-radius:calc(var(--radius) - 4px)}
-.settings-page .settings-subtabs [role=tab].on{background:var(--card);color:var(--foreground);box-shadow:0 1px 2px rgba(0,0,0,.05)}
-html.dark .settings-page .settings-subtabs [role=tab].on{box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.settings-page .settings-subtabs [role=tab]{
+  font-size:.8125rem;padding:.35rem .7rem;min-height:2rem;border-radius:calc(var(--radius) - 4px);
+  border:0;box-shadow:none;background:transparent;color:var(--muted-foreground)}
+.settings-page .settings-subtabs [role=tab]:hover:not(.on){
+  background:color-mix(in srgb,var(--foreground) 5%,transparent);color:var(--foreground)}
+.settings-page .settings-subtabs [role=tab].on{
+  background:var(--primary);color:var(--primary-foreground);border:0;box-shadow:none}
+.settings-page .settings-subtabs [role=tab]:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
 .settings-page .settings-card{max-width:none;margin:0}
 .settings-section-panel{display:none}
 .settings-section-panel.on{display:block}
