@@ -79,9 +79,10 @@ test("budget csv: infer amount column style from column samples", () => {
 
   assert.equal(inferAmountColumnStyle(["12,345", "99,876"]), "unknown");
   assert.equal(parseMoney("12,345", inferAmountColumnStyle(["12,345", "99,876"])), null);
+  assert.equal(inferAmountColumnStyle(["12,34,567", "1,00,000"]), "unknown");
 });
 
-test("budget csv: normalizeImportRows rejects ambiguous amounts without column evidence", () => {
+test("budget csv: normalizeImportRows resolves ambiguous amounts when US column evidence exists", () => {
   const headers = ["Date", "Amount"];
   const rows = normalizeImportRows({
     accountId: "a1",
@@ -101,11 +102,35 @@ test("budget csv: normalizeImportRows rejects ambiguous amounts without column e
   assert.equal(rows[1]!.amountCents, 123_456);
 });
 
+test("budget csv: normalizeImportRows marks ambiguous amounts invalid without column evidence", () => {
+  const headers = ["Date", "Amount"];
+  const rows = normalizeImportRows({
+    accountId: "a1",
+    mapping: { dateColumn: "Date", dateFormat: "YYYY-MM-DD", amountColumn: "Amount" },
+    invertSign: false,
+    headers,
+    dataRows: [
+      ["2026-01-01", "12,345"],
+      ["2026-01-02", "99,876"],
+    ],
+    headerRowIndex: 0,
+    categoryByName: new Map(),
+    applyPayeeRules: () => null,
+  });
+  assert.equal(rows[0]!.error, "invalid amount");
+  assert.equal(rows[1]!.error, "invalid amount");
+});
+
 test("budget csv: parseDate accepts ISO date-times with T or space", () => {
   assert.equal(parseDate("2026-10-30T12:00:00", "YYYY-MM-DD"), "2026-10-30");
   assert.equal(parseDate("2026-10-30T12:00:00Z", "YYYY-MM-DD"), "2026-10-30");
   assert.equal(parseDate("2026-10-30 12:00", "YYYY-MM-DD"), "2026-10-30");
   assert.equal(parseDate("2026-01-02 00:00:00", "YYYY-MM-DD"), "2026-01-02");
+  assert.equal(parseDate("2026-10-30 10:30:00 AM", "YYYY-MM-DD"), "2026-10-30");
+  assert.equal(parseDate("2026-10-30 12:00 UTC", "YYYY-MM-DD"), "2026-10-30");
+  assert.equal(parseDate("2026-10-30 12:00:00 +0000", "YYYY-MM-DD"), "2026-10-30");
+  assert.equal(parseDate("2026-10-30  12:00", "YYYY-MM-DD"), "2026-10-30");
+  assert.equal(parseDate("2026-10-30 foo", "YYYY-MM-DD"), "2026-10-30");
   assert.equal(parseDate("2026-02-31T00:00:00", "YYYY-MM-DD"), null);
   assert.equal(parseDate("2026-10-30Tfoo", "YYYY-MM-DD"), null);
   assert.equal(parseDate("2026-10-30T", "YYYY-MM-DD"), null);

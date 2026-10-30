@@ -7,6 +7,8 @@ const ISO_DATE_CORE =
 
 /** US thousands: leading group 1–3 digits without a leading zero; further groups are exactly three digits. */
 const US_GROUPED_AMOUNT = /^[1-9]\d{0,2}(,\d{3})+(\.\d{1,2})?$/;
+/** Valid US grouping for column-style inference (allows longer fractional tails in samples). */
+const US_GROUPED_EVIDENCE = /^[1-9]\d{0,2}(,\d{3})+(\.\d+)?$/;
 
 export type AmountColumnStyle = "us" | "european" | "unknown";
 
@@ -24,7 +26,7 @@ function usColumnEvidence(s: string): boolean {
   const dot = s.lastIndexOf(".");
   const comma = s.lastIndexOf(",");
   if (comma >= 0 && dot >= 0 && dot > comma && US_GROUPED_AMOUNT.test(s)) return true;
-  if (comma >= 0 && dot < 0 && s.split(",").length >= 3) return true;
+  if (comma >= 0 && dot < 0 && US_GROUPED_EVIDENCE.test(s) && s.split(",").length >= 3) return true;
   if (dot >= 0 && comma < 0) {
     const segs = s.split(".");
     if (segs.length === 2 && segs[1]!.length >= 1 && segs[1]!.length <= 2) return true;
@@ -62,15 +64,22 @@ export function inferAmountColumnStyle(rawValues: string[]): AmountColumnStyle {
 }
 
 function parseIsoDateInput(raw: string): string | null {
-  const m = raw.match(ISO_DATE_CORE);
-  if (!m) return null;
-  if (m[2] !== undefined) {
-    const h = Number(m[2]);
-    const min = Number(m[3]);
-    const sec = m[4] !== undefined ? Number(m[4]) : 0;
-    if (h > 23 || min > 59 || sec > 59) return null;
+  const trimmed = raw.trim();
+  const m = trimmed.match(ISO_DATE_CORE);
+  if (m) {
+    if (m[2] !== undefined) {
+      const h = Number(m[2]);
+      const min = Number(m[3]);
+      const sec = m[4] !== undefined ? Number(m[4]) : 0;
+      if (h > 23 || min > 59 || sec > 59) return null;
+    }
+    return m[1]!;
   }
-  return m[1]!;
+  if (/^\d{4}-\d{2}-\d{2}T/i.test(trimmed)) return null;
+  const space = trimmed.search(/\s/);
+  const datePart = space >= 0 ? trimmed.slice(0, space) : trimmed;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return null;
+  return datePart;
 }
 
 function isEuropeanDecimalComma(s: string): boolean {
