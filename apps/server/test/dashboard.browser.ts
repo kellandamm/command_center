@@ -332,7 +332,7 @@ test("dashboard: Esc closes mobile sidebar and layout menu; Ctrl+B ignored in te
   }
 });
 
-test("dashboard: mobile sheet focus stays in sidebar on Tab", { timeout: 120_000 }, async () => {
+test("dashboard: mobile sheet traps Tab and Shift+Tab inside sidebar", { timeout: 120_000 }, async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "cc-dash-mobile-focus-"));
   const port = 4900 + Math.floor(Math.random() * 500);
   const base = `http://127.0.0.1:${port}`;
@@ -358,15 +358,33 @@ test("dashboard: mobile sheet focus stays in sidebar on Tab", { timeout: 120_000
       const active = document.activeElement;
       return !!(sidebar && active && sidebar.contains(active));
     }, undefined, { timeout: 3000 });
-    const themeBeforeTab = await page.evaluate(() => document.activeElement?.id === "theme-toggle");
-    assert.equal(themeBeforeTab, false);
-    await page.keyboard.press("Tab");
-    const stillInSidebar = await page.evaluate(() => {
+    const focusableCount = await page.evaluate(() => {
       const sidebar = document.querySelector(".sidebar");
-      const active = document.activeElement;
-      return !!(sidebar && active && sidebar.contains(active) && active.id !== "theme-toggle");
+      if (!sidebar) return 0;
+      return Array.from(
+        sidebar.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'),
+      ).filter((el) => (el as HTMLElement).offsetWidth > 0 || (el as HTMLElement).offsetHeight > 0).length;
     });
-    assert.ok(stillInSidebar);
+    assert.ok(focusableCount >= 2, "need multiple sidebar focusables for trap test");
+    for (let i = 0; i < focusableCount + 1; i++) {
+      await page.keyboard.press("Tab");
+      const inside = await page.evaluate(() => {
+        const sidebar = document.querySelector(".sidebar");
+        return !!(sidebar && document.activeElement && sidebar.contains(document.activeElement));
+      });
+      assert.ok(inside, `Tab step ${i + 1} escaped the mobile sidebar`);
+    }
+    await page.evaluate(() => {
+      const sidebar = document.querySelector(".sidebar");
+      const first = sidebar?.querySelector('a[href],button:not([disabled])') as HTMLElement | null;
+      first?.focus();
+    });
+    await page.keyboard.press("Shift+Tab");
+    const insideShift = await page.evaluate(() => {
+      const sidebar = document.querySelector(".sidebar");
+      return !!(sidebar && document.activeElement && sidebar.contains(document.activeElement));
+    });
+    assert.ok(insideShift, "Shift+Tab from first sidebar item escaped the trap");
   } finally {
     await browser.close();
     app.kill("SIGTERM");
