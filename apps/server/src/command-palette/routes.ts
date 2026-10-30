@@ -6,11 +6,17 @@ import type { BudgetStore } from "../budget/store";
 import type { Config } from "../config";
 import type { NotesStore } from "../notes/store";
 import type { SettingsStore } from "../settings";
-import { searchCommandPalette } from "./search";
+import { MAX_QUERY_LENGTH, searchCommandPalette } from "./search";
 import { TodoistOpenTaskCache } from "./todoist-cache";
 
+const SECURITY = {
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "no-referrer",
+} as const;
+
 function json(res: ServerResponse, status: number, data: unknown) {
-  res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
+  res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store", ...SECURITY });
   res.end(JSON.stringify(data));
 }
 
@@ -32,10 +38,15 @@ export async function handleCommandPaletteRoutes(
   url: URL,
   who: AuthResult & { ok: true },
 ): Promise<boolean> {
-  if (path !== "/api/command-palette/search" || req.method !== "GET") return false;
-  const q = url.searchParams.get("q") ?? "";
+  if (path !== "/api/command-palette/search" || (req.method !== "GET" && req.method !== "HEAD")) return false;
+  const qRaw = url.searchParams.get("q") ?? "";
+  const q = qRaw.length > MAX_QUERY_LENGTH ? qRaw.slice(0, MAX_QUERY_LENGTH) : qRaw;
   const limitRaw = url.searchParams.get("limit");
   const limit = limitRaw != null ? Number(limitRaw) : undefined;
+  if (req.method === "HEAD") {
+    json(res, 200, { results: [] });
+    return true;
+  }
   const results = await searchCommandPalette({
     query: q,
     limit: Number.isFinite(limit) ? limit : undefined,

@@ -15,9 +15,12 @@ export const COMMAND_PALETTE_CSS = `
 .command-palette-option:hover,.command-palette-option[aria-selected=true]{background:var(--selected)}
 .command-palette-option:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
 .command-palette-option-icon{color:var(--muted-foreground);margin-top:.1rem;flex-shrink:0}
-.command-palette-option-body{min-width:0;flex:1}
-.command-palette-option-title{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.command-palette-option-body{min-width:0;flex:1;display:flex;flex-direction:column;gap:.15rem}
+.command-palette-option-main{display:flex;align-items:baseline;gap:.5rem;min-width:0}
+.command-palette-option-title{font-weight:500;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.command-palette-option-kind{flex-shrink:0;font-size:.75rem;color:var(--muted-foreground)}
 .command-palette-option-sub{font-size:.8rem;color:var(--muted-foreground);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.command-palette-error{padding:1.25rem .85rem;color:var(--muted-foreground);font-size:.9rem}
 .command-palette-empty{padding:1.25rem .85rem;color:var(--muted-foreground);font-size:.9rem}
 .command-palette-kbd{margin-left:auto;font-size:.7rem;color:var(--muted-foreground);border:1px solid var(--border);border-radius:4px;padding:.1rem .35rem}
 `;
@@ -26,7 +29,7 @@ export function commandPaletteMarkup(): string {
   return `<div id="command-palette-overlay" aria-hidden="true">
   <div id="command-palette-panel" role="dialog" aria-modal="true" aria-label="Command palette" tabindex="-1">
     <div class="command-palette-search-wrap">
-      <span class="ui-icon" aria-hidden="true">${ICONS.layoutDashboard}</span>
+      <span class="ui-icon" aria-hidden="true">${ICONS.search}</span>
       <input id="command-palette-input" type="search" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="command-palette-listbox" aria-activedescendant="" placeholder="Search or jump to…" autocomplete="off" spellcheck="false" />
       <span class="command-palette-kbd" aria-hidden="true">Esc</span>
     </div>
@@ -44,11 +47,12 @@ export const COMMAND_PALETTE_SCRIPT = `
   if(!overlay||!panel||!input||!listbox)return;
   var shell=document.querySelector(".app-shell");
   var inset=shell&&shell.querySelector(".sidebar-inset");
-  var open=false,priorFocus=null,debounceTimer=null,fetchGen=0,activeIndex=-1,rows=[];
+  var open=false,priorFocus=null,debounceTimer=null,fetchGen=0,activeIndex=-1,rows=[],searchFailed=false;
   var TYPE_LABELS=${JSON.stringify({ nav: "Navigation", note: "Note", meeting: "Meeting", task: "Task", "board-card": "Board", bookmark: "Bookmark", "budget-tx": "Budget" })};
   function sidebarShortcutBlocked(){
     var el=document.activeElement;
     if(!el||!el.tagName)return false;
+    if(el.id==="command-palette-input")return false;
     var tag=el.tagName;
     if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT")return true;
     if(el.isContentEditable)return true;
@@ -86,6 +90,16 @@ export const COMMAND_PALETTE_SCRIPT = `
   }
   function render(){
     listbox.replaceChildren();
+    if(searchFailed){
+      var errLi=document.createElement("li");
+      errLi.className="command-palette-error";
+      errLi.textContent="Search failed";
+      errLi.setAttribute("role","presentation");
+      listbox.appendChild(errLi);
+      setActiveIndex(-1);
+      input.setAttribute("aria-expanded","false");
+      return;
+    }
     if(!rows.length){
       var empty=document.createElement("li");
       empty.className="command-palette-empty";
@@ -109,13 +123,22 @@ export const COMMAND_PALETTE_SCRIPT = `
       var kind=TYPE_LABELS[row.type]||row.type;
       var body=document.createElement("span");
       body.className="command-palette-option-body";
+      var mainRow=document.createElement("span");
+      mainRow.className="command-palette-option-main";
       var titleEl=document.createElement("span");
       titleEl.className="command-palette-option-title";
       titleEl.textContent=row.title;
-      var subEl=document.createElement("span");
-      subEl.className="command-palette-option-sub";
-      subEl.textContent=row.subtitle?kind+" · "+row.subtitle:kind;
-      body.append(titleEl,subEl);
+      var kindEl=document.createElement("span");
+      kindEl.className="command-palette-option-kind";
+      kindEl.textContent=kind;
+      mainRow.append(titleEl,kindEl);
+      body.appendChild(mainRow);
+      if(row.subtitle){
+        var subEl=document.createElement("span");
+        subEl.className="command-palette-option-sub";
+        subEl.textContent=row.subtitle;
+        body.appendChild(subEl);
+      }
       btn.appendChild(body);
       btn.onclick=function(){navigate(row.href);};
       li.appendChild(btn);
@@ -136,6 +159,7 @@ export const COMMAND_PALETTE_SCRIPT = `
     setInert(false);
     input.value="";
     rows=[];
+    searchFailed=false;
     render();
     input.blur();
     if(priorFocus&&priorFocus.focus&&priorFocus!==input&&!overlay.contains(priorFocus))priorFocus.focus();
@@ -150,6 +174,7 @@ export const COMMAND_PALETTE_SCRIPT = `
     setInert(true);
     input.value="";
     rows=[];
+    searchFailed=false;
     render();
     input.focus();
     queueFetch("");
@@ -161,29 +186,39 @@ export const COMMAND_PALETTE_SCRIPT = `
   }
   function runFetch(q){
     var gen=++fetchGen;
+    searchFailed=false;
     fetch("/api/command-palette/search?q="+encodeURIComponent(q)+"&limit=50",{headers:{"x-ah":"1"}})
-      .then(function(r){return r.json();})
+      .then(function(r){
+        if(!r.ok)throw new Error("search "+r.status);
+        return r.json();
+      })
       .then(function(j){
         if(gen!==fetchGen||!open)return;
         rows=Array.isArray(j.results)?j.results:[];
+        searchFailed=false;
         render();
       })
-      .catch(function(err){console.error("command palette search failed",err);});
+      .catch(function(err){
+        console.error("command palette search failed",err);
+        if(gen!==fetchGen||!open)return;
+        rows=[];
+        searchFailed=true;
+        render();
+      });
   }
   input.addEventListener("input",function(){queueFetch(input.value);});
   input.addEventListener("keydown",function(ev){
-    if(ev.key==="ArrowDown"){
+    if((ev.metaKey||ev.ctrlKey)&&ev.key.toLowerCase()==="k"){
+      ev.preventDefault();
+      close();
+    }else if(ev.key==="ArrowDown"){
       ev.preventDefault();
       if(!rows.length)return;
       setActiveIndex(Math.min(activeIndex+1,rows.length-1));
-      var el=document.getElementById("command-palette-option-"+activeIndex);
-      if(el)el.focus();
     }else if(ev.key==="ArrowUp"){
       ev.preventDefault();
       if(!rows.length)return;
       setActiveIndex(Math.max(activeIndex-1,0));
-      var up=document.getElementById("command-palette-option-"+activeIndex);
-      if(up)up.focus();
     }else if(ev.key==="Home"){
       ev.preventDefault();
       if(rows.length)setActiveIndex(0);

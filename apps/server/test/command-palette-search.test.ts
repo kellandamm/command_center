@@ -15,6 +15,7 @@ import { BookmarksStore } from "../src/bookmarks/store";
 import { BoardStore } from "../src/board/store";
 import { SERVICE_WORKER } from "../src/pwa";
 import {
+  MAX_QUERY_LENGTH,
   paletteBudgetRowsAllowed,
   scoreTextMatch,
   searchCommandPalette,
@@ -210,6 +211,84 @@ test("command palette: Cache-Control no-store on search API", async () => {
     const res = await fetch(`${base}/api/command-palette/search?q=`, { headers: ownerHeaders });
     assert.equal(res.status, 200);
     assert.match(res.headers.get("cache-control") ?? "", /no-store/i);
+  } finally {
+    await closeIntegrationServer(server, integration);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("command palette: Todoist fetch failure returns 200 without task rows and backs off refetch", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-cp-todoist-fail-"));
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    TODOIST_API_TOKEN: "tok",
+    TZ: "UTC",
+  });
+  let calls = 0;
+  const fetchFn: typeof fetch = async () => {
+    calls++;
+    return new Response("upstream down", { status: 503 });
+  };
+  const cache = new TodoistOpenTaskCache(cfg, fetchFn);
+  const settings = new SettingsStore(dir);
+  await settings.load();
+  const notes = await NotesStore.open(dir);
+  await notes.createNote({ title: "StillFindMe", content: "body" });
+  const board = BoardStore.open(dir);
+  const bookmarks = await BookmarksStore.open(dir);
+  const deps = {
+    cfg,
+    settings,
+    notes,
+    bookmarks,
+    board,
+    who: { ok: true as const, owner: true, email: OWNER, who: OWNER, serviceToken: false },
+    todoistCache: cache,
+  };
+  const first = await searchCommandPalette({ ...deps, query: "StillFind" });
+  assert.ok(first.some((r) => r.type === "note"));
+  assert.ok(!first.some((r) => r.type === "task"));
+  await searchCommandPalette({ ...deps, query: "StillFind" });
+  await searchCommandPalette({ ...deps, query: "Other" });
+  await searchCommandPalette({ ...deps, query: "Third" });
+  assert.equal(calls, 1);
+  board.close();
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("command palette: API truncates q to 200 characters", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-cp-q-cap-"));
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    ALLOW_INSECURE_NO_AUTH: "1",
+    TZ: "UTC",
+  });
+  const settings = new SettingsStore(dir);
+  await settings.load();
+  const notes = await NotesStore.open(dir);
+  const needle = "Z".repeat(MAX_QUERY_LENGTH + 50);
+  await notes.createNote({ title: `${"Z".repeat(MAX_QUERY_LENGTH)}UniqueTail`, content: "x" });
+  const integration = await openIntegrationStores(dir, cfg);
+  const server = createApp({
+    cfg,
+    auth: makeAuthenticator(cfg, async () => ({ email: OWNER })),
+    settings,
+    dailyBriefing: await DailyBriefingService.open(dir, cfg.tz),
+    notes,
+    ...integration,
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    const res = await fetch(`${base}/api/command-palette/search?q=${encodeURIComponent(needle)}`, {
+      headers: ownerHeaders,
+    });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { results: Array<{ title: string }> };
+    assert.ok(body.results.some((r) => r.title.includes("UniqueTail")));
+    const head = await fetch(`${base}/api/command-palette/search?q=`, { method: "HEAD", headers: ownerHeaders });
+    assert.equal(head.status, 200);
+    assert.match(head.headers.get("x-content-type-options") ?? "", /nosniff/i);
   } finally {
     await closeIntegrationServer(server, integration);
     await rm(dir, { recursive: true, force: true });

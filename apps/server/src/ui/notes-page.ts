@@ -700,9 +700,15 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     if(event.key==="Escape"&&document.body.classList.contains("notes-focus")){toggleFocus();return;}
     if(!event.metaKey&&!event.ctrlKey)return;
     if(loading||transitioning)return;
+    var paletteOverlay=document.getElementById("command-palette-overlay");
+    if(paletteOverlay&&paletteOverlay.classList.contains("open"))return;
     var key=event.key.toLowerCase();
     if(key==="s"){event.preventDefault();saveNote(undefined,true).catch(showError);}
     else if(key==="k"){
+      var target=event.target;
+      var tag=target&&target.tagName;
+      if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT")return;
+      if($("knowledge-switcher").open)return;
       if(typeof window.ccOpenCommandPalette==="function"){event.preventDefault();window.ccOpenCommandPalette();return;}
       event.preventDefault();switcher();
     }

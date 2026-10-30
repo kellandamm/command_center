@@ -26,6 +26,11 @@ export class TodoistOpenTaskCache {
         this.expiresAt = Date.now() + TODOIST_OPEN_TASKS_TTL_MS;
         return tasks;
       })
+      .catch(() => {
+        this.tasks = [];
+        this.expiresAt = Date.now() + TODOIST_OPEN_TASKS_TTL_MS;
+        return [];
+      })
       .finally(() => {
         this.inflight = null;
       });

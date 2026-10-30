@@ -314,6 +314,13 @@ const THEME_SCRIPT = `
   }
   var inset=shell.querySelector(".sidebar-inset");
   var focusWait=null;
+  function commandPaletteOpen(){
+    var ov=document.getElementById("command-palette-overlay");
+    return !!(ov&&ov.classList.contains("open"));
+  }
+  function clearInsetInertIfAllowed(){
+    if(inset&&!commandPaletteOpen())inset.removeAttribute("inert");
+  }
   function cancelFocusWait(){
     if(!focusWait)return;
     if(focusWait.timer)clearTimeout(focusWait.timer);
@@ -357,14 +364,15 @@ const THEME_SCRIPT = `
     cancelFocusWait();
     shell.setAttribute("data-mobile-sidebar","closed");
     if(sidebar){sidebar.removeAttribute("inert");sidebar.removeAttribute("aria-hidden");}
-    if(inset)inset.removeAttribute("inert");
+    clearInsetInertIfAllowed();
     syncToggleAria();
   }
   function setMobileOpen(open){
     if(!open)cancelFocusWait();
     shell.setAttribute("data-mobile-sidebar",open?"open":"closed");
     if(inset){
-      if(open)inset.setAttribute("inert",""); else inset.removeAttribute("inert");
+      if(open)inset.setAttribute("inert","");
+      else clearInsetInertIfAllowed();
     }
     if(sidebar){
       if(open){sidebar.removeAttribute("inert");sidebar.removeAttribute("aria-hidden");focusFirstSidebarWhenVisible();}
