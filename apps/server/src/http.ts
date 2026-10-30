@@ -339,7 +339,7 @@ export function createApp(app: App): Server {
       const nav = () =>
         visibleNavTabs(app.settings.get().sidebarTabs, {
           whiteboard: app.cfg.whiteboardEnabled,
-          budget: budgetAvailable(app.cfg),
+          budget: budgetAvailable(app.cfg) && who.owner === true,
         });
 
       if (get && path === "/") return send(res, 200, dashboardPage(nav()), undefined, extra);

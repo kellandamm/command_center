@@ -38,6 +38,13 @@ export class ImportPreviewCache {
     this.entries.delete(this.key(ownerEmail, previewId));
   }
 
+  clearForOwner(ownerEmail: string): void {
+    const prefix = `${ownerEmail.toLowerCase()}::`;
+    for (const k of [...this.entries.keys()]) {
+      if (k.startsWith(prefix)) this.entries.delete(k);
+    }
+  }
+
   purgeExpired(now = Date.now()): void {
     for (const [k, v] of this.entries) {
       if (v.expiresAt <= now) this.entries.delete(k);

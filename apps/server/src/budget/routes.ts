@@ -4,7 +4,7 @@ import { OWNER_ACTION_FORBIDDEN } from "../owner-auth";
 import { ValidationError } from "../settings";
 import { readRawBody } from "../request-body";
 import type { AuthResult } from "../auth";
-import { BUDGET_IMPORT_MAX_BYTES, BUDGET_PREVIEW_SAMPLE_ROWS } from "./constants";
+import { BUDGET_IMPORT_MAX_BYTES, BUDGET_PREVIEW_SAMPLE_ROWS, DATE_FORMATS } from "./constants";
 import {
   detectHeaderRow,
   guessMapping,
@@ -139,8 +139,7 @@ export async function handleBudgetRoutes(
         json(res, 404, { error: "batch not found" });
         return true;
       }
-      const previewId = url.searchParams.get("previewId");
-      if (previewId) importPreviewCache.delete(ownerEmail, previewId);
+      importPreviewCache.clearForOwner(ownerEmail);
       const undone = store.undoImport(batchId);
       json(res, 200, { batch: undone });
       return true;
@@ -148,7 +147,8 @@ export async function handleBudgetRoutes(
 
     if (path === "/api/budget/import/preview" && req.method === "POST") {
       const accountId = url.searchParams.get("accountId") ?? "";
-      const fileName = url.searchParams.get("fileName");
+      let fileName = url.searchParams.get("fileName");
+      if (fileName && fileName.length > 200) fileName = fileName.slice(0, 200);
       const account = store.getAccount(accountId);
       if (!account) {
         json(res, 404, { error: "account not found" });
@@ -158,7 +158,16 @@ export async function handleBudgetRoutes(
         json(res, 400, { error: "investment accounts cannot import CSV" });
         return true;
       }
-      const raw = await readRawBody(req, BUDGET_IMPORT_MAX_BYTES);
+      let raw: Buffer;
+      try {
+        raw = await readRawBody(req, BUDGET_IMPORT_MAX_BYTES);
+      } catch (err) {
+        if (err instanceof ValidationError && err.message.includes("too large")) {
+          json(res, 413, { error: "file too large" });
+          return true;
+        }
+        throw err;
+      }
       const fileSha256 = BudgetStore.sha256(raw);
       const text = stripBom(raw.toString("utf8"));
       const table = parseCsv(text);
@@ -177,7 +186,18 @@ export async function handleBudgetRoutes(
       const mapping: CsvMapping = saved ?? guessMapping(headers);
       let invertSign = account.invertSign;
       const bodyMapping = url.searchParams.get("mapping");
-      if (bodyMapping) Object.assign(mapping, JSON.parse(bodyMapping) as CsvMapping);
+      if (bodyMapping) {
+        try {
+          Object.assign(mapping, JSON.parse(bodyMapping) as CsvMapping);
+        } catch {
+          json(res, 400, { error: "invalid mapping" });
+          return true;
+        }
+      }
+      const dateFormatParam = url.searchParams.get("dateFormat");
+      if (dateFormatParam && (DATE_FORMATS as readonly string[]).includes(dateFormatParam)) {
+        mapping.dateFormat = dateFormatParam as CsvMapping["dateFormat"];
+      }
 
       const trialRows = normalizeImportRows({
         accountId,
@@ -244,10 +264,12 @@ export async function handleBudgetRoutes(
         json(res, 404, { error: "preview expired or not found" });
         return true;
       }
-      let invertSign = entry.invertSign;
-      if (body.invertSign != null) invertSign = Boolean(body.invertSign);
+      let invertSign = body.invertSign != null ? Boolean(body.invertSign) : entry.invertSign;
       if (body.mapping && typeof body.mapping === "object") {
-        entry.mapping = { ...entry.mapping, ...(body.mapping as CsvMapping) };
+        if (JSON.stringify(body.mapping) !== JSON.stringify(entry.mapping)) {
+          json(res, 400, { error: "mapping cannot change after preview" });
+          return true;
+        }
       }
 
       let commitRows = entry.rows;
@@ -285,7 +307,8 @@ export async function handleBudgetRoutes(
   } catch (err) {
     if (err instanceof ValidationError) {
       logBudgetError("validation", { code: "validation" });
-      json(res, 400, { error: "invalid request" });
+      const msg = err.message.includes("too large") ? 413 : 400;
+      json(res, msg, { error: msg === 413 ? "file too large" : "invalid request" });
       return true;
     }
     logBudgetError("route_error", { route: path.replace(/\?.*$/, "") });

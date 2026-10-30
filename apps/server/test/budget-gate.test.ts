@@ -74,6 +74,8 @@ test("budget gate: disabled returns 404 page and 503 API", async () => {
     assert.equal(page.status, 404);
     const api = await fetch(`${h.base}/api/budget/accounts`, { headers: ownerHeaders });
     assert.equal(api.status, 503);
+    const body = (await api.json()) as { error: string };
+    assert.match(body.error, /Budget is not enabled/i);
     const nav = visibleNavTabs(DEFAULT_SIDEBAR_TABS, { budget: false });
     assert.ok(!nav.some((t) => t.href === "/budget"));
   } finally {
@@ -91,5 +93,43 @@ test("budget gate: enabled exposes nav and opens store", async () => {
     assert.equal(page.status, 200);
   } finally {
     await h.close();
+  }
+});
+
+test("budget gate: non-owner dashboard omits Budget nav link", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-budget-nav-"));
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    ALLOW_INSECURE_NO_AUTH: "1",
+    CF_ACCESS_TEAM_DOMAIN: "team.example.com",
+    CF_ACCESS_AUD: "aud",
+    OWNER_EMAILS: OWNER,
+    TZ: "UTC",
+  });
+  const settings = new SettingsStore(dir);
+  await settings.load();
+  const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
+  const notes = await NotesStore.open(dir);
+  const integration = await openIntegrationStores(dir, cfg);
+  const budget = BudgetStore.open(dir);
+  const server = createApp({
+    cfg,
+    auth: makeAuthenticator(cfg, async () => ({ email: "other@example.com" })),
+    settings,
+    dailyBriefing,
+    notes,
+    ...integration,
+    budget,
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    const home = await fetch(`${base}/`, { headers: ownerHeaders });
+    const html = await home.text();
+    assert.doesNotMatch(html, /href="\/budget"/);
+  } finally {
+    budget.close();
+    await closeIntegrationServer(server, integration);
+    await rm(dir, { recursive: true, force: true });
   }
 });

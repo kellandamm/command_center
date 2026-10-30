@@ -10,7 +10,6 @@ import { createApp } from "../src/http";
 import { DailyBriefingService } from "../src/daily-briefing/service";
 import { SettingsStore } from "../src/settings";
 import { NotesStore } from "../src/notes/store";
-import { budgetAvailable } from "../src/budget/gate";
 import { BudgetStore } from "../src/budget/store";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
@@ -93,6 +92,100 @@ test("budget import: re-import same file adds zero rows; twin rows both insert",
 
     const overlap = await importCsv(`Date,Description,Amount\n04/01/2026,${PLANT},-25.00\n`);
     assert.equal(overlap.batch.rowsAdded, 0);
+  } finally {
+    await h.close();
+  }
+});
+
+test("budget import: inverted credit account re-import adds zero rows", async () => {
+  const h = await openBudgetHttp();
+  try {
+    const acctRes = await fetch(`${h.base}/api/budget/accounts`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name: "Visa", type: "credit", invertSign: true }),
+    });
+    const { account } = (await acctRes.json()) as { account: { id: string; invertSign: boolean } };
+    assert.equal(account.invertSign, true);
+    const csv = `Date,Description,Amount\n06/01/2026,Charge,-40.00\n`;
+
+    async function importOnce() {
+      const prev = await fetch(
+        `${h.base}/api/budget/import/preview?accountId=${account.id}&fileName=card.csv`,
+        { method: "POST", headers: { ...headers, "content-type": "text/csv" }, body: csv },
+      );
+      const preview = (await prev.json()) as {
+        previewId: string;
+        invertSign: boolean;
+        counts: { newCount: number };
+      };
+      assert.equal(prev.status, 200);
+      assert.equal(preview.invertSign, true);
+      const commit = await fetch(`${h.base}/api/budget/import/commit`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ previewId: preview.previewId, invertSign: true }),
+      });
+      const body = (await commit.json()) as { batch: { rowsAdded: number } };
+      assert.equal(commit.status, 201);
+      return body.batch.rowsAdded;
+    }
+
+    assert.equal(await importOnce(), 1);
+    assert.equal(await importOnce(), 0);
+    const acct = h.budget.getAccount(account.id);
+    assert.equal(acct?.invertSign, true);
+  } finally {
+    await h.close();
+  }
+});
+
+test("budget import: mapping change at commit is rejected", async () => {
+  const h = await openBudgetHttp();
+  try {
+    const { account } = (await (
+      await fetch(`${h.base}/api/budget/accounts`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ name: "Checking", type: "checking" }),
+      })
+    ).json()) as { account: { id: string } };
+    const csv = `Date,Description,Amount\n07/01/2026,Test,-1.00\n`;
+    const prev = await fetch(
+      `${h.base}/api/budget/import/preview?accountId=${account.id}&fileName=t.csv`,
+      { method: "POST", headers: { ...headers, "content-type": "text/csv" }, body: csv },
+    );
+    const preview = (await prev.json()) as { previewId: string; mapping: Record<string, string> };
+    const commit = await fetch(`${h.base}/api/budget/import/commit`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        previewId: preview.previewId,
+        mapping: { ...preview.mapping, dateColumn: "Wrong" },
+      }),
+    });
+    assert.equal(commit.status, 400);
+  } finally {
+    await h.close();
+  }
+});
+
+test("budget import: oversize file returns 413", async () => {
+  const h = await openBudgetHttp();
+  try {
+    const { account } = (await (
+      await fetch(`${h.base}/api/budget/accounts`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ name: "Checking", type: "checking" }),
+      })
+    ).json()) as { account: { id: string } };
+    const big = "a".repeat(5_000_001);
+    const prev = await fetch(
+      `${h.base}/api/budget/import/preview?accountId=${account.id}&fileName=big.csv`,
+      { method: "POST", headers: { ...headers, "content-type": "text/csv" }, body: big },
+    );
+    assert.equal(prev.status, 413);
   } finally {
     await h.close();
   }

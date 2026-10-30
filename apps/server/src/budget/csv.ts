@@ -122,10 +122,14 @@ function normHeader(cell: string): string {
   return cell.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ");
 }
 
+function headerHasToken(headerNorm: string, token: string): boolean {
+  return headerNorm === token || headerNorm.split(" ").includes(token);
+}
+
 function pickColumn(headers: string[], candidates: string[]): string | undefined {
   const normalized = headers.map((h) => normHeader(h));
   for (const cand of candidates) {
-    const idx = normalized.findIndex((h) => h === cand || h.includes(cand));
+    const idx = normalized.findIndex((h) => headerHasToken(h, cand));
     if (idx >= 0) return headers[idx]!;
   }
   return undefined;
@@ -139,7 +143,7 @@ export function guessMapping(headers: string[]): CsvMapping {
   const memoColumn = pickColumn(headers, ["memo", "notes", "note"]) ?? undefined;
   const categoryColumn = pickColumn(headers, ["category", "type"]) ?? undefined;
   const debitColumn = pickColumn(headers, ["debit", "withdrawal", "out"]) ?? undefined;
-  const creditColumn = pickColumn(headers, ["credit", "deposit", "in"]) ?? undefined;
+  const creditColumn = pickColumn(headers, ["credit", "deposit"]) ?? undefined;
   let amountColumn = pickColumn(headers, ["amount", "transaction amount", "value"]);
   if (debitColumn && creditColumn) amountColumn = undefined;
   if (!amountColumn && !debitColumn) amountColumn = pickColumn(headers, ["amount"]) ?? headers[1];
@@ -155,12 +159,22 @@ export function guessMapping(headers: string[]): CsvMapping {
   };
 }
 
-function parseDate(raw: string, format: DateFormat): string | null {
+function isoFromParts(y: number, m: number, d: number): string | null {
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return null;
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  const iso = `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const probe = new Date(Date.UTC(y, m - 1, d));
+  if (probe.getUTCFullYear() !== y || probe.getUTCMonth() + 1 !== m || probe.getUTCDate() !== d) return null;
+  return iso;
+}
+
+export function parseDate(raw: string, format: DateFormat): string | null {
   const s = raw.trim();
   if (!s) return null;
   if (format === "YYYY-MM-DD") {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
-    return Date.parse(s) ? s : null;
+    const [ys, ms, ds] = s.split("-");
+    return isoFromParts(Number(ys), Number(ms), Number(ds));
   }
   const parts = s.split(/[/-]/);
   if (parts.length !== 3) return null;
@@ -176,21 +190,61 @@ function parseDate(raw: string, format: DateFormat): string | null {
     m = Number(parts[1]);
     y = Number(parts[2]);
   }
-  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return null;
   if (y < 100) y += 2000;
-  const iso = `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  return Date.parse(iso) ? iso : null;
+  return isoFromParts(y, m, d);
 }
 
-function parseMoney(raw: string): number | null {
-  const cleaned = raw.trim().replace(/[$,\s]/g, "");
-  if (!cleaned || cleaned === "-") return null;
-  const negative = cleaned.startsWith("(") && cleaned.endsWith(")");
-  const num = Number(negative ? cleaned.slice(1, -1) : cleaned);
-  if (!Number.isFinite(num)) return null;
-  const cents = Math.round(Math.abs(num) * 100);
-  if (negative || cleaned.startsWith("-")) return -cents;
-  return cents;
+/** Parse currency to whole cents. Outflows may be negative. Returns null on ambiguous or invalid input. */
+export function parseMoney(raw: string): number | null {
+  let s = raw.trim();
+  if (!s || s === "-") return null;
+  let negative = false;
+  if (s.startsWith("(") && s.endsWith(")")) {
+    negative = true;
+    s = s.slice(1, -1).trim();
+  } else if (s.startsWith("-")) {
+    negative = true;
+    s = s.slice(1).trim();
+  }
+  s = s.replace(/[$\s]/g, "");
+  if (/[eExX]/.test(s)) return null;
+
+  const dot = s.lastIndexOf(".");
+  const comma = s.lastIndexOf(",");
+  if (dot >= 0 && comma >= 0) {
+    if (comma > dot) {
+      if (!/^\d{1,3}(\.\d{3})*,\d+$/.test(s) && !/^\d+,\d+$/.test(s)) return null;
+      s = s.replace(/\./g, "").replace(",", ".");
+    } else {
+      if (!/^\d{1,3}(,\d{3})+\.\d+$/.test(s) && !/^\d+\.\d+$/.test(s)) return null;
+      s = s.replace(/,/g, "");
+    }
+  } else if (comma >= 0) {
+    const segs = s.split(",");
+    if (segs.length === 2 && segs[1]!.length <= 2) s = `${segs[0]!.replace(/\./g, "")}.${segs[1]}`;
+    else if (/^\d{1,3}(,\d{3})+\.\d+$/.test(s)) s = s.replace(/,/g, "");
+    else if (segs.length === 2 && segs[1]!.length === 3 && /^\d+$/.test(segs[0]!)) return null;
+    else return null;
+  } else if (dot >= 0) {
+    const segs = s.split(".");
+    if (segs.length > 2) return null;
+    if (segs.length === 2 && segs[1]!.length === 3 && segs[1]![0] !== "0" && /^\d+$/.test(segs[0]!)) return null;
+  }
+
+  const match = s.match(/^(\d+)(?:\.(\d+))?$/);
+  if (!match) return null;
+  const whole = match[1]!;
+  const fracRaw = match[2] ?? "";
+  if (fracRaw.length > 2) {
+    const roundDigit = fracRaw[2]!;
+    const base = BigInt(whole) * 100n + BigInt(fracRaw.slice(0, 2).padEnd(2, "0"));
+    const cents = roundDigit >= "5" ? base + 1n : base;
+    const n = Number(cents);
+    return negative ? -n : n;
+  }
+  const cents = Number(whole) * 100 + Number(fracRaw.padEnd(2, "0").slice(0, 2));
+  if (!Number.isSafeInteger(cents)) return null;
+  return negative ? -cents : cents;
 }
 
 function columnIndex(headers: string[], name: string | undefined): number {

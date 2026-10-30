@@ -14,6 +14,8 @@ import { NotesStore } from "../src/notes/store";
 import { BudgetStore } from "../src/budget/store";
 import { SERVICE_WORKER } from "../src/pwa";
 import { notesForLlmContext } from "../src/notes/sensitive";
+import { logBudgetError } from "../src/budget/redact";
+import { transactionFingerprint } from "../src/budget/csv";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
 const OWNER = "owner@example.com";
@@ -80,6 +82,22 @@ test("budget privacy: import preview does not log payee", async () => {
   }
 });
 
+test("budget privacy: logBudgetError strips planted payee from detail", () => {
+  const lines: unknown[] = [];
+  const orig = console.error;
+  console.error = (...args: unknown[]) => {
+    lines.push(args);
+  };
+  try {
+    logBudgetError("validation", { code: "x", payee: PLANT, route: "/api/budget/import/preview" });
+    const blob = JSON.stringify(lines);
+    assert.ok(!blob.includes(PLANT));
+    assert.match(blob, /validation/);
+  } finally {
+    console.error = orig;
+  }
+});
+
 test("budget privacy: MCP and LLM paths exclude budget modules", () => {
   const mcpServer = readFileSync(join(process.cwd(), "src/mcp/create-server.ts"), "utf8");
   const mcpActions = readFileSync(join(process.cwd(), "src/mcp/actions.ts"), "utf8");
@@ -89,6 +107,36 @@ test("budget privacy: MCP and LLM paths exclude budget modules", () => {
   assert.ok(!webhook.includes("budget"));
   const llmNotes = notesForLlmContext([]);
   assert.ok(!JSON.stringify(llmNotes).includes(PLANT));
+});
+
+test("budget privacy: seeded budget payee absent from knowledge LLM note context", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-budget-llm-"));
+  const budget = BudgetStore.open(dir);
+  const acct = budget.createAccount({ name: "Checking", type: "checking" });
+  const fp = transactionFingerprint(acct.id, "2026-08-01", -999, PLANT, 0);
+  budget.commitImport({
+    accountId: acct.id,
+    fileName: "x.csv",
+    fileSha256: "abc",
+    mapping: { dateColumn: "Date", dateFormat: "YYYY-MM-DD", amountColumn: "Amount" },
+    invertSign: false,
+    rows: [
+      {
+        rowNumber: 2,
+        date: "2026-08-01",
+        amountCents: -999,
+        payee: PLANT,
+        memo: "",
+        categoryId: null,
+        fingerprint: fp,
+      },
+    ],
+  });
+  const notes = await NotesStore.open(dir);
+  const contextJson = JSON.stringify(notesForLlmContext(notes.listNotes()));
+  assert.ok(!contextJson.includes(PLANT));
+  budget.close();
+  await rm(dir, { recursive: true, force: true });
 });
 
 test("budget privacy: service worker skips /budget caching", () => {
@@ -127,6 +175,83 @@ test("budget privacy: non-owner cannot read budget API", async () => {
   try {
     const res = await fetch(`${base}/api/budget/accounts`, {
       headers: { cookie: "CF_Authorization=t", "x-ah": "1" },
+    });
+    assert.equal(res.status, 403);
+  } finally {
+    budget.close();
+    await closeIntegrationServer(server, integration);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("budget privacy: anonymous request returns 401", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-budget-anon-"));
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    CF_ACCESS_TEAM_DOMAIN: "team.example.com",
+    CF_ACCESS_AUD: "aud",
+    OWNER_EMAILS: OWNER,
+    ADMIN_TOKEN: "z".repeat(32),
+    TZ: "UTC",
+  });
+  const settings = new SettingsStore(dir);
+  await settings.load();
+  const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
+  const notes = await NotesStore.open(dir);
+  const integration = await openIntegrationStores(dir, cfg);
+  const budget = BudgetStore.open(dir);
+  const server = createApp({
+    cfg,
+    auth: makeAuthenticator(cfg),
+    settings,
+    dailyBriefing,
+    notes,
+    ...integration,
+    budget,
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    const res = await fetch(`${base}/api/budget/accounts`, { headers: { "x-ah": "1" } });
+    assert.equal(res.status, 401);
+  } finally {
+    budget.close();
+    await closeIntegrationServer(server, integration);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("budget privacy: admin token without owner email returns 403", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-budget-admin-"));
+  const admin = "a".repeat(32);
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    ADMIN_TOKEN: admin,
+    CF_ACCESS_TEAM_DOMAIN: "team.example.com",
+    CF_ACCESS_AUD: "aud",
+    OWNER_EMAILS: OWNER,
+    TZ: "UTC",
+  });
+  const settings = new SettingsStore(dir);
+  await settings.load();
+  const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
+  const notes = await NotesStore.open(dir);
+  const integration = await openIntegrationStores(dir, cfg);
+  const budget = BudgetStore.open(dir);
+  const server = createApp({
+    cfg,
+    auth: makeAuthenticator(cfg),
+    settings,
+    dailyBriefing,
+    notes,
+    ...integration,
+    budget,
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    const res = await fetch(`${base}/api/budget/accounts`, {
+      headers: { authorization: `Bearer ${admin}`, "x-ah": "1" },
     });
     assert.equal(res.status, 403);
   } finally {

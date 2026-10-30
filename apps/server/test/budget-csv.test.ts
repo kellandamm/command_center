@@ -5,6 +5,8 @@ import {
   normalizeImportRows,
   normalizePayee,
   parseCsv,
+  parseDate,
+  parseMoney,
   stripBom,
   transactionFingerprint,
 } from "../src/budget/csv";
@@ -46,4 +48,26 @@ test("budget csv: normalize assigns nth within file", () => {
   });
   assert.equal(rows.length, 2);
   assert.notEqual(rows[0]!.fingerprint, rows[1]!.fingerprint);
+});
+
+test("budget csv: invalid calendar dates rejected; epoch date allowed", () => {
+  assert.equal(parseDate("02/31/2026", "MM/DD/YYYY"), null);
+  assert.equal(parseDate("2026-02-31", "YYYY-MM-DD"), null);
+  assert.equal(parseDate("1970-01-01", "YYYY-MM-DD"), "1970-01-01");
+});
+
+test("budget csv: parseMoney rejects ambiguous and scientific forms", () => {
+  assert.equal(parseMoney("1.234"), null);
+  assert.equal(parseMoney("1,234"), null);
+  assert.equal(parseMoney("1e3"), null);
+  assert.equal(parseMoney("0x10"), null);
+  assert.equal(parseMoney("1.234,56"), 123_456);
+  assert.equal(parseMoney("1,234.56"), 123_456);
+  assert.equal(parseMoney("1.005"), 101);
+});
+
+test("budget csv: credit column guess does not match Posting Date", () => {
+  const headers = ["Posting Date", "Description", "Amount"];
+  const mapping = guessMapping(headers);
+  assert.notEqual(mapping.creditColumn, "Posting Date");
 });
