@@ -1,5 +1,6 @@
-import { DEFAULT_SIDEBAR_TABS, visibleNavTabs, type SidebarTab } from "../nav-tabs";
+import { DEFAULT_SIDEBAR_TABS, visibleSidebarTabs, type SidebarGroup, type SidebarTab } from "../nav-tabs";
 import { COMPONENT_CSS } from "./component-css";
+import { ICONS, icon, type IconName } from "./icons";
 import { formatThemeVars, THEME_DARK, THEME_LIGHT, THEME_META_COLORS } from "./theme-tokens";
 
 export const esc = (s: unknown) =>
@@ -8,11 +9,15 @@ export const esc = (s: unknown) =>
 /** Gray neutral + royal blue primary + orange accent (shadcn-style SSR tokens). */
 const CSS = `
 :root{
-  --radius:0.625rem;
+  --radius:0.75rem;
+  --sidebar-width:16rem;--sidebar-width-icon:3rem;--topbar-h:3.5rem;--inset-gap:0.5rem;
+  --page-pad:1.5rem;--section-gap:1.5rem;--grid-gap:1rem;--card-pad:1.25rem;
+  --font-mono:ui-monospace,"JetBrains Mono","SF Mono",Menlo,monospace;
   ${formatThemeVars(THEME_LIGHT)};
   --bg:var(--background);--panel:var(--card);--line:var(--border);--fg:var(--foreground);
   --dim:var(--muted-foreground);--bad:var(--destructive);
 }
+html.compact{--page-pad:1rem;--card-pad:0.875rem;--grid-gap:0.75rem}
 html.dark{
   ${formatThemeVars(THEME_DARK)};
 }
@@ -21,33 +26,79 @@ html,body{margin:0;min-height:100%;background:var(--background);color:var(--fore
   font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   -webkit-font-smoothing:antialiased}
 a{color:inherit;text-decoration:none}
-h1{font-size:1.875rem;font-weight:600;letter-spacing:-.025em;line-height:1.2;margin:0}
+h1{font-size:1.5rem;font-weight:600;letter-spacing:-.025em;line-height:1.2;margin:0}
+.tabular-nums,.num{font-variant-numeric:tabular-nums;font-family:var(--font-mono)}
 h2{font-size:.875rem;font-weight:600;line-height:1;margin:0 0 .75rem;letter-spacing:-.01em}
 code{font-size:.875em;background:var(--muted);padding:.1em .35em;border-radius:calc(var(--radius) - 4px)}
 .dim{color:var(--muted-foreground)}.bad{color:var(--destructive)}.ok{color:var(--ok)}
-.app-shell{display:flex;min-height:100vh;width:100%}
+.app-shell{display:flex;min-height:100vh;width:100%;background:var(--sidebar)}
+.app-shell[data-sidebar-state=collapsed] .sidebar{width:var(--sidebar-width-icon)}
+.app-shell[data-sidebar-state=collapsed] .sidebar-label,.app-shell[data-sidebar-state=collapsed] .sidebar-group-label,
+.app-shell[data-sidebar-state=collapsed] .sidebar-brand-text,.app-shell[data-sidebar-state=collapsed] .sidebar-user-meta,
+.app-shell[data-sidebar-state=collapsed] .sidebar-subnav{display:none}
+.app-shell[data-sidebar-state=collapsed] .sidebar-nav a{justify-content:center;padding:.5rem}
 .sidebar{
-  width:15rem;flex-shrink:0;display:flex;flex-direction:column;
-  background:var(--sidebar);color:var(--sidebar-foreground);border-right:1px solid var(--sidebar-border);
-  padding:.75rem;position:sticky;top:0;height:100vh;z-index:20}
-.sidebar-brand{padding:.5rem .75rem 1rem;font-weight:600;font-size:.95rem;letter-spacing:-.02em}
-.sidebar-nav{display:flex;flex-direction:column;gap:.25rem;flex:1}
+  width:var(--sidebar-width);flex-shrink:0;display:flex;flex-direction:column;
+  background:var(--sidebar);color:var(--sidebar-foreground);padding:.75rem .5rem;
+  position:sticky;top:0;height:100vh;z-index:30;transition:width .2s ease}
+.sidebar-header{padding:.25rem .5rem .75rem}
+.sidebar-brand{display:flex;align-items:center;gap:.65rem;padding:.35rem .5rem;text-decoration:none;color:inherit}
+.sidebar-logo{
+  width:2rem;height:2rem;border-radius:calc(var(--radius) - 2px);background:var(--primary);color:var(--primary-foreground);
+  display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.75rem;flex-shrink:0}
+.sidebar-brand-text{display:flex;flex-direction:column;min-width:0;line-height:1.25}
+.sidebar-brand-text strong{font-size:.875rem;font-weight:600;letter-spacing:-.02em}
+.sidebar-brand-text span{font-size:.6875rem;color:var(--muted-foreground)}
+.sidebar-content{flex:1;overflow-y:auto;overflow-x:hidden;padding:0 .25rem;display:flex;flex-direction:column;gap:.75rem}
+.sidebar-group{display:flex;flex-direction:column;gap:.2rem}
+.sidebar-group-label{padding:.25rem .75rem;font-size:.75rem;font-weight:500;color:color-mix(in srgb,var(--sidebar-foreground) 70%,transparent)}
+.sidebar-nav{display:flex;flex-direction:column;gap:.125rem}
 .sidebar-nav a{
-  display:flex;align-items:center;gap:.5rem;padding:.5rem .75rem;border-radius:calc(var(--radius) - 2px);
-  font-size:.875rem;font-weight:500;color:var(--sidebar-foreground);transition:background .15s}
+  display:flex;align-items:center;gap:.5rem;padding:.375rem .75rem;border-radius:calc(var(--radius) - 2px);
+  font-size:.875rem;font-weight:500;color:var(--sidebar-foreground);transition:background .15s;min-height:2rem}
 .sidebar-nav a:hover{background:var(--sidebar-accent);color:var(--sidebar-accent-foreground)}
 .sidebar-nav a.on{background:var(--sidebar-primary);color:var(--sidebar-primary-foreground);font-weight:600}
-.sidebar-footer{padding:.5rem .25rem;border-top:1px solid var(--sidebar-border);margin-top:.5rem}
-.app-main{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
-.page-content{flex:1;padding:1.5rem 1.25rem 2rem;width:100%;max-width:90rem;margin:0 auto}
-.page-header{margin-bottom:1.5rem}
+.sidebar-nav a.sidebar-sub{padding-left:2.25rem;font-size:.8125rem;min-height:1.75rem}
+.ui-icon{display:inline-flex;flex-shrink:0;align-items:center;justify-content:center;width:1rem;height:1rem}
+.ui-icon svg{display:block}
+.sidebar-footer{margin-top:auto;padding:.5rem .25rem 0;border-top:1px solid var(--sidebar-border)}
+.sidebar-user{display:flex;align-items:center;gap:.5rem;padding:.5rem .35rem;margin-top:.35rem;border-radius:calc(var(--radius) - 2px)}
+.sidebar-user-avatar{
+  width:2rem;height:2rem;border-radius:calc(var(--radius) - 2px);background:var(--muted);color:var(--muted-foreground);
+  display:flex;align-items:center;justify-content:center;font-size:.6875rem;font-weight:600;flex-shrink:0}
+.sidebar-user-meta{min-width:0;font-size:.8125rem;line-height:1.25}
+.sidebar-user-meta strong{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sidebar-user-meta span{display:block;font-size:.6875rem;color:var(--muted-foreground);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sidebar-inset{
+  flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;margin:var(--inset-gap);
+  border-radius:1rem;background:var(--background);box-shadow:0 1px 2px rgba(0,0,0,.06);overflow:hidden}
+.topbar{
+  position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:.75rem;height:var(--topbar-h);
+  padding:0 1rem;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--background) 80%,transparent);
+  backdrop-filter:blur(8px);flex-shrink:0}
+.topbar-start{display:flex;align-items:center;gap:.5rem;min-width:0;flex:1}
+.topbar-sep{width:1px;height:1.25rem;background:var(--border);flex-shrink:0}
+.topbar-breadcrumb{display:flex;align-items:center;gap:.35rem;min-width:0;font-size:.875rem;color:var(--muted-foreground);flex-wrap:wrap}
+.topbar-breadcrumb a{color:inherit}
+.topbar-breadcrumb a:hover{color:var(--primary)}
+.topbar-breadcrumb [aria-current=page]{color:var(--foreground);font-weight:500}
+.topbar-breadcrumb-sep{display:inline-flex;opacity:.6}
+.topbar-actions{display:flex;align-items:center;gap:.35rem;flex-shrink:0}
+.page-body{
+  flex:1;padding:var(--page-pad);display:flex;flex-direction:column;gap:var(--section-gap);
+  background:color-mix(in srgb,var(--muted) 40%,transparent);min-width:0}
+.page-content,.page-body-inner{flex:1;width:100%;min-width:0}
+.page-read-width{max-width:90rem;margin:0 auto;width:100%}
+.page-header{margin-bottom:0}
 .page-header p{margin:.35rem 0 0;font-size:.875rem}
+.sidebar-backdrop{display:none}
+.agent-tabs-mobile{display:none}
 .panel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,22rem),1fr));gap:1rem;align-items:start}
 .card{
-  background:var(--card);color:var(--card-foreground);border:1px solid var(--border);
-  border-radius:var(--radius);padding:1.25rem;margin:0;
-  box-shadow:0 1px 2px rgba(0,0,0,.04)}
-html.dark .card{box-shadow:0 1px 2px rgba(0,0,0,.35)}
+  background:var(--card);color:var(--card-foreground);border:0;
+  border-radius:calc(var(--radius) + 0.25rem);padding:var(--card-pad);margin:0;
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--foreground) 6%,transparent),0 1px 2px rgba(0,0,0,.04)}
+html.dark .card{box-shadow:0 0 0 1px color-mix(in srgb,var(--foreground) 10%,transparent),0 1px 2px rgba(0,0,0,.35)}
 .row{display:flex;gap:.75rem;flex-wrap:wrap;align-items:center}
 button,.btn{
   font:inherit;font-size:.875rem;font-weight:500;
@@ -57,7 +108,7 @@ button,.btn{
   transition:opacity .15s}
 button:hover,.btn:hover{opacity:.92}
 button.ghost,.btn.ghost{background:transparent;color:var(--foreground);border-color:var(--border)}
-button.ghost:hover,.btn.ghost:hover{background:var(--accent)}
+button.ghost:hover,.btn.ghost:hover{background:var(--muted);color:var(--foreground)}
 button.ghost[aria-pressed=true],.btn.ghost[aria-pressed=true],button.ghost.on,.btn.ghost.on{
   background:var(--selected);color:var(--selected-foreground);border-color:color-mix(in srgb,var(--primary) 28%,var(--border))}
 button.icon-btn{min-width:2.25rem;padding:.5rem}
@@ -128,16 +179,17 @@ pre.briefing.bad{color:var(--destructive);background:transparent;border-color:co
 .settings-option label.choice-row{font-size:.8125rem}
 .settings-options-grid select{max-width:100%}
 .settings-card#tab-views{max-width:70rem}
-.compact .page-content{padding:1rem}
 .compact .page-header{margin-bottom:.85rem}
-.compact .card{padding:.85rem}
 .compact .panel-grid,.compact .briefing-grid{gap:.65rem}
+@media(max-width:768px){:root{--page-pad:1rem}}
 .compact .feed-item,.compact .todoist-item{padding:.4rem 0}
 .notes-size-small{font-size:.75rem}
 .notes-size-medium{font-size:.875rem}
 .notes-size-large{font-size:1rem}
-.page-content:has(.morning-briefing){max-width:none;padding:clamp(1rem,3vw,2.75rem);background:#f1eee5;color:#191815}
-html.dark .page-content:has(.morning-briefing){background:#171610;color:#f0ede3}
+.page-body:has(.morning-briefing),.page-body-inner:has(.morning-briefing){
+  max-width:none;padding:clamp(1rem,3vw,2.75rem);background:#f1eee5;color:#191815}
+html.dark .page-body:has(.morning-briefing),html.dark .page-body-inner:has(.morning-briefing){
+  background:#171610;color:#f0ede3}
 .morning-briefing{--paper-ink:#191815;--paper-muted:#68665f;--paper-rule:#bcb8ad;--paper-accent:#a92d1c;max-width:90rem;margin:0 auto}
 html.dark .morning-briefing{--paper-ink:#f0ede3;--paper-muted:#b2aea3;--paper-rule:#5c594f;--paper-accent:#e4846a}
 .morning-masthead{padding:.25rem 0 1rem;text-align:center}
@@ -192,13 +244,18 @@ html.dark .morning-briefing{--paper-ink:#f0ede3;--paper-muted:#b2aea3;--paper-ru
 .briefing-topics .dim{color:var(--paper-muted)}
 .morning-briefing .dim{color:var(--paper-muted)}
 @media(max-width:768px){
-  .app-shell{flex-direction:column}
-  .sidebar{width:100%;height:auto;position:relative;border-right:0;border-bottom:1px solid var(--sidebar-border);padding:.5rem .75rem}
-  .sidebar-nav{flex-direction:row;flex-wrap:wrap;gap:.25rem}
-  .sidebar-brand{padding:.25rem .5rem .5rem}
-  .sidebar-footer{border-top:0;margin-top:0;padding:0 .25rem}
-  .theme-toggle{width:auto}
-  .page-content{padding:1rem .75rem 1.5rem}
+  .app-shell{--inset-gap:0}
+  .sidebar{
+    position:fixed;left:0;top:0;bottom:0;width:min(18rem,88vw);transform:translateX(-105%);
+    transition:transform .2s ease;box-shadow:0 8px 32px rgba(0,0,0,.2);z-index:50}
+  .app-shell[data-mobile-sidebar=open] .sidebar{transform:translateX(0)}
+  .app-shell[data-mobile-sidebar=open] .sidebar-backdrop{display:block}
+  .sidebar-backdrop{
+    position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:40;border:0;padding:0;cursor:pointer}
+  .sidebar-inset{margin:0;border-radius:0;min-height:100vh}
+  .agent-tabs-mobile{display:flex;gap:1rem;border-bottom:1px solid var(--border);margin-bottom:1rem;overflow:auto}
+  .agent-tabs-mobile a{padding:.65rem 0;white-space:nowrap;color:var(--muted-foreground);font-size:.875rem}
+  .agent-tabs-mobile a[aria-current=page]{color:var(--foreground);border-bottom:2px solid var(--foreground);font-weight:600}
 }
 @media(max-width:1000px){
   .briefing-grid{grid-template-columns:minmax(0,1fr)}
@@ -219,13 +276,13 @@ export type NavLink = { href: string; label: string };
 const THEME_SCRIPT = `
 (function(){
   var key="cc-theme",root=document.documentElement,meta=document.querySelector('meta[name="theme-color"]');
+  var sun=${JSON.stringify(ICONS.sun)},moon=${JSON.stringify(ICONS.moon)};
   function apply(mode){
     var dark=mode==="dark";
     root.classList.toggle("dark",dark);
     if(meta)meta.setAttribute("content",dark?"${THEME_META_COLORS.dark}":"${THEME_META_COLORS.light}");
     var btn=document.getElementById("theme-toggle");
-    if(btn)btn.setAttribute("aria-label",dark?"Switch to light mode":"Switch to dark mode");
-    if(btn)btn.textContent=dark?"Light mode":"Dark mode";
+    if(btn){btn.setAttribute("aria-label",dark?"Switch to light mode":"Switch to dark mode");btn.innerHTML=dark?sun:moon;}
   }
   var stored=localStorage.getItem(key);
   if(stored==="dark"||stored==="light")apply(stored);
@@ -236,54 +293,241 @@ const THEME_SCRIPT = `
     localStorage.setItem(key,next);apply(next);
   };
 })();
+(function(){
+  var key="cc-sidebar",shell=document.querySelector(".app-shell");
+  if(!shell)return;
+  var stored=localStorage.getItem(key);
+  if(stored==="collapsed"||stored==="expanded")shell.setAttribute("data-sidebar-state",stored);
+  else shell.setAttribute("data-sidebar-state","expanded");
+  function setState(next){
+    shell.setAttribute("data-sidebar-state",next);
+    document.documentElement.setAttribute("data-sidebar-state",next);
+    localStorage.setItem(key,next);
+    var btn=document.getElementById("sidebar-toggle");
+    if(btn)btn.setAttribute("aria-expanded",next==="expanded"?"true":"false");
+  }
+  function toggle(){
+    if(window.matchMedia("(max-width:768px)").matches){
+      var open=shell.getAttribute("data-mobile-sidebar")==="open";
+      shell.setAttribute("data-mobile-sidebar",open?"closed":"open");
+      return;
+    }
+    setState(shell.getAttribute("data-sidebar-state")==="collapsed"?"expanded":"collapsed");
+  }
+  document.getElementById("sidebar-toggle")?.addEventListener("click",toggle);
+  document.getElementById("sidebar-backdrop")?.addEventListener("click",function(){
+    shell.setAttribute("data-mobile-sidebar","closed");
+  });
+  document.addEventListener("keydown",function(ev){
+    if((ev.metaKey||ev.ctrlKey)&&ev.key.toLowerCase()==="b"){ev.preventDefault();toggle();}
+  });
+})();
 `;
 
-export function page(opts: { title: string; body: string; active?: string; script?: string; nav?: NavLink[]; extraCss?: string; extraHead?: string }): string {
-  const agentSections = [
-    ["/board", "board", "Board"], ["/agent/queue", "queue", "Queue"],
-    ["/agent/usage", "usage", "Usage"],
-    ["/wins", "wins", "Wins"], ["/assistant", "assistant", "Assistant"], ["/activity", "activity", "Activity"],
-  ];
-  const agentSection = agentSections.find(([path]) => path === opts.active);
-  const active = agentSection ? "/agent" : opts.active;
-  const agentNav = agentSection ? `<nav class="agent-tabs" aria-label="Agent sections">${agentSections.map(([, id, label]) =>
-    `<a href="/agent?view=${id}"${id === agentSection[1] ? ' aria-current="page"' : ""}>${label}</a>`).join("")}</nav>` : "";
-  const links = opts.nav ?? visibleNavTabs(DEFAULT_SIDEBAR_TABS);
-  const nav = links
-    .map(
-      ({ href, label }) =>
-        `<a href="${href}"${active === href ? ' class="on"' : ""}><span>${esc(label)}</span></a>`,
-    )
-    .join("");
-  const shell = `<div class="app-shell">
+const SIDEBAR_BOOT_SCRIPT = `(function(){var s=localStorage.getItem("cc-sidebar");if(s==="collapsed"||s==="expanded")document.documentElement.setAttribute("data-sidebar-state",s);else document.documentElement.setAttribute("data-sidebar-state","expanded");})();`;
+
+const DEFAULT_BY_HREF = new Map(DEFAULT_SIDEBAR_TABS.map((t) => [t.href, t]));
+
+function tabsFromNav(links: NavLink[]): SidebarTab[] {
+  return links.map((link, i) => {
+    const base = DEFAULT_BY_HREF.get(link.href);
+    if (base) return { ...base, label: link.label };
+    return {
+      id: "dashboard",
+      href: link.href,
+      label: link.label,
+      visible: true,
+      order: i,
+      group: "workspace" as SidebarGroup,
+      icon: "layoutDashboard",
+    };
+  });
+}
+
+const AGENT_SUB_NAV: Array<{ sectionId: string; href: string; label: string; icon: IconName }> = [
+  { sectionId: "board", href: "/agent?view=board", label: "Board", icon: "listTodo" },
+  { sectionId: "queue", href: "/agent?view=queue", label: "Queue", icon: "listTodo" },
+  { sectionId: "usage", href: "/agent?view=usage", label: "Usage", icon: "barChart" },
+  { sectionId: "wins", href: "/agent?view=wins", label: "Wins", icon: "trophy" },
+  { sectionId: "assistant", href: "/agent?view=assistant", label: "Assistant", icon: "messageSquare" },
+  { sectionId: "activity", href: "/agent?view=activity", label: "Activity", icon: "activity" },
+];
+
+const GROUP_ORDER: SidebarGroup[] = ["workspace", "library", "agent"];
+const GROUP_LABELS: Record<SidebarGroup, string> = {
+  workspace: "Workspace",
+  library: "Library",
+  agent: "Agent",
+};
+
+function sidebarLink(tab: SidebarTab, isOn: boolean, extraClass = ""): string {
+  const cls = [isOn ? "on" : "", extraClass].filter(Boolean).join(" ");
+  const classAttr = cls ? ` class="${cls}"` : "";
+  const ic = ICONS[tab.icon as IconName] ? icon(tab.icon as IconName) : "";
+  return `<a href="${esc(tab.href)}"${classAttr} title="${esc(tab.label)}">${ic}<span class="sidebar-label">${esc(tab.label)}</span></a>`;
+}
+
+const AGENT_ACTIVE_MAP: Record<string, string> = {
+  "/board": "board",
+  "/agent/queue": "queue",
+  "/agent/usage": "usage",
+  "/agent": "board",
+  "/wins": "wins",
+  "/assistant": "assistant",
+  "/activity": "activity",
+};
+
+function agentSectionIdFromActive(active?: string): string | undefined {
+  if (!active) return undefined;
+  return AGENT_ACTIVE_MAP[active];
+}
+
+function renderSidebarGroups(tabs: SidebarTab[], activeHref: string, agentSectionId?: string): string {
+  const visible = tabs.filter((t) => (t.visible || t.locked) && t.id !== "settings");
+  return GROUP_ORDER.map((group) => {
+    if (group === "agent") {
+      const agentTab = visible.find((t) => t.id === "agent");
+      if (!agentTab) return "";
+      const subs = AGENT_SUB_NAV.map((sub) => {
+        const subOn = agentSectionId === sub.sectionId;
+        return `<a href="${esc(sub.href)}" class="sidebar-sub${subOn ? " on" : ""}" title="${esc(sub.label)}">${icon(sub.icon)}<span class="sidebar-label">${esc(sub.label)}</span></a>`;
+      }).join("");
+      const parentOn = activeHref === "/agent" && !agentSectionId;
+      return `<div class="sidebar-group"><div class="sidebar-group-label">${GROUP_LABELS.agent}</div><nav class="sidebar-nav sidebar-subnav">${sidebarLink(agentTab, parentOn)}${subs}</nav></div>`;
+    }
+    const items = visible.filter((t) => t.group === group);
+    if (!items.length) return "";
+    return `<div class="sidebar-group"><div class="sidebar-group-label">${GROUP_LABELS[group]}</div><nav class="sidebar-nav">${items.map((t) => sidebarLink(t, activeHref === t.href)).join("")}</nav></div>`;
+  }).join("");
+}
+
+function breadcrumbHtml(opts: {
+  active?: string;
+  agentSection?: (typeof AGENT_SUB_NAV)[number] | undefined;
+  crumbs?: Array<{ label: string; href?: string }>;
+  pageTitle: string;
+}): string {
+  if (opts.crumbs?.length) {
+    return opts.crumbs
+      .map((c, i) => {
+        const last = i === opts.crumbs!.length - 1;
+        const sep = last ? "" : `<span class="topbar-breadcrumb-sep" aria-hidden="true">${icon("chevronRight")}</span>`;
+        const inner = c.href && !last ? `<a href="${esc(c.href)}">${esc(c.label)}</a>` : `<span${last ? ' aria-current="page"' : ""}>${esc(c.label)}</span>`;
+        return `${inner}${sep}`;
+      })
+      .join("");
+  }
+  if (opts.agentSection) {
+    return `<a href="/agent">Agent</a><span class="topbar-breadcrumb-sep" aria-hidden="true">${icon("chevronRight")}</span><span aria-current="page">${esc(opts.agentSection.label)}</span>`;
+  }
+  const label =
+    opts.active === "/"
+      ? "Dashboard"
+      : opts.pageTitle.replace(/\s*—\s*Command Center.*/i, "").trim() || "Command Center";
+  return `<span aria-current="page">${esc(label)}</span>`;
+}
+
+export function page(opts: {
+  title: string;
+  body: string;
+  active?: string;
+  script?: string;
+  nav?: NavLink[];
+  extraCss?: string;
+  extraHead?: string;
+  crumbs?: Array<{ label: string; href?: string }>;
+  readWidth?: boolean;
+}): string {
+  const agentSectionId = agentSectionIdFromActive(opts.active);
+  const agentSectionMeta = agentSectionId ? AGENT_SUB_NAV.find((s) => s.sectionId === agentSectionId) : undefined;
+  const activeHref = agentSectionId ? "/agent" : (opts.active ?? "");
+  const agentNavMobile = agentSectionId
+    ? `<nav class="agent-tabs-mobile" aria-label="Agent sections">${AGENT_SUB_NAV.map((sub) => {
+        const subOn = agentSectionId === sub.sectionId;
+        return `<a href="${esc(sub.href)}"${subOn ? ' aria-current="page"' : ""}>${esc(sub.label)}</a>`;
+      }).join("")}</nav>`
+    : "";
+  const tabs = opts.nav ? tabsFromNav(opts.nav) : visibleSidebarTabs(DEFAULT_SIDEBAR_TABS);
+  const settingsTab = tabs.find((t) => t.href === "/settings") ?? DEFAULT_SIDEBAR_TABS.find((t) => t.id === "settings")!;
+  const sidebarGroups = renderSidebarGroups(tabs, activeHref, agentSectionId);
+  const crumbs = breadcrumbHtml({
+    active: opts.active,
+    agentSection: agentSectionMeta,
+    crumbs: opts.crumbs,
+    pageTitle: opts.title,
+  });
+  const bodyWrapClass = opts.readWidth ? "page-body-inner page-read-width" : "page-body-inner";
+  const shell = `<div class="app-shell" data-sidebar-state="expanded" data-mobile-sidebar="closed">
+<button type="button" class="sidebar-backdrop" id="sidebar-backdrop" aria-label="Close navigation"></button>
 <aside class="sidebar" aria-label="Main navigation">
-  <div class="sidebar-brand">Command Center</div>
-  <nav class="sidebar-nav">${nav}</nav>
+  <div class="sidebar-header">
+    <a class="sidebar-brand" href="/">
+      <span class="sidebar-logo" aria-hidden="true">CC</span>
+      <span class="sidebar-brand-text"><strong>Command Center</strong><span>command.gobison.io</span></span>
+    </a>
+  </div>
+  <div class="sidebar-content">${sidebarGroups}</div>
   <div class="sidebar-footer">
-    <button type="button" class="ghost theme-toggle icon-btn" id="theme-toggle" aria-label="Toggle theme">Theme</button>
+    ${sidebarLink(settingsTab, activeHref === settingsTab.href)}
+    <div class="sidebar-user" id="sidebar-user">
+      <span class="sidebar-user-avatar" id="sidebar-user-initials" aria-hidden="true">?</span>
+      <span class="sidebar-user-meta"><strong id="sidebar-user-name">Signed in</strong><span id="sidebar-user-email" class="dim">Loading…</span></span>
+    </div>
   </div>
 </aside>
-<div class="app-main"><div class="page-content">${agentNav}${opts.body}</div></div>
+<main class="sidebar-inset">
+  <header class="topbar">
+    <div class="topbar-start">
+      <button type="button" class="ghost btn-icon" id="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="true">${icon("panelLeft")}</button>
+      <span class="topbar-sep" aria-hidden="true"></span>
+      <nav class="topbar-breadcrumb" aria-label="Breadcrumb">${crumbs}</nav>
+    </div>
+    <div class="topbar-actions">
+      <button type="button" class="ghost theme-toggle btn-icon" id="theme-toggle" aria-label="Toggle theme">${ICONS.sun}</button>
+    </div>
+  </header>
+  <div class="page-body"><div class="${bodyWrapClass}">${agentNavMobile}${opts.body}</div></div>
+</main>
 </div>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<script>${SIDEBAR_BOOT_SCRIPT}</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="${THEME_META_COLORS.light}"><link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon-192.png"><link rel="apple-touch-icon" href="/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<title>${esc(agentSection ? `Agent · ${agentSection[2]} — Command Center` : opts.title)}</title><style>${CSS}${opts.extraCss ?? ""}
-.agent-tabs{display:flex;gap:1.5rem;border-bottom:1px solid var(--border);margin-bottom:1.5rem;overflow:auto}
-.agent-tabs a{padding:.75rem 0;white-space:nowrap;color:var(--muted-foreground)}
-.agent-tabs a[aria-current=page]{color:var(--foreground);border-bottom:2px solid var(--foreground);font-weight:600}
-html,body{font-family:Inter,ui-sans-serif,system-ui,sans-serif}</style>${opts.extraHead ?? ""}</head>
+<title>${esc(agentSectionMeta ? `Agent · ${agentSectionMeta.label} — Command Center` : opts.title)}</title><style>${CSS}${opts.extraCss ?? ""}
+html,body{font-family:Inter,ui-sans-serif,system-ui,sans-serif}
+html[data-sidebar-state=collapsed] .app-shell .sidebar{width:var(--sidebar-width-icon)}
+html[data-sidebar-state=collapsed] .app-shell .sidebar-label,
+html[data-sidebar-state=collapsed] .app-shell .sidebar-group-label,
+html[data-sidebar-state=collapsed] .app-shell .sidebar-brand-text,
+html[data-sidebar-state=collapsed] .app-shell .sidebar-user-meta,
+html[data-sidebar-state=collapsed] .app-shell .sidebar-subnav{display:none}
+html[data-sidebar-state=collapsed] .app-shell .sidebar-nav a{justify-content:center;padding:.5rem}
+</style>${opts.extraHead ?? ""}</head>
 <body>${shell}
 <script>
 ${THEME_SCRIPT}
 if("serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch(function(){});
+(function(){
+  var shell=document.querySelector(".app-shell");
+  var boot=document.documentElement.getAttribute("data-sidebar-state");
+  if(shell&&boot)shell.setAttribute("data-sidebar-state",boot);
+})();
 window.api=function(path,method,body){return fetch(path,{method:method||"GET",headers:{"x-ah":"1","content-type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)}).then(function(r){return r.json().catch(function(){return{}}).then(function(j){if(!r.ok)throw new Error(j.error||("HTTP "+r.status));return j})})};
 window.viewPreferencesReady=api("/api/settings").then(function(r){
   var prefs=r.settings&&r.settings.viewPreferences||{};
   document.documentElement.classList.toggle("compact",prefs.density==="compact");
+  var meta=r.meta||{};
+  if(meta.signedInAs){
+    var email=String(meta.signedInAs);
+    var el=document.getElementById("sidebar-user-email");if(el)el.textContent=email;
+    var ini=document.getElementById("sidebar-user-initials");
+    if(ini)ini.textContent=email.slice(0,2).toUpperCase();
+    var name=document.getElementById("sidebar-user-name");
+    if(name)name.textContent=email.split("@")[0]||"Signed in";
+  }
   return prefs;
 }).catch(function(err){console.error("Could not load view preferences",err);return null});
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}

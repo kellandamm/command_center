@@ -11,12 +11,16 @@ export type SidebarTabId =
   | "calendar"
   | "settings";
 
+export type SidebarGroup = "workspace" | "library" | "agent";
+
 export interface SidebarTab {
   id: SidebarTabId;
   href: string;
   label: string;
   visible: boolean;
   order: number;
+  group: SidebarGroup;
+  icon: string;
   /** Dashboard and Settings cannot be hidden. */
   locked?: boolean;
 }
@@ -24,15 +28,15 @@ export interface SidebarTab {
 const LOCKED = new Set<SidebarTabId>(["dashboard", "settings"]);
 
 export const DEFAULT_SIDEBAR_TABS: SidebarTab[] = [
-  { id: "dashboard", href: "/", label: "Dashboard", visible: true, order: 0, locked: true },
-  { id: "briefing", href: "/briefing", label: "Daily Briefing", visible: true, order: 20 },
-  { id: "library", href: "/library", label: "Read Later", visible: true, order: 30 },
-  { id: "agent", href: "/agent", label: "Agent", visible: true, order: 50 },
-  { id: "notes", href: "/notes", label: "Notes", visible: true, order: 60 },
-  { id: "spaces", href: "/spaces", label: "Spaces", visible: true, order: 62 },
-  { id: "bookmarks", href: "/bookmarks", label: "Bookmarks", visible: true, order: 67 },
-  { id: "calendar", href: "/calendar", label: "Calendar", visible: true, order: 70 },
-  { id: "settings", href: "/settings", label: "Settings", visible: true, order: 90, locked: true },
+  { id: "dashboard", href: "/", label: "Dashboard", visible: true, order: 0, locked: true, group: "workspace", icon: "layoutDashboard" },
+  { id: "briefing", href: "/briefing", label: "Daily Briefing", visible: true, order: 20, group: "workspace", icon: "newspaper" },
+  { id: "library", href: "/library", label: "Read Later", visible: true, order: 30, group: "library", icon: "bookOpen" },
+  { id: "agent", href: "/agent", label: "Agent", visible: true, order: 50, group: "agent", icon: "bot" },
+  { id: "notes", href: "/notes", label: "Notes", visible: true, order: 60, group: "workspace", icon: "fileText" },
+  { id: "spaces", href: "/spaces", label: "Spaces", visible: true, order: 62, group: "workspace", icon: "layoutGrid" },
+  { id: "bookmarks", href: "/bookmarks", label: "Bookmarks", visible: true, order: 67, group: "library", icon: "bookmark" },
+  { id: "calendar", href: "/calendar", label: "Calendar", visible: true, order: 70, group: "workspace", icon: "calendar" },
+  { id: "settings", href: "/settings", label: "Settings", visible: true, order: 90, locked: true, group: "workspace", icon: "settings" },
 ];
 
 const DEFAULT_BY_ID = new Map(DEFAULT_SIDEBAR_TABS.map((t) => [t.id, t]));
@@ -64,6 +68,8 @@ export function normalizeSidebarTabs(input: unknown): SidebarTab[] {
         label: label.slice(0, 48) || base.label,
         visible,
         order,
+        group: base.group,
+        icon: base.icon,
       });
     }
     if (!input.some((row) => row?.id === "agent")) {
@@ -83,15 +89,25 @@ export function visibleNavTabs(
   tabs: SidebarTab[],
   opts?: { whiteboard?: boolean },
 ): Array<{ href: string; label: string }> {
+  return visibleSidebarTabs(tabs, opts).map((t) => ({ href: t.href, label: t.label }));
+}
+
+export function visibleSidebarTabs(tabs: SidebarTab[], opts?: { whiteboard?: boolean }): SidebarTab[] {
   const rows = tabs
     .filter((t) => t.visible || t.locked)
-    .sort((a, b) => a.order - b.order)
-    .map((t) => ({ href: t.href, label: t.label }));
+    .sort((a, b) => a.order - b.order);
   if (!opts?.whiteboard) return rows;
-  // shortcut: inject optional whiteboard nav entry without persisting to settings
   const out = [...rows];
-  const settingsIdx = out.findIndex((t) => t.href === "/settings");
-  out.splice(settingsIdx >= 0 ? settingsIdx : out.length, 0, { href: "/whiteboard", label: "Whiteboard" });
+  const settingsIdx = out.findIndex((t) => t.id === "settings");
+  out.splice(settingsIdx >= 0 ? settingsIdx : out.length, 0, {
+    id: "dashboard",
+    href: "/whiteboard",
+    label: "Whiteboard",
+    visible: true,
+    order: 85,
+    group: "workspace",
+    icon: "layoutGrid",
+  });
   return out;
 }
 
