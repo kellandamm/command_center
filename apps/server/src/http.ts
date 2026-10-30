@@ -55,6 +55,10 @@ import { CaptureAccess } from "./read-later/capture-access";
 import { handleMeetingImportRoute } from "./meetings/routes";
 import { handleAgentsUsageImportRoute, handleAgentsUsageGetRoutes } from "./agents-usage/routes";
 import type { AgentsUsageStore } from "./agents-usage/store";
+import { budgetAvailable } from "./budget/gate";
+import type { BudgetStore } from "./budget/store";
+import { handleBudgetRoutes } from "./budget/routes";
+import { budgetPage } from "./ui/budget-page";
 import { getMeetingSummaryQueue } from "./meetings/summary-queue";
 import { handleXBookmarkApiRoutes, handleXBookmarkImport, isXBookmarkImportPayload } from "./read-later/x-bookmarks-routes";
 import type { XBookmarksService } from "./read-later/x-bookmarks-service";
@@ -117,6 +121,7 @@ export interface App {
   shareLinks: ShareLinksStore;
   voiceCaptures: VoiceCaptureStore;
   agentsUsage: AgentsUsageStore;
+  budget?: BudgetStore;
 }
 
 const SECURITY: Record<string, string> = {
@@ -331,7 +336,11 @@ export function createApp(app: App): Server {
       if (get && path === "/icon-512.png") return send(res, 200, icon("512", 512), "image/png", extra);
       if (get && path === "/icon-maskable-512.png") return send(res, 200, icon("m512", 512, true), "image/png", extra);
 
-      const nav = () => visibleNavTabs(app.settings.get().sidebarTabs, { whiteboard: app.cfg.whiteboardEnabled });
+      const nav = () =>
+        visibleNavTabs(app.settings.get().sidebarTabs, {
+          whiteboard: app.cfg.whiteboardEnabled,
+          budget: budgetAvailable(app.cfg),
+        });
 
       if (get && path === "/") return send(res, 200, dashboardPage(nav()), undefined, extra);
       if (get && path === "/briefing") return send(res, 200, dailyBriefingPage(nav()), undefined, extra);
@@ -379,6 +388,17 @@ export function createApp(app: App): Server {
       if (get && path === "/calendar") return send(res, 200, calendarPage(nav()), undefined, extra);
       if (get && path === "/calendar/event") return send(res, 200, calendarEventPage(nav()), undefined, extra);
       if (get && path === "/settings") return send(res, 200, settingsPage(nav()), undefined, extra);
+      if (get && path === "/budget") {
+        if (!budgetAvailable(app.cfg)) return json(res, 404, { error: "not found" });
+        const initialView = url.searchParams.get("view") ?? "accounts";
+        return send(
+          res,
+          200,
+          budgetPage(nav(), { owner: who.owner === true, initialView }),
+          undefined,
+          extra,
+        );
+      }
       if (get && path === "/whiteboard") {
         if (!app.cfg.whiteboardEnabled) return json(res, 404, { error: "not found" });
         return send(res, 200, whiteboardPage(nav()), undefined, extra);
@@ -529,6 +549,15 @@ export function createApp(app: App): Server {
       }
       if (app.cfg.whiteboardEnabled && path.startsWith("/api/whiteboard/")) {
         if (await handleWhiteboardRoutes(app.whiteboard, who.owner === true, req, res, path)) return;
+      }
+
+      if (path.startsWith("/api/budget")) {
+        const readJsonBody = async () => readBody(req);
+        if (
+          await handleBudgetRoutes(app.budget, app.cfg, req, res, path, who, url, readJsonBody)
+        ) {
+          return;
+        }
       }
 
       for (const panel of panels) {

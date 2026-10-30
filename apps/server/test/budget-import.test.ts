@@ -1,0 +1,99 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import type { AddressInfo } from "node:net";
+import { loadConfig } from "../src/config";
+import { makeAuthenticator } from "../src/auth";
+import { createApp } from "../src/http";
+import { DailyBriefingService } from "../src/daily-briefing/service";
+import { SettingsStore } from "../src/settings";
+import { NotesStore } from "../src/notes/store";
+import { budgetAvailable } from "../src/budget/gate";
+import { BudgetStore } from "../src/budget/store";
+import { closeIntegrationServer, openIntegrationStores } from "./helpers";
+
+const OWNER = "owner@example.com";
+const PLANT = "PLANT_SECRET_PAYEE";
+
+async function openBudgetHttp() {
+  const dir = await mkdtemp(join(tmpdir(), "cc-budget-import-"));
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    ALLOW_INSECURE_NO_AUTH: "1",
+    CF_ACCESS_TEAM_DOMAIN: "team.example.com",
+    CF_ACCESS_AUD: "aud",
+    OWNER_EMAILS: OWNER,
+    TZ: "UTC",
+  });
+  const settings = new SettingsStore(dir);
+  await settings.load();
+  const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
+  const notes = await NotesStore.open(dir);
+  const integration = await openIntegrationStores(dir, cfg);
+  const budget = BudgetStore.open(dir);
+  const server = createApp({
+    cfg,
+    auth: makeAuthenticator(cfg, async () => ({ email: OWNER })),
+    settings,
+    dailyBriefing,
+    notes,
+    ...integration,
+    budget,
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const close = async () => {
+    budget.close();
+    await closeIntegrationServer(server, integration);
+    await rm(dir, { recursive: true, force: true });
+  };
+  return { base, budget, close };
+}
+
+const headers = { cookie: "CF_Authorization=t", "x-ah": "1", "content-type": "application/json" };
+
+test("budget import: re-import same file adds zero rows; twin rows both insert", async () => {
+  const h = await openBudgetHttp();
+  try {
+    const acctRes = await fetch(`${h.base}/api/budget/accounts`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name: "Checking", type: "checking" }),
+    });
+    const { account } = (await acctRes.json()) as { account: { id: string } };
+    const dupCsv = `Date,Description,Amount\n05/01/2026,Duplicate,-15.00\n05/01/2026,Duplicate,-15.00\n`;
+
+    async function importCsv(csv: string, invertSign = false) {
+      const prev = await fetch(
+        `${h.base}/api/budget/import/preview?accountId=${account.id}&fileName=t.csv`,
+        { method: "POST", headers: { ...headers, "content-type": "text/csv" }, body: csv },
+      );
+      const preview = (await prev.json()) as { previewId: string; counts: { newCount: number } };
+      assert.equal(prev.status, 200, JSON.stringify(preview));
+      assert.ok(preview.previewId);
+      const commit = await fetch(`${h.base}/api/budget/import/commit`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ previewId: preview.previewId, invertSign }),
+      });
+      const body = (await commit.json()) as { batch: { rowsAdded: number }; error?: string };
+      assert.equal(commit.status, 201, body.error ?? JSON.stringify(body));
+      return body;
+    }
+
+    const twin = await importCsv(dupCsv);
+    assert.equal(twin.batch.rowsAdded, 2);
+
+    const first = await importCsv(`Date,Description,Amount\n04/01/2026,${PLANT},-25.00\n04/02/2026,Other,-10.00\n`);
+    assert.ok(first.batch.rowsAdded >= 1);
+    const again = await importCsv(`Date,Description,Amount\n04/01/2026,${PLANT},-25.00\n04/02/2026,Other,-10.00\n`);
+    assert.equal(again.batch.rowsAdded, 0);
+
+    const overlap = await importCsv(`Date,Description,Amount\n04/01/2026,${PLANT},-25.00\n`);
+    assert.equal(overlap.batch.rowsAdded, 0);
+  } finally {
+    await h.close();
+  }
+});

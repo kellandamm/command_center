@@ -1,0 +1,504 @@
+import { createHash, randomUUID } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
+import { ValidationError } from "../settings";
+import type { AccountType } from "./constants";
+import { ACCOUNT_TYPES, BUDGET_IMPORT_MAX_ROWS } from "./constants";
+import type { CsvMapping, NormalizedImportRow } from "./csv";
+import { openBudgetDatabase } from "./db";
+
+export interface BudgetAccount {
+  id: string;
+  name: string;
+  type: AccountType;
+  institution: string | null;
+  last4: string | null;
+  openingBalanceCents: number;
+  openingDate: string | null;
+  currentBalanceCents: number | null;
+  invertSign: boolean;
+  currency: string;
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BudgetCategory {
+  id: string;
+  groupId: string;
+  name: string;
+  position: number;
+  archived: boolean;
+}
+
+export interface BudgetCategoryGroup {
+  id: string;
+  name: string;
+  position: number;
+  isIncome: boolean;
+}
+
+export interface BudgetTransaction {
+  id: string;
+  accountId: string;
+  date: string;
+  amountCents: number;
+  payee: string;
+  memo: string;
+  categoryId: string | null;
+  transferAccountId: string | null;
+  cleared: boolean;
+  importBatchId: string | null;
+  fingerprint: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ImportBatch {
+  id: string;
+  accountId: string;
+  fileName: string | null;
+  fileSha256: string;
+  rowsTotal: number;
+  rowsAdded: number;
+  rowsSkipped: number;
+  mappingJson: string;
+  createdAt: string;
+  undoneAt: string | null;
+}
+
+const DEFAULT_CATEGORIES: Array<{ group: string; isIncome?: boolean; categories: string[] }> = [
+  { group: "Housing", categories: ["Rent/Mortgage", "Maintenance"] },
+  { group: "Utilities", categories: ["Electric", "Gas", "Water", "Internet"] },
+  { group: "Food", categories: ["Groceries", "Dining"] },
+  { group: "Transport", categories: ["Fuel", "Transit", "Parking"] },
+  { group: "Health", categories: ["Medical", "Pharmacy"] },
+  { group: "Subscriptions", categories: ["Streaming", "Software"] },
+  { group: "Shopping", categories: ["General"] },
+  { group: "Travel", categories: ["Trips"] },
+  { group: "Gifts", categories: ["Gifts"] },
+  { group: "Savings", categories: ["Transfer to savings"] },
+  { group: "Income", isIncome: true, categories: ["Paycheck", "Other income"] },
+];
+
+function rowAccount(r: Record<string, unknown>): BudgetAccount {
+  return {
+    id: String(r.id),
+    name: String(r.name),
+    type: String(r.type) as AccountType,
+    institution: r.institution == null ? null : String(r.institution),
+    last4: r.last4 == null ? null : String(r.last4),
+    openingBalanceCents: Number(r.opening_balance_cents),
+    openingDate: r.opening_date == null ? null : String(r.opening_date),
+    currentBalanceCents: r.current_balance_cents == null ? null : Number(r.current_balance_cents),
+    invertSign: Boolean(r.invert_sign),
+    currency: String(r.currency ?? "USD"),
+    archived: Boolean(r.archived),
+    createdAt: String(r.created_at),
+    updatedAt: String(r.updated_at),
+  };
+}
+
+function rowTx(r: Record<string, unknown>): BudgetTransaction {
+  return {
+    id: String(r.id),
+    accountId: String(r.account_id),
+    date: String(r.date),
+    amountCents: Number(r.amount_cents),
+    payee: String(r.payee ?? ""),
+    memo: String(r.memo ?? ""),
+    categoryId: r.category_id == null ? null : String(r.category_id),
+    transferAccountId: r.transfer_account_id == null ? null : String(r.transfer_account_id),
+    cleared: Boolean(r.cleared),
+    importBatchId: r.import_batch_id == null ? null : String(r.import_batch_id),
+    fingerprint: r.fingerprint == null ? null : String(r.fingerprint),
+    createdAt: String(r.created_at),
+    updatedAt: String(r.updated_at),
+  };
+}
+
+export class BudgetStore {
+  private constructor(private db: DatabaseSync) {}
+
+  static open(dataDir: string): BudgetStore {
+    const db = openBudgetDatabase(dataDir);
+    const store = new BudgetStore(db);
+    store.seedDefaultsIfEmpty();
+    return store;
+  }
+
+  close(): void {
+    this.db.close();
+  }
+
+  private seedDefaultsIfEmpty(): void {
+    const n = this.db.prepare("SELECT COUNT(*) AS c FROM category_groups").get() as { c: number };
+    if (Number(n.c) > 0) return;
+    const now = new Date().toISOString();
+    let gPos = 0;
+    for (const block of DEFAULT_CATEGORIES) {
+      const gid = randomUUID();
+      this.db
+        .prepare("INSERT INTO category_groups (id, name, position, is_income) VALUES (?, ?, ?, ?)")
+        .run(gid, block.group, gPos++, block.isIncome ? 1 : 0);
+      block.categories.forEach((name, i) => {
+        this.db.prepare("INSERT INTO categories (id, group_id, name, position) VALUES (?, ?, ?, ?)").run(randomUUID(), gid, name, i);
+      });
+    }
+    void now;
+  }
+
+  listAccounts(includeArchived = false): BudgetAccount[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM accounts ${includeArchived ? "" : "WHERE archived = 0"} ORDER BY name`)
+      .all() as Record<string, unknown>[];
+    return rows.map(rowAccount);
+  }
+
+  getAccount(id: string): BudgetAccount | undefined {
+    const r = this.db.prepare("SELECT * FROM accounts WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    return r ? rowAccount(r) : undefined;
+  }
+
+  createAccount(input: {
+    name: string;
+    type: AccountType;
+    institution?: string;
+    last4?: string;
+    openingBalanceCents?: number;
+    openingDate?: string;
+    currentBalanceCents?: number;
+    invertSign?: boolean;
+  }): BudgetAccount {
+    const name = String(input.name).trim().slice(0, 120);
+    if (!name) throw new ValidationError("Account name is required");
+    if (!ACCOUNT_TYPES.includes(input.type)) throw new ValidationError("Invalid account type");
+    if (input.last4 != null && !/^\d{4}$/.test(input.last4)) throw new ValidationError("last4 must be four digits");
+    const now = new Date().toISOString();
+    const id = randomUUID();
+    const current =
+      input.type === "investment"
+        ? (input.currentBalanceCents ?? input.openingBalanceCents ?? 0)
+        : null;
+    this.db
+      .prepare(
+        `INSERT INTO accounts (id, name, type, institution, last4, opening_balance_cents, opening_date, current_balance_cents, invert_sign, currency, archived, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'USD', 0, ?, ?)`,
+      )
+      .run(
+        id,
+        name,
+        input.type,
+        input.institution?.trim().slice(0, 120) ?? null,
+        input.last4 ?? null,
+        input.openingBalanceCents ?? 0,
+        input.openingDate ?? null,
+        current,
+        input.invertSign ? 1 : 0,
+        now,
+        now,
+      );
+    return this.getAccount(id)!;
+  }
+
+  updateAccount(
+    id: string,
+    patch: Partial<{
+      name: string;
+      institution: string | null;
+      last4: string | null;
+      openingBalanceCents: number;
+      openingDate: string | null;
+      currentBalanceCents: number;
+      invertSign: boolean;
+      archived: boolean;
+    }>,
+  ): BudgetAccount | undefined {
+    const cur = this.getAccount(id);
+    if (!cur) return undefined;
+    const now = new Date().toISOString();
+    const name = patch.name !== undefined ? String(patch.name).trim().slice(0, 120) : cur.name;
+    if (!name) throw new ValidationError("Account name is required");
+    if (patch.last4 != null && patch.last4 !== "" && !/^\d{4}$/.test(patch.last4)) {
+      throw new ValidationError("last4 must be four digits");
+    }
+    this.db
+      .prepare(
+        `UPDATE accounts SET name = ?, institution = ?, last4 = ?, opening_balance_cents = ?, opening_date = ?,
+         current_balance_cents = ?, invert_sign = ?, archived = ?, updated_at = ? WHERE id = ?`,
+      )
+      .run(
+        name,
+        patch.institution !== undefined ? patch.institution : cur.institution,
+        patch.last4 !== undefined ? patch.last4 : cur.last4,
+        patch.openingBalanceCents ?? cur.openingBalanceCents,
+        patch.openingDate !== undefined ? patch.openingDate : cur.openingDate,
+        patch.currentBalanceCents !== undefined ? patch.currentBalanceCents : cur.currentBalanceCents,
+        patch.invertSign !== undefined ? (patch.invertSign ? 1 : 0) : cur.invertSign ? 1 : 0,
+        patch.archived !== undefined ? (patch.archived ? 1 : 0) : cur.archived ? 1 : 0,
+        now,
+        id,
+      );
+    return this.getAccount(id);
+  }
+
+  listCategoryGroups(): BudgetCategoryGroup[] {
+    return (this.db.prepare("SELECT * FROM category_groups ORDER BY position").all() as Record<string, unknown>[]).map((r) => ({
+      id: String(r.id),
+      name: String(r.name),
+      position: Number(r.position),
+      isIncome: Boolean(r.is_income),
+    }));
+  }
+
+  listCategories(): BudgetCategory[] {
+    return (this.db.prepare("SELECT * FROM categories WHERE archived = 0 ORDER BY position").all() as Record<string, unknown>[]).map((r) => ({
+      id: String(r.id),
+      groupId: String(r.group_id),
+      name: String(r.name),
+      position: Number(r.position),
+      archived: Boolean(r.archived),
+    }));
+  }
+
+  categoryNameMap(): Map<string, string> {
+    const m = new Map<string, string>();
+    for (const c of this.listCategories()) m.set(c.name.toLowerCase(), c.id);
+    return m;
+  }
+
+  listPayeeRules(): Array<{ id: string; match: string; matchKind: string; categoryId: string; position: number }> {
+    return (this.db.prepare("SELECT * FROM payee_rules ORDER BY position").all() as Record<string, unknown>[]).map((r) => ({
+      id: String(r.id),
+      match: String(r.match),
+      matchKind: String(r.match_kind),
+      categoryId: String(r.category_id),
+      position: Number(r.position),
+    }));
+  }
+
+  applyPayeeRule(payee: string): string | null {
+    const lower = payee.toLowerCase();
+    const rules = this.listPayeeRules();
+    for (const rule of rules) {
+      if (rule.matchKind === "equals" && lower === rule.match.toLowerCase()) return rule.categoryId;
+      if (rule.matchKind === "starts" && lower.startsWith(rule.match.toLowerCase())) return rule.categoryId;
+      if (rule.matchKind === "contains" && lower.includes(rule.match.toLowerCase())) return rule.categoryId;
+    }
+    return null;
+  }
+
+  getCsvProfile(accountId: string): CsvMapping | null {
+    const r = this.db.prepare("SELECT mapping_json FROM csv_profiles WHERE account_id = ?").get(accountId) as
+      | { mapping_json: string }
+      | undefined;
+    if (!r) return null;
+    return JSON.parse(r.mapping_json) as CsvMapping;
+  }
+
+  saveCsvProfile(accountId: string, mapping: CsvMapping): void {
+    this.db
+      .prepare("INSERT INTO csv_profiles (account_id, mapping_json) VALUES (?, ?) ON CONFLICT(account_id) DO UPDATE SET mapping_json = excluded.mapping_json")
+      .run(accountId, JSON.stringify(mapping));
+  }
+
+  fingerprintExists(accountId: string, fingerprint: string): boolean {
+    const r = this.db
+      .prepare("SELECT 1 FROM transactions WHERE account_id = ? AND fingerprint = ? LIMIT 1")
+      .get(accountId, fingerprint);
+    return Boolean(r);
+  }
+
+  classifyImportRows(accountId: string, rows: NormalizedImportRow[]): { newCount: number; duplicateCount: number; errorCount: number } {
+    let newCount = 0;
+    let duplicateCount = 0;
+    let errorCount = 0;
+    for (const row of rows) {
+      if (row.error) {
+        errorCount++;
+        continue;
+      }
+      if (this.fingerprintExists(accountId, row.fingerprint)) duplicateCount++;
+      else newCount++;
+    }
+    return { newCount, duplicateCount, errorCount };
+  }
+
+  listTransactions(accountId?: string, limit = 500): BudgetTransaction[] {
+    const rows = accountId
+      ? (this.db
+          .prepare("SELECT * FROM transactions WHERE account_id = ? ORDER BY date DESC, created_at DESC LIMIT ?")
+          .all(accountId, limit) as Record<string, unknown>[])
+      : (this.db.prepare("SELECT * FROM transactions ORDER BY date DESC, created_at DESC LIMIT ?").all(limit) as Record<
+          string,
+          unknown
+        >[]);
+    return rows.map(rowTx);
+  }
+
+  createTransaction(input: {
+    accountId: string;
+    date: string;
+    amountCents: number;
+    payee?: string;
+    memo?: string;
+    categoryId?: string | null;
+  }): BudgetTransaction {
+    if (!Number.isInteger(input.amountCents)) throw new ValidationError("amount must be whole cents");
+    const account = this.getAccount(input.accountId);
+    if (!account) throw new ValidationError("account not found");
+    if (account.type === "investment") throw new ValidationError("investment accounts use manual balance only");
+    const now = new Date().toISOString();
+    const id = randomUUID();
+    this.db
+      .prepare(
+        `INSERT INTO transactions (id, account_id, date, amount_cents, payee, memo, category_id, cleared, fingerprint, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, NULL, ?, ?)`,
+      )
+      .run(
+        id,
+        input.accountId,
+        input.date,
+        input.amountCents,
+        (input.payee ?? "").slice(0, 240),
+        (input.memo ?? "").slice(0, 500),
+        input.categoryId ?? null,
+        now,
+        now,
+      );
+    return rowTx(this.db.prepare("SELECT * FROM transactions WHERE id = ?").get(id) as Record<string, unknown>);
+  }
+
+  commitImport(opts: {
+    accountId: string;
+    fileName: string | null;
+    fileSha256: string;
+    mapping: CsvMapping;
+    invertSign: boolean;
+    rows: NormalizedImportRow[];
+  }): ImportBatch {
+    if (opts.rows.length > BUDGET_IMPORT_MAX_ROWS) throw new ValidationError("too many rows");
+    const account = this.getAccount(opts.accountId);
+    if (!account) throw new ValidationError("account not found");
+    if (account.type === "investment") throw new ValidationError("cannot import into investment accounts");
+    const batchId = randomUUID();
+    const now = new Date().toISOString();
+    let added = 0;
+    let skipped = 0;
+    this.db.exec("BEGIN");
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO import_batches (id, account_id, file_name, file_sha256, rows_total, rows_added, rows_skipped, mapping_json, created_at)
+           VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?)`,
+        )
+        .run(
+          batchId,
+          opts.accountId,
+          opts.fileName,
+          opts.fileSha256,
+          opts.rows.length,
+          JSON.stringify({ mapping: opts.mapping, invertSign: opts.invertSign }),
+          now,
+        );
+      for (const row of opts.rows) {
+        if (row.error) {
+          skipped++;
+          continue;
+        }
+        if (this.fingerprintExists(opts.accountId, row.fingerprint)) {
+          skipped++;
+          continue;
+        }
+        const id = randomUUID();
+        try {
+          this.db
+            .prepare(
+              `INSERT INTO transactions (id, account_id, date, amount_cents, payee, memo, category_id, import_batch_id, fingerprint, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .run(
+              id,
+              opts.accountId,
+              row.date,
+              row.amountCents,
+              row.payee.slice(0, 240),
+              row.memo.slice(0, 500),
+              row.categoryId,
+              batchId,
+              row.fingerprint,
+              now,
+              now,
+            );
+          added++;
+        } catch {
+          skipped++;
+        }
+      }
+      this.db
+        .prepare("UPDATE import_batches SET rows_added = ?, rows_skipped = ? WHERE id = ?")
+        .run(added, skipped, batchId);
+      if (opts.invertSign !== account.invertSign) {
+        this.db.prepare("UPDATE accounts SET invert_sign = ?, updated_at = ? WHERE id = ?").run(opts.invertSign ? 1 : 0, now, opts.accountId);
+      }
+      this.saveCsvProfile(opts.accountId, opts.mapping);
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+    return this.getImportBatch(batchId)!;
+  }
+
+  getImportBatch(id: string): ImportBatch | undefined {
+    const r = this.db.prepare("SELECT * FROM import_batches WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    if (!r) return undefined;
+    return {
+      id: String(r.id),
+      accountId: String(r.account_id),
+      fileName: r.file_name == null ? null : String(r.file_name),
+      fileSha256: String(r.file_sha256),
+      rowsTotal: Number(r.rows_total),
+      rowsAdded: Number(r.rows_added),
+      rowsSkipped: Number(r.rows_skipped),
+      mappingJson: String(r.mapping_json),
+      createdAt: String(r.created_at),
+      undoneAt: r.undone_at == null ? null : String(r.undone_at),
+    };
+  }
+
+  listImportBatches(limit = 50): ImportBatch[] {
+    return (this.db.prepare("SELECT * FROM import_batches ORDER BY created_at DESC LIMIT ?").all(limit) as Record<string, unknown>[]).map(
+      (r) => ({
+        id: String(r.id),
+        accountId: String(r.account_id),
+        fileName: r.file_name == null ? null : String(r.file_name),
+        fileSha256: String(r.file_sha256),
+        rowsTotal: Number(r.rows_total),
+        rowsAdded: Number(r.rows_added),
+        rowsSkipped: Number(r.rows_skipped),
+        mappingJson: String(r.mapping_json),
+        createdAt: String(r.created_at),
+        undoneAt: r.undone_at == null ? null : String(r.undone_at),
+      }),
+    );
+  }
+
+  undoImport(batchId: string): ImportBatch | undefined {
+    const batch = this.getImportBatch(batchId);
+    if (!batch || batch.undoneAt) return undefined;
+    const now = new Date().toISOString();
+    this.db.exec("BEGIN");
+    try {
+      this.db.prepare("DELETE FROM import_batches WHERE id = ?").run(batchId);
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+    return { ...batch, undoneAt: now };
+  }
+
+  static sha256(buffer: Buffer): string {
+    return createHash("sha256").update(buffer).digest("hex");
+  }
+}

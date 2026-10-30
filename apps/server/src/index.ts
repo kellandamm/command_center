@@ -32,6 +32,8 @@ import { WhiteboardStore } from "./whiteboard/store";
 import { NtfySentSet } from "./notify/sent-set";
 import { VoiceCaptureStore } from "./voice-capture/store";
 import { AgentsUsageStore } from "./agents-usage/store";
+import { budgetAvailable } from "./budget/gate";
+import { BudgetStore } from "./budget/store";
 
 async function main() {
   const deployment = loadConfig();
@@ -69,6 +71,7 @@ async function main() {
   const whiteboard = await WhiteboardStore.open(cfg.dataDir);
   const voiceCaptures = await VoiceCaptureStore.open(cfg.dataDir);
   const agentsUsage = await AgentsUsageStore.open(cfg.dataDir);
+  const budget = budgetAvailable(cfg) ? BudgetStore.open(cfg.dataDir) : undefined;
 
   const ntfySent = await NtfySentSet.open(cfg.dataDir);
   const scheduler = new Scheduler({
@@ -111,6 +114,7 @@ async function main() {
     shareLinks,
     voiceCaptures,
     agentsUsage,
+    budget,
   });
   server.listen(cfg.port, cfg.host, () => {
     console.log(`command-center ${cfg.version} listening on ${cfg.host}:${cfg.port} (tz ${cfg.tz})`);
@@ -121,6 +125,9 @@ async function main() {
     console.log(`${sig}: shutting down`);
     scheduler.stop();
     await getMeetingSummaryQueue().shutdown();
+    budget?.close();
+    board.close();
+    wins.close();
     server.close();
     process.exit(0);
   };
