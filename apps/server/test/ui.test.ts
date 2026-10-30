@@ -144,6 +144,8 @@ test("ui: spaces, assistant and capture pages render", () => {
 
 test("ui: settings page has schedule and tabs sections", () => {
   const html = settingsPage();
+  assert.match(html, /ui-page-header/);
+  assert.match(html, /settings-quick-links/);
   assert.match(html, /settings-card settings-tab-panel/);
   assert.match(html, /href="\/settings" class="on"/);
   assert.match(html, /id="tab-schedule"/);
@@ -203,6 +205,8 @@ test("ui: Notes centers writing with preview, formatting, focus, and collapsed p
 test("ui: Bookmarks is a separate grouped launchpad with search, import and layout controls", () => {
   const html = bookmarksPage();
   assert.match(html, /href="\/bookmarks" class="on"/);
+  assert.match(html, /ui-page-header/);
+  assert.match(html, /<h1>Bookmarks<\/h1>/);
   for (const id of ["bookmark-groups", "bookmark-search", "bookmark-import", "bookmark-density", "bookmark-columns", "bookmark-dialog"]) {
     assert.ok(html.includes(`id="${id}"`));
   }
@@ -215,6 +219,8 @@ test("ui: Bookmarks is a separate grouped launchpad with search, import and layo
 
 test("ui: Calendar has mini-month, agenda, native editing, read-only subscriptions, and day/week/month views", () => {
   const html = calendarPage();
+  assert.match(html, /ui-page-header/);
+  assert.match(html, /<h1>Calendar<\/h1>/);
   for (const id of ["cal-mini", "cal-agenda", "cal-search", "cal-sources", "cal-event-dialog", "cal-today", "cal-refresh"]) {
     assert.ok(html.includes(`id="${id}"`));
   }

@@ -1,5 +1,7 @@
 import type { NavLink } from "./layout";
 import { page } from "./layout";
+import { pageHeader } from "./components";
+import { PHASE2_PAGE_CSS } from "./phase2-pages-css";
 
 export { dashboardPage } from "./dashboard-page";
 
@@ -8,9 +10,13 @@ export function settingsPage(nav?: NavLink[]): string {
     title: "Settings",
     active: "/settings",
     nav,
-    body: `<header class="page-header"><h1>Settings</h1><p class="dim">Tune schedules, view behavior, and navigation.</p></header>
-<p><a href="/settings/connections">Manage service connections and keys</a></p>
-<p><a href="/settings/calendars">Manage calendars and subscriptions</a></p>
+    extraCss: PHASE2_PAGE_CSS,
+    body: `<div class="phase2-page settings-page">
+${pageHeader({ title: "Settings", description: "Tune schedules, view behavior, and navigation." })}
+<nav class="settings-quick-links" aria-label="Settings shortcuts">
+  <a href="/settings/connections">Service connections</a>
+  <a href="/settings/calendars">Calendars &amp; subscriptions</a>
+</nav>
 <section class="card settings-card" id="settings-features" aria-label="Deployment features">
 <h2 style="margin:0 0 .5rem;font-size:1rem">Features</h2>
 <p class="dim" style="margin:0 0 .75rem">Read-only deployment flags (no secret values).</p>
@@ -69,6 +75,7 @@ export function settingsPage(nav?: NavLink[]): string {
 <p class="dim">Show, hide, rename, and reorder sidebar tabs. Dashboard and Settings are always visible.</p>
 <div id="tabs-editor"></div>
 <div class="row" style="margin-top:1rem"><button type="button" id="tabs-save">Save tabs</button><span id="saved-tabs" class="dim"></span></div>
+</div>
 </div>`,
     script: `
 var settingsState={sidebarTabs:[],viewPreferences:{}};

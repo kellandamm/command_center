@@ -1,6 +1,7 @@
 import type { NavLink } from "./layout";
 import { page } from "./layout";
-import { button, dialog } from "./components";
+import { button, dialog, pageHeader } from "./components";
+import { PHASE2_PAGE_CSS } from "./phase2-pages-css";
 import { quickAddCss, quickAddScript } from "./quick-add";
 import { appendMarkerAfterLineScript } from "../notes/note-line-link";
 import { workspacePage, workspaceTabs } from "./workspace";
@@ -43,19 +44,16 @@ $("transfer-import").onclick=function(){busy(this,async function(){
 }
 
 export function notesPage(nav?: NavLink[]): string {
+  const headerActions = `${button({ label: "New note", attrs: { id: "knowledge-new-note", disabled: true } })}${button({ label: "Switch note", variant: "ghost", attrs: { id: "knowledge-switch", disabled: true, title: "Switch note (Ctrl/Cmd + K)" } })}${button({ label: "Focus mode", variant: "ghost", attrs: { id: "knowledge-focus", "aria-pressed": "false", title: "Focus mode (Ctrl/Cmd + Shift + F)" } })}`;
   return page({
     title: "Notes — Command center",
-    extraCss: quickAddCss,
+    extraCss: quickAddCss + PHASE2_PAGE_CSS,
     active: "/notes",
     nav,
-    body: `<header class="page-header notes-header"><div><h1>Notes</h1><p class="dim">A quiet place to think, write, and connect ideas.</p></div>
-<div class="row">
-  ${button({ label: "New note", attrs: { id: "knowledge-new-note", disabled: true } })}
-  ${button({ label: "Switch note", variant: "ghost", attrs: { id: "knowledge-switch", disabled: true, title: "Switch note (Ctrl/Cmd + K)" } })}
-  ${button({ label: "Focus mode", variant: "ghost", attrs: { id: "knowledge-focus", "aria-pressed": "false", title: "Focus mode (Ctrl/Cmd + Shift + F)" } })}
-</div>
-</header>${tabs("/notes")}
-<div class="notes-workspace">
+    body: `<div class="phase2-page notes-page">
+${pageHeader({ title: "Notes", description: "A quiet place to think, write, and connect ideas.", actionsHtml: headerActions })}
+${tabs("/notes")}
+<div class="notes-workspace phase2-shell">
   <aside class="notes-library" aria-label="Note library">
     <label for="knowledge-search">Search notes &amp; links</label>
     <input id="knowledge-search" type="search" placeholder="Find an idea…">
@@ -207,6 +205,7 @@ export function notesPage(nav?: NavLink[]): string {
     <div id="knowledge-status" class="dim" aria-live="polite" style="margin-top:.75rem"></div>
   </div>
 </div>
+</div>
 ${dialog({
   id: "knowledge-share-dialog",
   title: "Share read-only link",
@@ -235,8 +234,8 @@ ${dialog({
 #knowledge-conflict textarea{width:100%;resize:vertical}#knowledge-latest-properties{white-space:pre-wrap;overflow-wrap:anywhere}
 .notes-tools{padding:.65rem 0;font-size:.8rem}.notes-tools summary{cursor:pointer}.notes-tools .row{margin:.75rem 0}
 .notes-insert-menu{display:flex;flex-wrap:wrap;gap:.35rem;padding:.75rem 0;border-bottom:1px solid var(--border)}
-.notes-header{display:flex;justify-content:space-between;gap:1rem;align-items:center}
-.notes-workspace{display:grid;grid-template-columns:16rem minmax(0,1fr);min-height:70vh;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);overflow:hidden}
+.notes-page .ui-tabs{margin-bottom:1rem}
+.notes-workspace{display:grid;grid-template-columns:16rem minmax(0,1fr);min-height:70vh;background:var(--card);overflow:hidden}
 .notes-library{padding:1rem;background:var(--sidebar);border-right:1px solid var(--border);min-width:0}
 .notes-library>label{margin-top:0}.notes-library-heading{display:flex;justify-content:space-between;align-items:center;margin:1.5rem 0 .5rem}.notes-library-heading h2{margin:0}
 .notes-all{width:100%;justify-content:flex-start;margin-bottom:.5rem}
@@ -284,7 +283,7 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
 #knowledge-editor.notes-font-medium .notes-document,#knowledge-editor.notes-font-medium .notes-source textarea{font-size:1rem}
 #knowledge-editor.notes-font-large .notes-document,#knowledge-editor.notes-font-large .notes-source textarea{font-size:1.125rem}
 @media(max-width:1100px){.notes-workspace{grid-template-columns:13rem minmax(0,1fr)}.notes-writing[data-mode=split]{grid-template-columns:minmax(0,1fr)}.notes-writing[data-mode=split] .notes-preview-pane{border-left:0;border-top:1px solid var(--border);padding-left:0}}
-@media(max-width:768px){.notes-header{align-items:flex-start;flex-direction:column}.notes-workspace{grid-template-columns:minmax(0,1fr)}.notes-library{border-right:0;border-bottom:1px solid var(--border)}#knowledge-note-list{max-height:12rem}.notes-main{padding:0 1rem 1rem}.notes-source textarea{min-height:20rem}input.notes-title{font-size:1.6rem}}
+@media(max-width:768px){.notes-page .page-header-actions{width:100%}.notes-workspace{grid-template-columns:minmax(0,1fr)}.notes-library{border-right:0;border-bottom:1px solid var(--border)}#knowledge-note-list{max-height:12rem}.notes-main{padding:0 1rem 1rem}.notes-source textarea{min-height:20rem}input.notes-title{font-size:1.6rem}}
 </style><script src="/assets/notes-editor.js"></script>`,
     script: `
 (function(){

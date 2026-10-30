@@ -1,19 +1,20 @@
 import type { NavLink } from "./layout";
 import { page } from "./layout";
+import { button, pageHeader } from "./components";
+import { PHASE2_PAGE_CSS } from "./phase2-pages-css";
 import { calendarScript } from "./calendar-script";
 import { calendarPlanningScript } from "./calendar-planning-script";
 
 export function calendarPage(nav?: NavLink[]): string {
+  const headerActions = `${button({ label: "New event", href: "/calendar/event" })}${button({ label: "Calendar settings", variant: "outline", href: "/settings/calendars" })}${button({ label: "Refresh calendars", variant: "ghost", attrs: { id: "cal-refresh", type: "button" } })}`;
   return page({
     title: "Calendar — Command center",
     active: "/calendar",
     nav,
-    body: `<div class="calendar-app">
-<header class="calendar-header">
-  <div><h1>Calendar</h1><p class="dim">Your calendars, events, and time to focus.</p></div>
-  <div class="row"><a class="btn" href="/calendar/event">New event</a><a class="btn ghost" href="/settings/calendars">Calendar settings</a><button type="button" class="ghost" id="cal-refresh">Refresh calendars</button></div>
-</header>
-<div class="calendar-workspace">
+    extraCss: PHASE2_PAGE_CSS,
+    body: `<div class="phase2-page calendar-app">
+${pageHeader({ title: "Calendar", description: "Your calendars, events, and time to focus.", actionsHtml: headerActions })}
+<div class="calendar-workspace phase2-shell">
   <aside class="calendar-rail" aria-label="Calendar navigation">
     <div class="calendar-mini-header"><button id="cal-mini-prev" class="ghost" aria-label="Previous mini-calendar month">Prev</button><h2 id="cal-mini-label"></h2><button id="cal-mini-next" class="ghost" aria-label="Next mini-calendar month">Next</button></div>
     <div id="cal-mini" class="calendar-mini" aria-label="Choose a date"></div>
@@ -42,7 +43,7 @@ export function calendarPage(nav?: NavLink[]): string {
     <div id="cal-week-grid" class="calendar-view" aria-label="Events"></div>
   </section>
 </div>
-<dialog id="cal-event-dialog" aria-labelledby="cal-event-title">
+<dialog id="cal-event-dialog" class="ui-dialog" aria-labelledby="cal-event-title">
   <div class="calendar-detail-header"><span id="cal-event-calendar" class="dim"></span><button id="cal-event-close" class="ghost">Close</button></div>
   <h2 id="cal-event-title"></h2>
   <p id="cal-event-time"></p><p id="cal-event-location" class="dim"></p>
@@ -56,16 +57,15 @@ export function calendarPage(nav?: NavLink[]): string {
 .calendar-app [hidden]{display:none!important}
 .calendar-task-inbox{margin-top:1.5rem;border-top:1px solid var(--border);padding-top:1rem;min-width:0}
 .calendar-task-inbox h2{font-size:1rem}.calendar-task-inbox p,.calendar-task-inbox a,.calendar-task-inbox summary{font-size:.75rem;overflow-wrap:anywhere}
-.calendar-task-inbox a{display:block;text-decoration:underline;margin:.4rem 0}
+.calendar-task-inbox a{display:block;text-decoration:underline;margin:.4rem 0;color:inherit}
+.calendar-task-inbox a:hover{color:var(--primary)}
 #cal-tasks{max-height:30rem;overflow:auto}
 .calendar-task-inbox summary{cursor:pointer;padding:.6rem 0}.calendar-task-inbox input{width:100%;min-width:0}
 .calendar-task{padding:.75rem 0;border-bottom:1px solid var(--border);overflow-wrap:anywhere}.calendar-task strong{font-size:.8rem}.calendar-task p{margin:.4rem 0;color:var(--dim)}
 .calendar-task-inbox form{margin:1rem 0}.calendar-task-inbox button{font-size:.75rem}
 @media(max-width:700px){.calendar-task-inbox{grid-column:1/-1}}
 html.dark .calendar-app{--calendar-red:#f3838b;--calendar-blue:#82b5f0;--calendar-green:#7dcc9e;--calendar-purple:#bd9beb;--calendar-orange:#eab576;--calendar-teal:#7ec7d0}
-.calendar-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin:0 0 1.5rem}
-.calendar-header p{font-size:.8rem;margin:.4rem 0 0}.calendar-header .calendar-eyebrow{font-size:.65rem;letter-spacing:.15em;margin:0 0 .5rem}
-.calendar-workspace{display:grid;grid-template-columns:15rem minmax(0,1fr);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;min-height:72vh;background:var(--card)}
+.calendar-workspace{display:grid;grid-template-columns:15rem minmax(0,1fr);min-height:72vh;background:var(--card)}
 .calendar-rail{min-width:0;padding:1rem;background:var(--sidebar);border-right:1px solid var(--border)}
 .calendar-mini-header{display:flex;align-items:center;justify-content:space-between;gap:.25rem;margin-bottom:.75rem}
 .calendar-mini-header h2{margin:0;font-size:.8rem}.calendar-mini-header button{font-size:.65rem;padding:.15rem .3rem;min-height:1.5rem;border:0}
@@ -113,8 +113,8 @@ html.dark .calendar-app{--calendar-red:#f3838b;--calendar-blue:#82b5f0;--calenda
 .calendar-time-event span{display:block;font-size:.6rem}
 .calendar-now{position:absolute;left:0;right:0;height:1px;background:var(--calendar-red);z-index:2;pointer-events:none}
 .calendar-no-events{padding:.75rem;font-size:.75rem}
-#cal-event-dialog{width:min(29rem,calc(100% - 2rem));max-height:85vh;overflow:auto;padding:1.5rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);color:var(--fg)}
-#cal-event-dialog::backdrop{background:rgba(0,0,0,.4)}.calendar-detail-header{display:flex;align-items:center;justify-content:space-between;gap:.5rem;font-size:.75rem}
+#cal-event-dialog{width:min(29rem,calc(100% - 2rem));max-height:85vh;overflow:auto;padding:1.5rem}
+.calendar-detail-header{display:flex;align-items:center;justify-content:space-between;gap:.5rem;font-size:.75rem}
 #cal-event-title{font-size:1.5rem;line-height:1.3;margin:1.25rem 0;overflow-wrap:anywhere}#cal-event-description{white-space:pre-wrap;overflow-wrap:anywhere}#cal-event-location{white-space:pre-wrap}#cal-event-link a{text-decoration:underline}
 @media(max-width:1050px){.calendar-workspace{grid-template-columns:12rem minmax(0,1fr)}.calendar-rail{padding:.75rem}.calendar-navigation h2{font-size:.85rem}}
 @media(max-width:700px){.calendar-workspace{grid-template-columns:minmax(0,1fr)}.calendar-rail{border-right:0;border-bottom:1px solid var(--border);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.25rem 1rem}.calendar-mini-header,.calendar-mini{grid-column:1}.calendar-rail>label,.calendar-rail>input,.calendar-rail-heading,#cal-sources,.calendar-rail>.calendar-hint{grid-column:2}.calendar-rail>label{grid-row:1;margin:0}.calendar-rail>input{grid-row:2;align-self:start}.calendar-rail-heading{margin:.5rem 0}.calendar-agenda-head,.calendar-agenda{grid-column:1/-1}.calendar-agenda{max-height:12rem}.calendar-toolbar{padding:.75rem}.calendar-view{max-height:65vh}.calendar-status-row{flex-wrap:wrap}}
