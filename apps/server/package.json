@@ -14,7 +14,7 @@
     "test:bookmarks-browser": "tsx --test test/bookmarks.browser.ts",
     "test:calendar-browser": "tsx --test --test-concurrency=1 test/calendar.browser.ts test/calendar-managed.browser.ts test/calendar-planning.browser.ts",
     "test:personal-dashboard-browser": "tsx --test test/personal-dashboard.browser.ts",
-    "test:dashboard-browser": "tsx --test test/dashboard.browser.ts test/agents-usage-panel.browser.ts test/settings.browser.ts test/budget.browser.ts",
+    "test:dashboard-browser": "tsx --test test/dashboard.browser.ts test/agents-usage-panel.browser.ts test/settings.browser.ts test/budget.browser.ts test/command-palette.browser.ts",
     "test:whiteboard-browser": "node scripts/build.mjs && tsx --test test/whiteboard.browser.ts",
     "test:read-later-browser": "tsx --test test/read-later.browser.ts",
     "seed:dashboard-screenshot": "tsx scripts/seed-dashboard-screenshot.ts",

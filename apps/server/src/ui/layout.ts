@@ -1,5 +1,7 @@
+import { AGENT_SUB_NAV } from "../agent-sub-nav";
 import { DEFAULT_SIDEBAR_TABS, visibleSidebarTabs, type SidebarGroup, type SidebarTab } from "../nav-tabs";
 import { COMPONENT_CSS } from "./component-css";
+import { COMMAND_PALETTE_CSS, COMMAND_PALETTE_SCRIPT, commandPaletteMarkup } from "./command-palette";
 import { ICONS, icon, type IconName } from "./icons";
 import { formatThemeVars, THEME_DARK, THEME_LIGHT, THEME_META_COLORS } from "./theme-tokens";
 
@@ -116,6 +118,7 @@ button.ghost[aria-pressed=true],.btn.ghost[aria-pressed=true],button.ghost.on,.b
 button.icon-btn{min-width:2.25rem;padding:.5rem}
 button:disabled{opacity:.5;cursor:default}
 ${COMPONENT_CSS}
+${COMMAND_PALETTE_CSS}
 label.field-label{display:block;margin:1rem 0 .35rem;font-size:.875rem;font-weight:500}
 label{display:block;margin:1rem 0 .35rem;font-size:.875rem;font-weight:500}
 label.choice-row,label.row.choice-row{
@@ -443,15 +446,6 @@ function tabsFromNav(links: NavLink[]): SidebarTab[] {
   });
 }
 
-const AGENT_SUB_NAV: Array<{ sectionId: string; href: string; label: string; icon: IconName }> = [
-  { sectionId: "board", href: "/agent?view=board", label: "Board", icon: "listTodo" },
-  { sectionId: "queue", href: "/agent?view=queue", label: "Queue", icon: "listTodo" },
-  { sectionId: "usage", href: "/agent?view=usage", label: "Usage", icon: "barChart" },
-  { sectionId: "wins", href: "/agent?view=wins", label: "Wins", icon: "trophy" },
-  { sectionId: "assistant", href: "/agent?view=assistant", label: "Assistant", icon: "messageSquare" },
-  { sectionId: "activity", href: "/agent?view=activity", label: "Activity", icon: "activity" },
-];
-
 const GROUP_ORDER: SidebarGroup[] = ["workspace", "library", "agent"];
 const GROUP_LABELS: Record<SidebarGroup, string> = {
   workspace: "Workspace",
@@ -605,9 +599,10 @@ html[data-sidebar-state=collapsed] .app-shell .sidebar-user-meta,
 html[data-sidebar-state=collapsed] .app-shell .sidebar-subnav{display:none}
 html[data-sidebar-state=collapsed] .app-shell .sidebar-nav a{justify-content:center;padding:.5rem}
 </style>${opts.extraHead ?? ""}</head>
-<body>${shell}
+<body>${shell}${commandPaletteMarkup()}
 <script>
 ${THEME_SCRIPT}
+${COMMAND_PALETTE_SCRIPT}
 if("serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch(function(){});
 (function(){
   var shell=document.querySelector(".app-shell");

@@ -17,6 +17,7 @@ import {
   type CsvMapping,
 } from "./csv";
 import { budgetAvailable, BUDGET_DISABLED_MESSAGE } from "./gate";
+import { isBudgetOwner } from "./owner-access";
 import { importPreviewCache } from "./import-preview-cache";
 import { logBudgetError } from "./redact";
 import { BudgetStore, type BudgetAccount } from "./store";
@@ -25,10 +26,6 @@ import type { AccountType } from "./constants";
 function json(res: ServerResponse, status: number, data: unknown) {
   res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
   res.end(JSON.stringify(data));
-}
-
-function ownerOk(who: AuthResult & { ok: true }): boolean {
-  return who.owner === true && Boolean(who.email);
 }
 
 function accountForApi(store: BudgetStore, account: BudgetAccount) {
@@ -56,7 +53,7 @@ export async function handleBudgetRoutes(
     json(res, 503, { error: BUDGET_DISABLED_MESSAGE });
     return true;
   }
-  if (!ownerOk(who)) {
+  if (!isBudgetOwner(who)) {
     json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
     return true;
   }

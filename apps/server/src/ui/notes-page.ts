@@ -702,7 +702,10 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     if(loading||transitioning)return;
     var key=event.key.toLowerCase();
     if(key==="s"){event.preventDefault();saveNote(undefined,true).catch(showError);}
-    else if(key==="k"){event.preventDefault();switcher();}
+    else if(key==="k"){
+      if(typeof window.ccOpenCommandPalette==="function"){event.preventDefault();window.ccOpenCommandPalette();return;}
+      event.preventDefault();switcher();
+    }
     else if(key==="f"&&!event.shiftKey){event.preventDefault();$("knowledge-find-panel").open=true;$("knowledge-find").focus();}
     else if(["1","2","3"].indexOf(key)>=0){event.preventDefault();setMode({1:"source",2:"split",3:"preview"}[key]);}
     else if(key==="f"&&event.shiftKey){event.preventDefault();toggleFocus();}
