@@ -707,9 +707,7 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     else if(key==="k"){
       var target=event.target;
       var tag=target&&target.tagName;
-      if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT"){
-        if(!(target&&target.id==="knowledge-body"))return;
-      }
+      if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT")return;
       if($("knowledge-switcher").open)return;
       event.preventDefault();
       if(typeof window.ccOpenCommandPalette==="function")window.ccOpenCommandPalette();

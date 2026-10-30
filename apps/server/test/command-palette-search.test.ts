@@ -256,6 +256,44 @@ test("command palette: Todoist fetch failure returns 200 without task rows and b
   await rm(dir, { recursive: true, force: true });
 });
 
+test("command palette: API trims q before 200-character cap", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-cp-q-trim-"));
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    ALLOW_INSECURE_NO_AUTH: "1",
+    TZ: "UTC",
+  });
+  const settings = new SettingsStore(dir);
+  await settings.load();
+  const notes = await NotesStore.open(dir);
+  const title = "Z".repeat(MAX_QUERY_LENGTH);
+  await notes.createNote({ title, content: "trim-cap seed" });
+  const integration = await openIntegrationStores(dir, cfg);
+  const server = createApp({
+    cfg,
+    auth: makeAuthenticator(cfg, async () => ({ email: OWNER })),
+    settings,
+    dailyBriefing: await DailyBriefingService.open(dir, cfg.tz),
+    notes,
+    ...integration,
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    const padded = `  ${"Z".repeat(MAX_QUERY_LENGTH)}  `;
+    assert.ok(padded.length > MAX_QUERY_LENGTH);
+    const res = await fetch(`${base}/api/command-palette/search?q=${encodeURIComponent(padded)}`, {
+      headers: ownerHeaders,
+    });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { results: Array<{ title: string; type: string }> };
+    assert.ok(body.results.some((r) => r.type === "note" && r.title === title));
+  } finally {
+    await closeIntegrationServer(server, integration);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("command palette: API truncates q to 200 characters", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-cp-q-cap-"));
   const cfg = loadConfig({
