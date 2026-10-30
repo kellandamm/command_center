@@ -55,8 +55,9 @@ export const COMMAND_PALETTE_SCRIPT = `
     if(el.id==="command-palette-input"||el.id==="knowledge-body")return false;
     var tag=el.tagName;
     if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT")return true;
+    if(el.isContentEditable&&el.closest&&el.closest("#knowledge-editor"))return false;
     if(el.isContentEditable)return true;
-    if(el.closest&&el.closest("#knowledge-editor,#notes-editor,.notes-editor,[contenteditable=true]"))return true;
+    if(el.closest&&el.closest("#notes-editor,.notes-editor,[contenteditable=true]"))return true;
     return false;
   }
   function focusables(){

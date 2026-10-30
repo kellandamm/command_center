@@ -397,7 +397,6 @@ const THEME_SCRIPT = `
   function sidebarShortcutBlocked(){
     var el=document.activeElement;
     if(!el||!el.tagName)return false;
-    if(el.id==="knowledge-body")return false;
     var tag=el.tagName;
     if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT")return true;
     if(el.isContentEditable)return true;
