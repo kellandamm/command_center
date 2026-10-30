@@ -58,6 +58,8 @@ import type { AgentsUsageStore } from "./agents-usage/store";
 import { budgetAvailable } from "./budget/gate";
 import type { BudgetStore } from "./budget/store";
 import { handleBudgetRoutes } from "./budget/routes";
+import { handleCommandPaletteRoutes } from "./command-palette/routes";
+import { TodoistOpenTaskCache } from "./command-palette/todoist-cache";
 import { budgetPage } from "./ui/budget-page";
 import { getMeetingSummaryQueue } from "./meetings/summary-queue";
 import { handleXBookmarkApiRoutes, handleXBookmarkImport, isXBookmarkImportPayload } from "./read-later/x-bookmarks-routes";
@@ -142,6 +144,7 @@ const icon = (name: string, size: number, maskable = false) => icons.get(name) ?
 
 export function createApp(app: App): Server {
   const deployment = app.deployment ?? app.cfg;
+  const commandPaletteTodoistCache = new TodoistOpenTaskCache(app.cfg);
   const integrationDeps = (): IntegrationDeps => ({
     cfg: app.cfg,
     notes: app.notes,
@@ -558,6 +561,27 @@ export function createApp(app: App): Server {
         ) {
           return;
         }
+      }
+
+      if (
+        await handleCommandPaletteRoutes(
+          {
+            cfg: app.cfg,
+            settings: app.settings,
+            notes: app.notes,
+            bookmarks: app.bookmarks,
+            board: app.board,
+            budget: app.budget,
+            todoistCache: commandPaletteTodoistCache,
+          },
+          req,
+          res,
+          path,
+          url,
+          who,
+        )
+      ) {
+        return;
       }
 
       for (const panel of panels) {
