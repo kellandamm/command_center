@@ -27,16 +27,16 @@
 
 | Table | Purpose |
 |-------|---------|
-| `maintenance_items` | `id`, `title`, `notes`, `cadence_days`, `last_done_date`, `next_due_date`, `ntfy_enabled`, `pending_notify_after` (ISO instant when quiet hours blocked send), timestamps |
+| `maintenance_items` | `id`, `title`, `notes`, `cadence_days`, `last_done_date`, `next_due_date`, `ntfy_enabled`, **`last_notified_at`** (ISO instant), `pending_notify_after` (quiet-hours defer), timestamps |
 | `vault_documents` | `id`, `title`, `category`, `expiry_date`, **`storage_key`** (server UUID), `original_filename` (display only), `mime`, `size_bytes`, `sha256`, `uploaded_at` |
 
 **Blob paths:** `{dataDir}/home-vault/blobs/{storage_key}` — **`storage_key` is server-generated** (UUID); client filename is **never** used in path segments. Create dirs via `ensureDirs(dataDir)` then `home-vault/blobs` with mode **0700**; blob files **0600** (`apps/server/src/store.ts` line 57 `ensureDirs`; budget DB uses `chmodSync` on sqlite in `budget/db.ts` lines 31–35).
 
 **Limits:** 25 MB upload; max 500 documents / 200 maintenance items.
 
-**Allowed types (magic-byte allowlist, not client `Content-Type` alone):** PDF, PNG, JPEG, **HEIC/HEIF**, WebP; **`text/plain` stored and served as attachment-only** (never `inline`). Reject on content-type spoofing.
+**Allowed types (magic-byte allowlist, not client `Content-Type` alone):** PDF, PNG, JPEG, **HEIC/HEIF**, WebP. **`text/plain`:** no magic bytes — accept only if body is valid **UTF-8 with no NUL bytes**; always stored and served **attachment-only** (never `inline`). Reject content-type spoofing (declared MIME must match sniffed/ plain rules).
 
-**Upload parsing:** Reuse multipart/body parsing patterns from `apps/server/src/voice-capture/parse-body.ts` (`parseMultipartForm` / `readRawBody`) — **no new npm dependency**; add a vault-specific wrapper with vault size/MIME limits.
+**Upload parsing:** `parseMultipartForm` in `voice-capture/parse-body.ts` (line 24) is **private** and audio-specific. Extract a **generic** multipart helper (same `Request.formData` approach, no new npm dependency) shared by voice capture and vault; vault wrapper enforces size/MIME limits via `readRawBody` (`parse-body.ts` / `request-body.ts`).
 
 ---
 
@@ -69,10 +69,10 @@ When gate off: **503** JSON, **404** `/home` page.
 
 In `apps/server/src/notify/tick.ts` (with calendar reminders):
 
-1. Items due where `ntfy_enabled` and `next_due_date <= today` in `cfg.tz`.
+1. Items due where `ntfy_enabled`, `next_due_date <= today` in `cfg.tz`, and **`last_notified_at` is null or older than 24h** for this due occurrence (set `last_notified_at` on successful send so ticks cannot spam every minute). Optionally mirror calendar dedup with a key in **`NtfySentSet`** (`notify/sent-set.ts`) — e.g. `maintenance:{itemId}:{dueDate}` — if cross-restart idempotency is needed.
 2. Call **`notifyIfAllowed`** (`notify/ntfy.ts` lines 166–168), which applies **`shouldSendDuringQuietHours`** (`notify/ntfy.ts` lines 132–134) before **`notify`**.
-3. If due but quiet hours block: set **`pending_notify_after`** to the **end of the current quiet window** in workspace TZ (preferred over dropping); on subsequent ticks when `now >= pending_notify_after`, send and clear pending. Digest bypass in `tick.ts` (~line 67) does **not** apply to maintenance.
-4. Resolve config with **`resolveNtfyConfig(deployment, effective)`** (`notify/ntfy.ts` line 106), same as `http.ts` ntfy test/status routes.
+3. If due but quiet hours block: set **`pending_notify_after`** to the **end of the current quiet window** in workspace TZ; on subsequent ticks when `now >= pending_notify_after`, send, set **`last_notified_at`**, and clear pending.
+4. Resolve config with **`resolveNtfyConfig(deployment, effective)`** (`notify/ntfy.ts` line 106).
 
 Generic title/body only—no filenames or receipt amounts in ntfy body.
 
@@ -101,7 +101,7 @@ Generic title/body only—no filenames or receipt amounts in ntfy body.
 
 ## Tests
 
-**Unit:** `home-vault-upload.test.ts`, `home-vault-download.test.ts` (attachment, nosniff, traversal), `home-maintenance-quiet.test.ts` (defer to quiet end).
+**Unit:** `home-vault-upload.test.ts`, `home-vault-download.test.ts` (attachment, nosniff, traversal), `home-maintenance-quiet.test.ts` (defer to quiet end), **`home-maintenance-dedup.test.ts`** (two ticks within 24h → one ntfy).
 
 **Browser:** `home-vault.browser.ts` in `test:dashboard-browser`.
 

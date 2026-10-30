@@ -1,6 +1,6 @@
 # Weekly & monthly reviews — implementation plan
 
-**Periodic reviews** from activity: tasks done, meetings, bookmarks touched, calendar/day-plan context, and a notes reflection prompt. Reuses shutdown and planning code paths. **Budget and subscriptions excluded.** Optional LLM: **note titles only** (see LLM section)—counts stay in a deterministic template, not model prose.
+**Periodic reviews** from activity: tasks done, meetings, bookmarks touched, calendar/day-plan context, and a notes reflection prompt. Reuses shutdown and planning code paths. **Budget and subscriptions excluded.** Optional LLM receives **only non-sensitive note titles plus the user’s saved reflection text**—see LLM section. **All counts and activity lists stay in the deterministic UI template and are never sent to the model.**
 
 **Out of scope:** email triage, agent memory, direct bank connection, ntfy push of reviews, budget/subscription totals.
 
@@ -17,7 +17,7 @@
 | `/reviews` + `GET /api/reviews/weekly|monthly` | `BudgetStore` / budget routes |
 | Todoist, Board, Calendar, Notes, Bookmarks, Meetings | Changing owner auth model |
 | Reuse `buildShutdownReview` slices | Newspaper briefing edits |
-| Optional LLM summary (titles-only policy below) | Full note bodies / bookmark URLs to LLM |
+| Optional LLM paragraph (titles + reflection only) | Note bodies, counts, URLs, transcripts to LLM |
 
 ---
 
@@ -36,7 +36,7 @@ Period boundaries: `cfg.tz` via `dayKey` / `dayKeyFromIso` (`store.ts`, `heatmap
 |---------|---------|
 | Tasks done | `buildShutdownReview` filters: `listCompletedTasks`, `listTasks`, `board.movesSince`, `DONE` (`briefing/shutdown-service.ts`, `todoist/client.ts`, `board/store.ts`) |
 | Meetings | Notes from meetings import (`meetings/import-service.ts`) with `updatedAt` in range |
-| Bookmarks | **`BookmarksStore` has no `readAt`** (`bookmarks/store.ts` schema: id, groupId, title, url, description only). **Fallback v1:** count/list bookmarks **added or updated in period** via import/mutation timestamps if added later; else **omit section** with copy “Bookmark activity tracking not available yet” — do not invent `readAt`. |
+| Bookmarks | **`BookmarksStore` has no `readAt`** (`bookmarks/store.ts`). **Fallback v1:** omit section with copy “Bookmark activity tracking not available yet” — do not invent `readAt`. |
 | Calendar / day plan | `CalendarWorkspace.planning()` + `snapshot` hours (shutdown `time` fields) |
 | Notes prompt | Static checklist + user reflection stored on snapshot |
 
@@ -57,17 +57,17 @@ Wire near `handleDailyBriefingRoutes` (`daily-briefing/routes.ts`). JSON no-stor
 
 ### LLM policy (single rule)
 
-When `llmConfigured(cfg)` (`config.ts`):
+When `llmConfigured(cfg)` (`config.ts`) and the user explicitly requests summary:
 
-1. **Deterministic block (never LLM):** all numeric counts, lists of task/board/meeting **titles** already shown in the UI, calendar hours, bookmark fallback counts, period labels — rendered from snapshot JSON in SSR/ client template.
-2. **LLM input (only if user clicks “Summarize”):** newline-separated **non-sensitive note titles only** from notes touched in period (`isNoteSensitive` → exclude entirely via `notes/sensitive.ts`), plus the user’s saved reflection text, plus **aggregate counts as numbers in the prompt** (same as `generateShutdownReflection` numeric lines in `shutdown-service.ts` lines 332–338). **No note bodies, no bookmark URLs, no meeting transcript text, no budget fields.**
-3. Call `chatCompletion` (`llm/provider.ts`) with byte cap inspired by `MAX_CLIENT_REVIEW_BYTES` in `shutdown-service.ts`.
+- **Never sent to `chatCompletion`:** numeric counts, task/board/meeting title lists, calendar hours, bookmark section text, period labels, or any other snapshot field rendered in the page template.
+- **LLM user message content only:** (1) newline-separated **non-sensitive note titles** touched in the period (`isNoteSensitive` → exclude via `notes/sensitive.ts`; **no bodies**), and (2) the user’s **saved reflection text** from the snapshot.
+- System prompt: short reflective paragraph instruction (plain text, like tone of `generateShutdownReflection` in `shutdown-service.ts` but **without** embedding shutdown numeric lines). Byte cap inspired by `MAX_CLIENT_REVIEW_BYTES` in `shutdown-service.ts`.
 
 ---
 
 ## UI
 
-`apps/server/src/ui/reviews-page.ts` — `pageHeader`, `statCard`, `card()`.
+`apps/server/src/ui/reviews-page.ts` — `pageHeader`, `statCard`, `card()`. Template renders all counts/lists; “Summarize” button calls LLM route above.
 
 Link to shutdown tab: `daily-briefing-page.ts`, `/api/briefing/shutdown`.
 
@@ -80,7 +80,7 @@ Day plan: `/api/calendars/planning` (`calendar/routes.ts`).
 | Rule | Test |
 |------|------|
 | No budget imports | Grep |
-| LLM gets titles-only policy | Unit: sensitive note title excluded; body never in prompt |
+| LLM prompt = titles + reflection only | Unit asserts counts/titles absent from `chatCompletion` messages |
 | No ntfy | Grep |
 | Briefing unchanged | `DailyBriefingService` |
 | no-store | Header test |
@@ -105,7 +105,7 @@ Single PR: `reviews/service.ts`, routes, `reviews-page.ts`, tests.
 
 1. ISO week vs Sunday-start in `cfg.tz`?
 2. Default nav tab visibility?
-3. LLM button-only vs auto on open?
+3. **Summarize** button only (no auto LLM on page load)—keep as planned?
 4. Include `FocusSessionsStore` (`focus/store.ts`)?
 
 ---
@@ -116,6 +116,6 @@ Single PR: `reviews/service.ts`, routes, `reviews-page.ts`, tests.
 - `apps/server/src/daily-briefing/routes.ts`, `ui/daily-briefing-page.ts`.
 - `apps/server/src/calendar/workspace.ts` `planning()`.
 - `apps/server/src/bookmarks/store.ts` (no readAt).
-- `apps/server/src/notes/sensitive.ts` `isNoteSensitive`, `notesForLlmContext` (titles-only policy stricter than full notesForLlmContext).
+- `apps/server/src/notes/sensitive.ts` `isNoteSensitive`.
 - `apps/server/src/config.ts` `llmConfigured`.
 - `apps/server/src/http.ts` `send()` line 134.

@@ -25,12 +25,12 @@ Global **command palette** for Command Center: fuzzy navigation, quick actions, 
 `ownerOk` today is private in `apps/server/src/budget/routes.ts` (lines 30–32). **Extract** to e.g. `apps/server/src/budget/owner-access.ts`:
 
 ```ts
-export function isBudgetOwner(who: AuthResult & { ok: true }, cfg: Config): boolean {
-  return budgetAvailable(cfg) && who.owner === true && Boolean(who.email);
+export function isBudgetOwner(who: AuthResult & { ok: true }): boolean {
+  return who.owner === true && Boolean(who.email);
 }
 ```
 
-Use `isBudgetOwner` from palette search and subscriptions routes (same semantics as budget JSON handlers). Do not invent `requireBudgetOwner`.
+**`budgetAvailable(cfg)` stays a separate check** (503 + `BUDGET_DISABLED_MESSAGE` when false — `budget/routes.ts` lines 51–56). Palette budget **search rows** require **`budgetAvailable(cfg) && isBudgetOwner(who)`**; gate off omits budget hits (palette GET stays 200). Budget **nav action** hidden when gate off or non-owner (see nav below).
 
 ---
 
@@ -41,7 +41,7 @@ Use `isBudgetOwner` from palette search and subscriptions routes (same semantics
 | Reason | Grounding |
 |--------|-----------|
 | **Sensitive notes** | `NotesStore.listNotes(query, true)` + `redactNoteForCatalog` (`notes/sensitive.ts`). |
-| **Budget privacy** | Budget slice only when `isBudgetOwner(who, cfg)`; mirror `handleBudgetRoutes` (`budget/routes.ts`). |
+| **Budget privacy** | Budget slice when `budgetAvailable(cfg) && isBudgetOwner(who)`; same checks as `handleBudgetRoutes` (`budget/routes.ts`). |
 | **Single audit surface** | One handler; follow `budget/excluded.ts` “never in agent context”. |
 | **Size** | Corpora too large for inline HTML; nav from filtered tabs (below). |
 
@@ -49,7 +49,7 @@ Client merges API results with **static nav/actions**. Debounce 120–180 ms; 
 
 ### Static nav / quick actions
 
-Build navigation rows from `DEFAULT_SIDEBAR_TABS` (`nav-tabs.ts` lines 31–41) filtered the same way as the HTML shell: pass `visibleNavTabs(tabs, { whiteboard, budget: budgetAvailable(cfg) && who.owner === true })` (`http.ts` lines 340–342, `visibleSidebarTabs` strips `budget` when `opts.budget` is false at `nav-tabs.ts` lines 97–101). **Non-owners must not get a Budget nav action** even if the tab exists in settings JSON.
+Build navigation rows from **`app.settings.get().sidebarTabs`** passed through `visibleNavTabs` — same as the HTML shell in `http.ts` lines **339–343** (`whiteboard: app.cfg.whiteboardEnabled`, `budget: budgetAvailable(app.cfg) && who.owner === true`). Respects custom tab order and hidden tabs; `visibleSidebarTabs` drops budget when `opts.budget` is false (`nav-tabs.ts` lines 97–101). **Non-owners never get a Budget nav action.**
 
 Agent sub-nav hrefs: `AGENT_SUB_NAV` in `layout.ts` (board, queue, usage, wins, assistant, activity).
 
@@ -70,7 +70,7 @@ No new SQLite file.
 | Bookmarks | `BookmarksStore.list()` (`http.ts` `GET /api/bookmarks`) | `type: bookmark` |
 | Meetings | Meeting notes per `meetings/import-service.ts` | `type: meeting` |
 | Agent pages | Filtered nav metadata | `type: nav` |
-| Budget | `BudgetStore` payee/tx search if `isBudgetOwner` | `type: budget-tx`, `href: /budget?view=transactions` |
+| Budget | `BudgetStore` payee/tx search if `budgetAvailable(cfg) && isBudgetOwner(who)` | `type: budget-tx`, `href: /budget?view=transactions` |
 
 Cap **50** rows; omit budget types entirely when not owner.
 
@@ -80,7 +80,7 @@ Cap **50** rows; omit budget types entirely when not owner.
 
 | Method | Path | Auth | Behavior |
 |--------|------|------|----------|
-| GET | `/api/command-palette/search` | Authenticated; budget slice requires `isBudgetOwner` | Skip budget when gate off (not 503). Never log query or payee strings (`budget/redact.ts` `logBudgetError`). |
+| GET | `/api/command-palette/search` | Authenticated; budget slice requires `budgetAvailable(cfg) && isBudgetOwner(who)` | Omit budget rows when gate off or non-owner (200). `/api/budget/*` remains **503** when gate off. Never log query or payee strings (`budget/redact.ts` `logBudgetError`). |
 
 Wire in `http.ts` before the panel loop (with `handleBoardRoutes` / `handleBudgetRoutes`). Module: `apps/server/src/command-palette/routes.ts`.
 

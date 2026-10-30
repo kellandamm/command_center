@@ -21,30 +21,43 @@
 
 ---
 
+## Owner checks (not budget)
+
+Use a **goals-specific owner helper** — do **not** reuse `isBudgetOwner` from budget (goals are not gated on `budgetAvailable`).
+
+```ts
+export function isGoalsOwner(who: AuthResult & { ok: true }): boolean {
+  return who.owner === true && Boolean(who.email);
+}
+```
+
+- **Todoist `createTask` confirm routes:** **`isGoalsOwner(who)` only** (403 + `OWNER_ACTION_FORBIDDEN` for admin-token / non-owner).
+- **Non-Todoist writes** (create/edit goals, milestones, board links, local milestone complete): **`canManageSharedServerState(cfg, principal)`** (`owner-auth.ts`) — same bar as board card POST today; admin-token may write when `OWNER_EMAILS` unset or when configured for automation tests. **Never** call Todoist from these routes.
+
+---
+
 ## Data model
 
 `{dataDir}/goals.sqlite` — `GoalsStore.open` like `wins/store.ts` (`DatabaseSync`, migrations).
 
 Tables: `goals`, `milestones`, `milestone_links` (`kind`: `board` | `todoist`).
 
-**Todoist draft tokens:** server-side table or cache `todoist_drafts` — `draft_token` (random), `milestone_id`, payload `{ content, due }`, **`expires_at` ~10 minutes**, **`used_at`**. Single-use: confirm consumes token; duplicate confirm returns 409 without second `createTask`.
+**Todoist draft tokens:** `todoist_drafts` — `draft_token`, `milestone_id`, **`owner_email`** (lowercase, must match confirming user), payload `{ content, due }`, **`expires_at` ~10 minutes**, **`used_at`**. Single-use: confirm verifies `owner_email === who.email`; mismatch or reuse → 403/409 without second `createTask`.
 
 ---
 
 ## API routes
 
-Reads: authenticated users (same as board list today). **Todoist confirm and all writes that call Todoist: owner only** (`who.owner === true` + email, same bar as budget `ownerOk` — use shared `isBudgetOwner` pattern or parallel `isGoalsTodoistWriter` with identical owner check).
+| Method | Path | Auth | Behavior |
+|--------|------|------|----------|
+| GET | `/api/goals` | Authenticated | List goals + milestones + links |
+| POST/PUT goals, milestones, board links | | `canManageSharedServerState` | CRUD; no Todoist |
+| POST | `/api/goals/milestones/:id/todoist/create` | `isGoalsOwner` | `{ draftToken, preview }` — no Todoist HTTP; binds token to `who.email` |
+| POST | `/api/goals/milestones/:id/todoist/confirm` | `isGoalsOwner` | Body `{ draftToken }` — **`createTask`** once; mark token used |
 
-| Method | Path | Behavior |
-|--------|------|----------|
-| GET | `/api/goals` | List goals + milestones + links |
-| POST/PUT | `/api/goals`, milestones, board links | CRUD (per write policy above) |
-| POST | `/api/goals/milestones/:id/todoist/create` | Returns `{ draftToken, preview }` — **no Todoist HTTP** |
-| POST | `/api/goals/milestones/:id/todoist/confirm` | Body `{ draftToken }` — **`createTask`** once (`todoist/client.ts`); mark token used |
+**Do not** expose `completeTask` in v1 unless adding a **separate confirm-gated** route with the same draft-token + `isGoalsOwner` pattern.
 
-**Do not** expose `completeTask` in v1 unless adding a **separate confirm-gated** route (`/todoist/complete/confirm`) with the same draft-token pattern. Milestone completion stays local until explicitly designed.
-
-Board links: no Todoist confirmation required. Card → `DONE` may suggest UI completion only—no auto milestone complete.
+Board links: no Todoist confirmation. Card → `DONE` may suggest UI completion only—no auto milestone complete.
 
 JSON `cache-control: no-store` (`board/routes.ts` style). CSRF: `csrfOk` + `x-ah` (`auth.ts`).
 
@@ -52,11 +65,11 @@ JSON `cache-control: no-store` (`board/routes.ts` style). CSRF: `csrfOk` + `x-ah
 
 ## UI
 
-`apps/server/src/ui/goals-page.ts` — `pageHeader`, `dialog()` (`components.ts`, `notes-page.ts` pattern).
+`apps/server/src/ui/goals-page.ts` — `pageHeader`, `dialog()` (`components.ts`).
 
-Todoist: preview → confirm dialog; only **owner** sees confirm button (match budget page owner gating pattern in `budget-page.ts` / `http.ts` `/budget`).
+Todoist preview → confirm: **only `isGoalsOwner`** sees confirm (parallel to budget page owner script gating in `budget-page.ts` / `http.ts` `/budget`).
 
-Focus: reuse **`trapSidebarTab`** / `.sidebar-inset` `inert` patterns from `layout.ts` for modal focus.
+Focus: **`trapSidebarTab`** / `.sidebar-inset` `inert` from `layout.ts`.
 
 ---
 
@@ -64,17 +77,17 @@ Focus: reuse **`trapSidebarTab`** / `.sidebar-inset` `inert` patterns from `layo
 
 | Rule | Enforcement |
 |------|-------------|
-| Todoist token server-only | Never in JSON to browser |
-| Owner-only Todoist confirm | Route checks |
-| draftToken single-use | Store + tests |
+| Todoist token server-only | Never in JSON |
+| Todoist confirm owner-only | `isGoalsOwner` |
+| draftToken bound to owner email | Store + tests |
 | No budget / briefings / ntfy | Import grep |
-| No new deps/env | Package + config review |
+| No new deps/env | Review |
 
 ---
 
 ## Tests
 
-**Unit:** `goals-store.test.ts`, `goals-todoist-confirm.test.ts` (double submit → one `createTask`; expired token → 410).
+**Unit:** `goals-store.test.ts`, `goals-todoist-confirm.test.ts` (double submit → one `createTask`; wrong owner → 403; expired token → 410).
 
 **Browser:** `goals.browser.ts` in `test:dashboard-browser`.
 
@@ -99,7 +112,7 @@ Single PR: `goals/` store, routes, `goals-page.ts`, `http.ts`, tests.
 
 - `apps/server/src/board/store.ts`, `board/routes.ts`, `board/types.ts` `DONE`.
 - `apps/server/src/todoist/client.ts` `createTask`, `listTasks`; `todoistConfigured` in `config.ts`.
-- `apps/server/src/auth.ts` `csrfOk`; `auth.ts` owner flag lines 40–48.
+- `apps/server/src/auth.ts` `csrfOk`; owner flag lines 40–48.
+- `apps/server/src/owner-auth.ts` `canManageSharedServerState`, `OWNER_ACTION_FORBIDDEN`.
 - `apps/server/src/ui/components.ts` `dialog`; `layout.ts` focus patterns.
 - `apps/server/src/wins/store.ts` (sqlite file pattern).
-- `apps/server/src/budget/routes.ts` `ownerOk` → shared extract for owner-only writes.
