@@ -38,6 +38,8 @@ const PAGES = ["bookmarks", "calendar", "notes", "settings"] as const;
 
 async function waitForNotesEditorReady(p: Page) {
   await p.waitForSelector("#knowledge-note-list", { timeout: 25_000 });
+  const firstNote = p.locator("#knowledge-note-list .notes-note").first();
+  if ((await firstNote.count()) > 0) await firstNote.click();
   await p.waitForFunction(
     () => {
       const w = window as unknown as { notesEditor?: { load?: (body: string) => boolean } };
@@ -45,6 +47,7 @@ async function waitForNotesEditorReady(p: Page) {
     },
     { timeout: 30_000 },
   );
+  await p.locator('[data-note-mode="write"]').click();
   await p.waitForFunction(
     () => {
       const warn = document.getElementById("knowledge-editor-warning");
