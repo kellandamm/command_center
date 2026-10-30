@@ -332,7 +332,7 @@ test("dashboard: Esc closes mobile sidebar and layout menu; Ctrl+B ignored in te
   }
 });
 
-test("dashboard: mobile sheet focus stays in sidebar on Tab", { timeout: 120_000 }, async () => {
+test("dashboard: mobile sheet traps Tab and Shift+Tab inside sidebar", { timeout: 120_000 }, async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "cc-dash-mobile-focus-"));
   const port = 4900 + Math.floor(Math.random() * 500);
   const base = `http://127.0.0.1:${port}`;
@@ -358,15 +358,33 @@ test("dashboard: mobile sheet focus stays in sidebar on Tab", { timeout: 120_000
       const active = document.activeElement;
       return !!(sidebar && active && sidebar.contains(active));
     }, undefined, { timeout: 3000 });
-    const themeBeforeTab = await page.evaluate(() => document.activeElement?.id === "theme-toggle");
-    assert.equal(themeBeforeTab, false);
-    await page.keyboard.press("Tab");
-    const stillInSidebar = await page.evaluate(() => {
+    const focusableCount = await page.evaluate(() => {
       const sidebar = document.querySelector(".sidebar");
-      const active = document.activeElement;
-      return !!(sidebar && active && sidebar.contains(active) && active.id !== "theme-toggle");
+      if (!sidebar) return 0;
+      return Array.from(
+        sidebar.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'),
+      ).filter((el) => (el as HTMLElement).offsetWidth > 0 || (el as HTMLElement).offsetHeight > 0).length;
     });
-    assert.ok(stillInSidebar);
+    assert.ok(focusableCount >= 2, "need multiple sidebar focusables for trap test");
+    for (let i = 0; i < focusableCount + 1; i++) {
+      await page.keyboard.press("Tab");
+      const inside = await page.evaluate(() => {
+        const sidebar = document.querySelector(".sidebar");
+        return !!(sidebar && document.activeElement && sidebar.contains(document.activeElement));
+      });
+      assert.ok(inside, `Tab step ${i + 1} escaped the mobile sidebar`);
+    }
+    await page.evaluate(() => {
+      const sidebar = document.querySelector(".sidebar");
+      const first = sidebar?.querySelector('a[href],button:not([disabled])') as HTMLElement | null;
+      first?.focus();
+    });
+    await page.keyboard.press("Shift+Tab");
+    const insideShift = await page.evaluate(() => {
+      const sidebar = document.querySelector(".sidebar");
+      return !!(sidebar && document.activeElement && sidebar.contains(document.activeElement));
+    });
+    assert.ok(insideShift, "Shift+Tab from first sidebar item escaped the trap");
   } finally {
     await browser.close();
     app.kill("SIGTERM");
@@ -404,6 +422,80 @@ test("dashboard: leaving mobile viewport clears open sheet inert state", { timeo
     );
     await page.locator('.sidebar-nav a[href="/notes"]').click();
     await page.waitForURL(/\/notes/);
+  } finally {
+    await browser.close();
+    app.kill("SIGTERM");
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("dashboard: mobile sheet sets inert on sidebar inset while open", { timeout: 120_000 }, async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "cc-dash-mobile-inset-"));
+  const port = 5200 + Math.floor(Math.random() * 500);
+  const base = `http://127.0.0.1:${port}`;
+  await new Promise<void>((resolve, reject) => {
+    const seed = spawn("pnpm", ["exec", "tsx", "scripts/seed-dashboard-screenshot.ts"], {
+      cwd: join(import.meta.dirname, ".."),
+      env: { ...process.env, DATA_DIR: dataDir },
+      stdio: "inherit",
+    });
+    seed.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`seed ${code}`))));
+  });
+  const app = startServer(dataDir, port);
+  const browser = await chromium.launch();
+  try {
+    await waitForServer(base);
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.goto(`${base}/`);
+    await page.waitForSelector("#dashboard-grid", { timeout: 20_000 });
+    const insetClosed = await page.evaluate(() => document.querySelector(".sidebar-inset")?.hasAttribute("inert") ?? false);
+    assert.equal(insetClosed, false);
+    await page.locator("#sidebar-toggle").click();
+    await page.waitForFunction(() => document.querySelector(".app-shell")?.getAttribute("data-mobile-sidebar") === "open");
+    const insetOpen = await page.evaluate(() => document.querySelector(".sidebar-inset")?.hasAttribute("inert") ?? false);
+    assert.equal(insetOpen, true);
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => document.querySelector(".app-shell")?.getAttribute("data-mobile-sidebar") === "closed");
+    const insetAfter = await page.evaluate(() => document.querySelector(".sidebar-inset")?.hasAttribute("inert") ?? false);
+    assert.equal(insetAfter, false);
+  } finally {
+    await browser.close();
+    app.kill("SIGTERM");
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("dashboard: fast mobile sheet close cancels delayed sidebar focus", { timeout: 120_000 }, async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "cc-dash-mobile-focus-cancel-"));
+  const port = 5300 + Math.floor(Math.random() * 500);
+  const base = `http://127.0.0.1:${port}`;
+  await new Promise<void>((resolve, reject) => {
+    const seed = spawn("pnpm", ["exec", "tsx", "scripts/seed-dashboard-screenshot.ts"], {
+      cwd: join(import.meta.dirname, ".."),
+      env: { ...process.env, DATA_DIR: dataDir },
+      stdio: "inherit",
+    });
+    seed.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`seed ${code}`))));
+  });
+  const app = startServer(dataDir, port);
+  const browser = await chromium.launch();
+  try {
+    await waitForServer(base);
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.goto(`${base}/`);
+    await page.waitForSelector("#dashboard-grid", { timeout: 20_000 });
+    await page.locator("#sidebar-toggle").click();
+    await page.waitForFunction(() => document.querySelector(".app-shell")?.getAttribute("data-mobile-sidebar") === "open");
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => document.querySelector(".app-shell")?.getAttribute("data-mobile-sidebar") === "closed");
+    await page.waitForTimeout(350);
+    const focusId = await page.evaluate(() => document.activeElement?.id ?? "");
+    assert.equal(focusId, "sidebar-toggle");
+    const focusInSidebar = await page.evaluate(() => {
+      const sidebar = document.querySelector(".sidebar");
+      return !!(sidebar && document.activeElement && sidebar.contains(document.activeElement));
+    });
+    assert.equal(focusInSidebar, false);
   } finally {
     await browser.close();
     app.kill("SIGTERM");

@@ -144,7 +144,11 @@ test("ui: spaces, assistant and capture pages render", () => {
 
 test("ui: settings page has schedule and tabs sections", () => {
   const html = settingsPage();
-  assert.match(html, /settings-card settings-tab-panel/);
+  assert.match(html, /ui-page-header/);
+  assert.match(html, /settings-link-row/);
+  assert.match(html, /settings-sub-panel/);
+  assert.match(html, /role="tab"/);
+  assert.match(html, /aria-controls="settings-panel-general"/);
   assert.match(html, /href="\/settings" class="on"/);
   assert.match(html, /id="tab-schedule"/);
   assert.match(html, /id="tab-views"/);
@@ -160,10 +164,41 @@ test("ui: settings page has schedule and tabs sections", () => {
   assert.match(html, /id="views-save"/);
 });
 
+test("ui: settings tab panels sit directly under the tablist", () => {
+  const html = settingsPage();
+  assert.match(
+    html,
+    /<div class="settings-tabs" role="tablist"[\s\S]*?<\/div>\s*<div class="settings-tab-panels">/,
+  );
+  assert.doesNotMatch(html, /settings-section-title/);
+});
+
+test("ui: settings script maps legacy view hashes", () => {
+  const html = settingsPage();
+  const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)].map((m) => m[1]!);
+  const settingsScript = scripts[scripts.length - 1]!;
+  assert.match(settingsScript, /VIEW_SUBTABS=\["views","topics","schedule","tabs"\]/);
+  assert.match(settingsScript, /setSettingsSection\("views",name\)/);
+});
+
+test("ui: settings connection rows are accessible links", () => {
+  const html = settingsPage();
+  for (const [href, label] of [
+    ["/settings/connections", "Manage service connections and keys"],
+    ["/settings/calendars", "Manage calendars and subscriptions"],
+  ] as const) {
+    const linkStart = html.indexOf(`<a class="settings-link-row" href="${href}"`);
+    assert.notEqual(linkStart, -1, `expected link row for ${href}`);
+    const linkEnd = html.indexOf("</a>", linkStart);
+    assert.notEqual(linkEnd, -1, `expected link row closing tag for ${href}`);
+    assert.ok(html.slice(linkStart, linkEnd).includes(label), `expected link label for ${href}`);
+  }
+});
+
 test("ui: retained dashboard, settings and briefing scripts parse without retired integrations", () => {
   for (const html of [dashboardPage(), settingsPage(), dailyBriefingPage()]) {
     assert.doesNotMatch(html, /\/api\/(?:feeds|rss|news|summaries|ai-security|briefing\/generate)/);
-    for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+    for (const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)) {
       assert.doesNotThrow(() => new Script(match[1]!));
     }
   }
@@ -195,7 +230,7 @@ test("ui: Notes centers writing with preview, formatting, focus, and collapsed p
   }
   assert.match(html, /<details class="notes-properties">/);
   assert.match(html, /Changes save automatically/);
-  for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+  for (const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)) {
     assert.doesNotThrow(() => new Script(match[1]!));
   }
 });
@@ -203,18 +238,22 @@ test("ui: Notes centers writing with preview, formatting, focus, and collapsed p
 test("ui: Bookmarks is a separate grouped launchpad with search, import and layout controls", () => {
   const html = bookmarksPage();
   assert.match(html, /href="\/bookmarks" class="on"/);
+  assert.match(html, /ui-page-header/);
+  assert.match(html, /<h1>Bookmarks<\/h1>/);
   for (const id of ["bookmark-groups", "bookmark-search", "bookmark-import", "bookmark-density", "bookmark-columns", "bookmark-dialog"]) {
     assert.ok(html.includes(`id="${id}"`));
   }
   assert.match(html, /Download backup/);
   assert.doesNotMatch(html, /favicon|google\.com\/s2/);
-  for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+  for (const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)) {
     assert.doesNotThrow(() => new Script(match[1]!));
   }
 });
 
 test("ui: Calendar has mini-month, agenda, native editing, read-only subscriptions, and day/week/month views", () => {
   const html = calendarPage();
+  assert.match(html, /ui-page-header/);
+  assert.match(html, /<h1>Calendar<\/h1>/);
   for (const id of ["cal-mini", "cal-agenda", "cal-search", "cal-sources", "cal-event-dialog", "cal-today", "cal-refresh"]) {
     assert.ok(html.includes(`id="${id}"`));
   }

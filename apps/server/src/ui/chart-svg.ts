@@ -5,7 +5,9 @@ function chartY(v,maxY,p,h){return v===null?null:p+(h-2*p)*(1-v/maxY);}
 function chartGridLine(svg,x1,y1,x2,y2,cls){
   var ln=document.createElementNS("http://www.w3.org/2000/svg","line");
   ln.setAttribute("x1",String(x1));ln.setAttribute("y1",String(y1));ln.setAttribute("x2",String(x2));ln.setAttribute("y2",String(y2));
-  ln.setAttribute("stroke","color-mix(in srgb,var(--border) 50%,transparent)");
+  if(cls==="line-cap"){
+    ln.setAttribute("stroke","var(--foreground)");ln.setAttribute("stroke-width","1");ln.setAttribute("stroke-dasharray","none");ln.setAttribute("opacity","0.35");
+  }else ln.setAttribute("stroke","color-mix(in srgb,var(--border) 50%,transparent)");
   if(cls)ln.setAttribute("class",cls);
   svg.appendChild(ln);
 }

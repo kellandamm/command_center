@@ -1,4 +1,5 @@
 import { esc } from "./layout";
+import { ICONS, type IconName } from "./icons";
 
 export { esc };
 
@@ -75,6 +76,21 @@ export function card(opts: {
   const header = headerInner ? `<div class="ui-card-header-row">${headerInner}${action}</div>` : action;
   const headerWrap = header ? `<div class="ui-card-header">${header}</div>` : "";
   return `<section class="card${sizeClass}${extra}"${idAttr}>${headerWrap}${cardContent(opts.body)}</section>`;
+}
+
+/** Settings navigation row: full-width link with icon, label, optional description, chevron. */
+export function settingsLinkRow(opts: { href: string; label: string; description?: string; iconName: IconName }): string {
+  const desc = opts.description
+    ? `<span class="settings-link-row-desc dim">${esc(opts.description)}</span>`
+    : "";
+  return `<a class="settings-link-row" href="${esc(opts.href)}">
+  <span class="settings-link-row-icon ui-icon" aria-hidden="true">${ICONS[opts.iconName]}</span>
+  <span class="settings-link-row-body">
+    <span class="settings-link-row-label">${esc(opts.label)}</span>
+    ${desc}
+  </span>
+  <span class="settings-link-row-chevron ui-icon" aria-hidden="true">${ICONS.chevronRight}</span>
+</a>`;
 }
 
 export function pageHeader(opts: { title: string; description?: string; actionsHtml?: string }): string {

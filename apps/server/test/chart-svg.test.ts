@@ -51,6 +51,16 @@ result=rect&&rect.attributes.class;
   assert.equal(ctx.result, "bar-under");
 });
 
+test("chart-svg: 100% cap line is solid (not dashed)", () => {
+  const ctx = runCharts(`
+var svg={children:[],replaceChildren:function(){this.children=[]},appendChild:function(c){this.children.push(c)}};
+chartRenderLine(svg,[{value:10,baseline:20}],700,220,28,100);
+var cap=svg.children.find(function(c){return c.attributes&&c.attributes.class==="line-cap";});
+result=cap&&cap.attributes["stroke-dasharray"];
+`);
+  assert.equal((ctx as { result: string }).result, "none");
+});
+
 test("chart-svg client script parses", () => {
   assert.doesNotThrow(() => new Script(CHART_SVG_CLIENT));
 });
