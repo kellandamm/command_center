@@ -1,6 +1,6 @@
 # Budget section — implementation plan
 
-Native **Budget** in Command Center (`apps/server`, server-rendered TS UI). **CSV-only** import; no bank sync, Actual, or OFX. Money is **integer cents** in a separate **`budget.sqlite`** under `cfg.dataDir` (same `homepage-data` volume as `rss.sqlite`; add a backup bullet in `SELFHOST.md` when shipping). UI PRs **wait for the in-flight restyle** and then use shared helpers: `pageHeader`, `statCard`, `skeleton`, `badge`, `emptyState` in `apps/server/src/ui/components.ts`, plus `apps/server/src/ui/chart-svg.ts` for trend charts (those helpers land with the restyle; `emptyState` / `badge` already exist on `main`).
+Native **Budget** in Command Center (`apps/server`, server-rendered TS UI). **CSV-only** import; no bank sync, Actual, or OFX. Money is **integer cents** in a separate **`budget.sqlite`** under `cfg.dataDir` (same `homepage-data` volume as `rss.sqlite`; add a backup bullet in `SELFHOST.md` when shipping). **Implementation PRs A/B/C start only after the UI restyle PR merges** (inset sidebar, `pageHeader`, `statCard`, `skeleton`, `badge`, `emptyState` in `apps/server/src/ui/components.ts`, `apps/server/src/ui/chart-svg.ts`). Do not open PR A until restyle is on `main`.
 
 **Views:** `/budget?view=overview|transactions|budget|accounts|import|settings` (same query pattern as `/library?view=` in `apps/server/src/ui/sources-page.ts`).
 
@@ -19,7 +19,7 @@ Native **Budget** in Command Center (`apps/server`, server-rendered TS UI). **CS
 | UI (minimal) | `apps/server/src/ui/budget-page.ts` — shell + tabs + “Budget unavailable” when gate false; Accounts + Import wizard only |
 | Notices | `THIRD_PARTY_NOTICES.md` — no AB text yet |
 
-**Schema v1** (migration 1): tables from the brief — `accounts`, `category_groups`, `categories`, `budget_months`, `transactions`, `import_batches`, `payee_rules`, `csv_profiles`, indexes including partial unique `(account_id, fingerprint)`. Seed default category groups on first open. **No loan tables yet.**
+**Schema v1** (migration 1): `accounts` (`type` ∈ `checking`, `savings`, `credit`, `cash`, `investment` — **no `loan`**; **`invert_sign`** persisted per account; **`investment`** uses editable **`current_balance_cents`**, not holdings), `category_groups`, `categories`, `budget_months`, `transactions`, `import_batches`, `payee_rules`, `csv_profiles`, indexes including partial unique `(account_id, fingerprint)`. Seed default category groups on first open. **No loan tables yet.**
 
 **Routes (all owner + gate):** `GET/POST /api/budget/*` — accounts/categories CRUD, `budget_months`, transactions CRUD, payee rules, `POST /api/budget/import/preview` (raw CSV, `readRawBody` **5 000 000** bytes from `apps/server/src/request-body.ts`), `POST /api/budget/import/commit`, `POST /api/budget/import/undo/:batchId`, import history. JSON via local helper mirroring `apps/server/src/board/routes.ts` (`cache-control: no-store`). **`GET /budget`** page route in `http.ts`.
 
@@ -38,10 +38,10 @@ Native **Budget** in Command Center (`apps/server`, server-rendered TS UI). **CS
 | Logic | `rollup.ts` (month/category spent, income vs spend, cash flow; exclude `transfer_account_id`) |
 | UI | extend `budget-page.ts` — Overview, Transactions, Budget views; client fetch `/api/budget/rollup`, `/api/budget/transactions` |
 | Panel | `apps/server/src/panels/budget.ts`, register in `apps/server/src/panels/registry.ts`, `panels/types.ts` (`budget?: BudgetStore`), `dashboard-layout/defaults.ts` (add panel + **`DEFAULT_COLLAPSED_PANEL_IDS`**), `apps/server/src/ui/dashboard-page.ts` if needed. **Omit panel from layout and skip `/api/panels/budget` fetch** when gate is off or `owner === false` (no placeholder copy) |
-| Settings | in-page export JSON/CSV, delete-all (type-to-confirm), privacy default |
+| Settings | in-page export JSON/CSV, delete-all (type-to-confirm), privacy default (**no over-budget notifications**) |
 | Docs | `SELFHOST.md` — backup `budget.sqlite` |
 
-**Net worth (pre–loan engine):** `GET /api/budget/net-worth` = sum of account balances (opening + Σ transactions, credit signs as stored) for non-archived accounts. **PR C** extends the same endpoint: **+ Σ latest `asset_values` − Σ loan engine principal** (see PR C).
+**Net worth (PR B):** `GET /api/budget/net-worth` = sum of non-archived account balances (`checking` / `savings` / `credit` / `cash`: opening + Σ txs; **`investment`:** `current_balance_cents` only). Response/UI label includes **“Equity coming soon”** (no assets/loans yet). **PR C** replaces the headline number with **accounts + Σ latest `asset_values` − Σ loan engine principal** and drops the placeholder label when engine data exists.
 
 **Tests:** `budget-rollup.test.ts`, `budget-routes-owner.test.ts`, `budget-panel.test.ts`, `budget-net-worth.test.ts`.
 
@@ -51,7 +51,7 @@ Native **Budget** in Command Center (`apps/server`, server-rendered TS UI). **CS
 
 | Area | Files |
 |------|--------|
-| Engine | `apps/server/src/budget/loans/` — port MIT files from [AB-Asset-Tracker](https://github.com/gismc123/AB-Asset-Tracker): `amortize.ts`, `equity.ts`, `money.ts`, `dates.ts` (+ minimal `types.ts` slices). **Omit v1:** PMI, escrow ledger, daily-simple interest, skip/defer/catch-up, payoff quotes, `modules` toggles beyond mortgage/auto/personal label |
+| Engine | `apps/server/src/budget/loans/` — port MIT files from [AB-Asset-Tracker](https://github.com/gismc123/AB-Asset-Tracker): `amortize.ts`, `equity.ts`, `money.ts`, `dates.ts` (+ minimal `types.ts` slices). **Loans live only here** (no loan CSV import, no `loan` account type). Optional **manual balance override** on a loan record when amortization ≠ servicer statement. **Omit v1:** PMI, escrow ledger, daily-simple interest, skip/defer/catch-up, payoff quotes, `modules` toggles beyond mortgage/auto/personal label |
 | DB | migration 2: `loans`, `loan_setup` (JSON), `loan_settings` (`category_id` → CC category), `loan_details`, `adjustments`, `loan_months` (`transaction_id` → `transactions`, **`ON DELETE SET NULL`**), `assets`, `asset_values` |
 | HTTP | `/api/budget/loans/*`, reconcile = link `loan_months.transaction_id` to imported tx (import undo clears link, does not block delete) |
 | UI | `/budget?view=loans` (or sub-routes): setup, schedule, equity, reconcile |
@@ -63,11 +63,11 @@ Native **Budget** in Command Center (`apps/server`, server-rendered TS UI). **CS
 
 ## CSV parsing & dedupe
 
-**Parser:** Small in-repo RFC-4180 state machine in `csv.ts` (**no new dependency**). Strip UTF-8 BOM; auto-detect header row (first row with ≥2 non-empty cells). Mapping (persisted per account in `csv_profiles.mapping_json`):
+**Parser:** Small in-repo RFC-4180 state machine in `csv.ts` (**no new dependency**). Strip UTF-8 BOM; auto-detect header row (first row with ≥2 non-empty cells). **Generic column guess** (no bank-specific presets required): map common headers — date (`Date`, `Posted`, `Transaction Date`, …), amount (`Amount`), debit/credit pair (`Debit`/`Credit`), payee (`Description`, `Payee`, `Merchant`, …), memo (`Memo`), category (`Category`). Saved **`csv_profiles`** per account override guesses on the next import.
 
 - **Date:** column + format enum (`MM/DD/YYYY`, `YYYY-MM-DD`, `DD/MM/YYYY`).
-- **Amount:** single signed column **or** separate debit/credit columns; **`invertSign`** for card exports (store as **negative = outflow**).
-- **Payee**, optional memo, optional category column (name match to seeded categories).
+- **Amount:** single signed column **or** separate debit/credit columns. **Outflows are stored negative.** Each account has **`invert_sign`**; preview applies it when normalizing. For **`credit`** accounts, if most charge rows parse as positive amounts, preview **suggests** enabling invert and the user **confirms** before commit (persist choice on the account).
+- **Payee**, optional memo, optional category column (name match to seeded categories). **Do not import into `investment` accounts** (manual balance only); wizard disables or rejects that account type.
 
 **Row limits:** 5 MB file cap; reject >20 k data rows at preview.
 
@@ -96,20 +96,20 @@ Follow **`notes/sensitive.ts`** pattern: add `apps/server/src/budget/excluded.ts
 
 ## Encryption at rest (proposal only)
 
-**Not in v1.** Rely on `0700` data dir (`store.ts` `ensureDirs`) + separate DB file + CF Access. Optional future: AES-GCM column encryption with a **`BUDGET_ENCRYPTION_KEY`** (new secret — **requires Kellan approval**; key loss = data loss). Could mirror `CONNECTIONS_MASTER_KEY` style in `config.ts` but **do not add env** until decided.
+**v1: disk protections only** (`0700` data dir via `store.ts` `ensureDirs`, `0600` on `budget.sqlite`, CF Access, separate file on `homepage-data`). **No encryption key in v1.** Document-only future option: AES-GCM column encryption with a **`BUDGET_ENCRYPTION_KEY`** (new secret — Kellan must approve before any env or migration; key loss = data loss). Could mirror `CONNECTIONS_MASTER_KEY` in `config.ts` when/if requested.
 
 ---
 
-## Risks & open questions (Kellan)
+## Decisions (defaults; Kellan may override)
 
-1. **CSV presets:** Sample header rows (redacted) from each bank/card to seed default `csv_profiles`?
-2. **Credit cards:** Confirm sign convention (payments positive vs charges negative) per institution — `invertSign` default per account?
-3. **Loan account type:** Use `accounts.type = 'loan'` for statement imports **and** AB engine loan, or engine-only with no tx import?
-4. **Net worth investments:** v1 = manual balance on `investment` accounts only — no holdings import?
-5. **Over-budget ntfy:** Optional future alert text is generic only (“Budget: category over limit”) — enable later?
-6. **PR B vs C ordering:** Ship PR B with account-only net worth, or merge C first if net worth must include home equity on day one?
-7. **Encryption:** Accept volume-level protection only, or plan a keyed migration later?
-8. **Restyle dependency:** Confirm UI PRs start only after inset sidebar / `pageHeader` / `statCard` / `skeleton` / `chart-svg` merge to avoid double layout work.
+1. **CSV mapping:** Ship generic header auto-detection; no waiting on bank samples. Per-account **`csv_profiles`** still save the owner’s confirmed mapping.
+2. **Signs:** Outflows negative; **`invert_sign`** per account. Credit-card imports: preview suggests flip when charges look mostly positive; user confirms in preview.
+3. **Loans:** Loan engine only (PR C); optional manual balance override on a loan. No loan CSV import; **`loan` account type is not in PR A schema.**
+4. **Investments:** **`investment`** accounts = single manual **`current_balance_cents`**; no holdings/positions import.
+5. **Alerts:** No over-budget ntfy or push in v1.
+6. **Net worth:** PR B = accounts total + **“Equity coming soon”**; PR C = accounts + assets − loans (full formula).
+7. **Encryption:** Disk/volume/Access only for v1; keyed migration stays a written proposal only (no key).
+8. **Sequencing:** Budget **code PRs A → B → C** open only **after** the restyle PR is merged to `main`.
 
 ---
 
