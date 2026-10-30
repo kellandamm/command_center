@@ -700,11 +700,19 @@ body.notes-focus .notes-workspace{grid-template-columns:minmax(0,1fr)}body.notes
     if(event.key==="Escape"&&document.body.classList.contains("notes-focus")){toggleFocus();return;}
     if(!event.metaKey&&!event.ctrlKey)return;
     if(loading||transitioning)return;
+    var paletteOverlay=document.getElementById("command-palette-overlay");
+    if(paletteOverlay&&paletteOverlay.classList.contains("open"))return;
     var key=event.key.toLowerCase();
     if(key==="s"){event.preventDefault();saveNote(undefined,true).catch(showError);}
     else if(key==="k"){
-      if(typeof window.ccOpenCommandPalette==="function"){event.preventDefault();window.ccOpenCommandPalette();return;}
-      event.preventDefault();switcher();
+      var target=event.target;
+      var tag=target&&target.tagName;
+      if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT"){
+        if(!(target&&target.id==="knowledge-body"))return;
+      }
+      if($("knowledge-switcher").open)return;
+      event.preventDefault();
+      if(typeof window.ccOpenCommandPalette==="function")window.ccOpenCommandPalette();
     }
     else if(key==="f"&&!event.shiftKey){event.preventDefault();$("knowledge-find-panel").open=true;$("knowledge-find").focus();}
     else if(["1","2","3"].indexOf(key)>=0){event.preventDefault();setMode({1:"source",2:"split",3:"preview"}[key]);}

@@ -47,6 +47,7 @@ export interface CommandPaletteSearchDeps {
 }
 
 const MAX_LIMIT = 50;
+export const MAX_QUERY_LENGTH = 200;
 
 /** Exported for unit tests (ranking). */
 export function scoreTextMatch(text: string, needle: string): number {
@@ -184,7 +185,7 @@ function todoistRows(tasks: Awaited<ReturnType<TodoistOpenTaskCache["getOpenTask
 }
 
 export async function searchCommandPalette(deps: CommandPaletteSearchDeps): Promise<CommandPaletteRow[]> {
-  const needle = deps.query.trim();
+  const needle = deps.query.trim().slice(0, MAX_QUERY_LENGTH);
   const limit = Math.min(MAX_LIMIT, Math.max(1, deps.limit ?? MAX_LIMIT));
   const rows: CommandPaletteRow[] = [];
 

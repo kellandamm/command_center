@@ -2,8 +2,8 @@
  * Command palette screenshots (light + dark) at 1440 and 390 widths.
  * Usage: pnpm exec tsx scripts/capture-command-palette-screenshots.ts
  */
-import { mkdir } from "node:fs/promises";
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -92,6 +92,9 @@ async function main() {
     await closeIntegrationServer(server, integration);
   }
   console.log("Wrote screenshots to", outRoot);
+  const sha = execSync("git rev-parse HEAD", { cwd: join(serverDir, "../.."), encoding: "utf8" }).trim();
+  await writeFile(join(outRoot, "after", "git-sha.txt"), `${sha}\n`);
+  console.log("Recorded git SHA", sha);
 }
 
 main().catch((err) => {

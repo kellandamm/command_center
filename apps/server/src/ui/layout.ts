@@ -314,6 +314,17 @@ const THEME_SCRIPT = `
   }
   var inset=shell.querySelector(".sidebar-inset");
   var focusWait=null;
+  function commandPaletteOpen(){
+    var ov=document.getElementById("command-palette-overlay");
+    return !!(ov&&ov.classList.contains("open"));
+  }
+  function clearInsetInertIfAllowed(){
+    if(!inset)return;
+    if(commandPaletteOpen())return;
+    if(isMobile()&&shell.getAttribute("data-mobile-sidebar")==="open")return;
+    inset.removeAttribute("inert");
+  }
+  window.ccClearInsetInertIfAllowed=clearInsetInertIfAllowed;
   function cancelFocusWait(){
     if(!focusWait)return;
     if(focusWait.timer)clearTimeout(focusWait.timer);
@@ -357,14 +368,15 @@ const THEME_SCRIPT = `
     cancelFocusWait();
     shell.setAttribute("data-mobile-sidebar","closed");
     if(sidebar){sidebar.removeAttribute("inert");sidebar.removeAttribute("aria-hidden");}
-    if(inset)inset.removeAttribute("inert");
+    clearInsetInertIfAllowed();
     syncToggleAria();
   }
   function setMobileOpen(open){
     if(!open)cancelFocusWait();
     shell.setAttribute("data-mobile-sidebar",open?"open":"closed");
     if(inset){
-      if(open)inset.setAttribute("inert",""); else inset.removeAttribute("inert");
+      if(open)inset.setAttribute("inert","");
+      else clearInsetInertIfAllowed();
     }
     if(sidebar){
       if(open){sidebar.removeAttribute("inert");sidebar.removeAttribute("aria-hidden");focusFirstSidebarWhenVisible();}
@@ -385,6 +397,7 @@ const THEME_SCRIPT = `
   function sidebarShortcutBlocked(){
     var el=document.activeElement;
     if(!el||!el.tagName)return false;
+    if(el.id==="knowledge-body")return false;
     var tag=el.tagName;
     if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT")return true;
     if(el.isContentEditable)return true;
