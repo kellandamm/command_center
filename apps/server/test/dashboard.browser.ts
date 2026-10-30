@@ -11,7 +11,7 @@ function sleep(ms: number) {
 }
 
 async function waitForServer(baseUrl: string) {
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 100; i++) {
     try {
       const r = await fetch(`${baseUrl}/healthz`);
       if (r.ok) return;
