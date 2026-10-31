@@ -139,6 +139,37 @@ test("budget privacy: seeded budget payee absent from knowledge LLM note context
   await rm(dir, { recursive: true, force: true });
 });
 
+test("budget privacy: MCP tool list has no budget tools", () => {
+  const mcpServer = readFileSync(join(process.cwd(), "src/mcp/create-server.ts"), "utf8");
+  const names = [...mcpServer.matchAll(/registerTool\(\s*"([^"]+)"/g)].map((m) => m[1]!);
+  assert.ok(names.length >= 3);
+  assert.ok(!names.some((n) => n.toLowerCase().includes("budget")));
+});
+
+test("budget privacy: daily briefing record excludes planted payee", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-budget-brief-"));
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    CF_ACCESS_TEAM_DOMAIN: "team.example.com",
+    CF_ACCESS_AUD: "aud",
+    OWNER_EMAILS: OWNER,
+    TZ: "UTC",
+  });
+  const budget = BudgetStore.open(dir);
+  const acct = budget.createAccount({ name: "Checking", type: "checking" });
+  budget.createTransaction({ accountId: acct.id, date: "2026-07-01", amountCents: -100, payee: PLANT });
+  const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
+  const rec = await dailyBriefing.generate({
+    cfg,
+    trigger: "manual",
+    now: new Date("2026-07-02T12:00:00Z"),
+    fetchFn: async () => new Response("{}", { status: 200 }),
+  });
+  assert.ok(!JSON.stringify(rec).includes(PLANT));
+  budget.close();
+  await rm(dir, { recursive: true, force: true });
+});
+
 test("budget privacy: service worker skips /budget caching", () => {
   assert.match(SERVICE_WORKER, /url\.pathname === "\/budget"/);
   assert.match(SERVICE_WORKER, /startsWith\("\/budget\/"\)/);

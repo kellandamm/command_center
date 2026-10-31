@@ -7,3 +7,7 @@ export function budgetAvailable(cfg: Config): boolean {
 
 export const BUDGET_DISABLED_MESSAGE =
   "Budget is not enabled. Set CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD, and OWNER_EMAILS.";
+
+export function budgetPanelVisible(cfg: Config, owner: boolean): boolean {
+  return budgetAvailable(cfg) && owner;
+}

@@ -323,6 +323,111 @@ export class BudgetStore {
     return { newCount, duplicateCount, errorCount };
   }
 
+  sumTransactionsForAccount(accountId: string): number {
+    const r = this.db.prepare("SELECT COALESCE(SUM(amount_cents), 0) AS s FROM transactions WHERE account_id = ?").get(accountId) as {
+      s: number;
+    };
+    return Number(r.s);
+  }
+
+  accountBalanceCents(account: BudgetAccount): number {
+    if (account.archived) return 0;
+    if (account.type === "investment") return account.currentBalanceCents ?? 0;
+    return account.openingBalanceCents + this.sumTransactionsForAccount(account.id);
+  }
+
+  netWorth(): { totalCents: number; accounts: Array<{ id: string; name: string; type: AccountType; balanceCents: number }> } {
+    const accounts = this.listAccounts(false).map((a) => ({
+      id: a.id,
+      name: a.name,
+      type: a.type,
+      balanceCents: this.accountBalanceCents(a),
+    }));
+    const totalCents = accounts.reduce((sum, a) => sum + a.balanceCents, 0);
+    return { totalCents, accounts };
+  }
+
+  listBudgetMonth(month: string): Array<{ categoryId: string; budgetedCents: number }> {
+    return (
+      this.db.prepare("SELECT category_id, budgeted_cents FROM budget_months WHERE month = ?").all(month) as Record<
+        string,
+        unknown
+      >[]
+    ).map((r) => ({
+      categoryId: String(r.category_id),
+      budgetedCents: Number(r.budgeted_cents),
+    }));
+  }
+
+  setBudgetMonth(month: string, categoryId: string, budgetedCents: number): void {
+    if (!Number.isInteger(budgetedCents) || budgetedCents < 0) throw new ValidationError("budget must be whole cents");
+    const cat = this.db.prepare("SELECT 1 FROM categories WHERE id = ?").get(categoryId);
+    if (!cat) throw new ValidationError("category not found");
+    this.db
+      .prepare(
+        `INSERT INTO budget_months (month, category_id, budgeted_cents) VALUES (?, ?, ?)
+         ON CONFLICT(month, category_id) DO UPDATE SET budgeted_cents = excluded.budgeted_cents`,
+      )
+      .run(month, categoryId, budgetedCents);
+  }
+
+  getBudgetPrefs(): { overBudgetNotify: boolean } {
+    const r = this.db.prepare("SELECT value FROM budget_prefs WHERE key = 'over_budget_notify'").get() as
+      | { value: string }
+      | undefined;
+    return { overBudgetNotify: r?.value === "1" };
+  }
+
+  setBudgetPrefs(prefs: { overBudgetNotify?: boolean }): { overBudgetNotify: boolean } {
+    if (prefs.overBudgetNotify !== undefined) {
+      this.db
+        .prepare("INSERT INTO budget_prefs (key, value) VALUES ('over_budget_notify', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        .run(prefs.overBudgetNotify ? "1" : "0");
+    }
+    return this.getBudgetPrefs();
+  }
+
+  deleteAllData(): void {
+    this.db.exec("BEGIN");
+    try {
+      this.db.exec("DELETE FROM transactions");
+      this.db.exec("DELETE FROM import_batches");
+      this.db.exec("DELETE FROM budget_months");
+      this.db.exec("DELETE FROM payee_rules");
+      this.db.exec("DELETE FROM csv_profiles");
+      this.db.exec("DELETE FROM accounts");
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+  }
+
+  exportSnapshot(): {
+    accounts: BudgetAccount[];
+    categories: BudgetCategory[];
+    groups: BudgetCategoryGroup[];
+    transactions: BudgetTransaction[];
+    budgetMonths: Array<{ month: string; categoryId: string; budgetedCents: number }>;
+    prefs: { overBudgetNotify: boolean };
+  } {
+    const budgetMonths = (
+      this.db.prepare("SELECT month, category_id, budgeted_cents FROM budget_months").all() as Record<string, unknown>[]
+    ).map((r) => ({
+      month: String(r.month),
+      categoryId: String(r.category_id),
+      budgetedCents: Number(r.budgeted_cents),
+    }));
+    return {
+      accounts: this.listAccounts(true),
+      groups: this.listCategoryGroups(),
+      categories: this.listCategories(),
+      transactions: this.listTransactions(undefined, 100_000),
+      budgetMonths,
+      prefs: this.getBudgetPrefs(),
+    };
+  }
+
   listTransactions(accountId?: string, limit = 500): BudgetTransaction[] {
     const rows = accountId
       ? (this.db
@@ -342,6 +447,7 @@ export class BudgetStore {
     payee?: string;
     memo?: string;
     categoryId?: string | null;
+    transferAccountId?: string | null;
   }): BudgetTransaction {
     if (!Number.isInteger(input.amountCents)) throw new ValidationError("amount must be whole cents");
     const account = this.getAccount(input.accountId);
@@ -351,8 +457,8 @@ export class BudgetStore {
     const id = randomUUID();
     this.db
       .prepare(
-        `INSERT INTO transactions (id, account_id, date, amount_cents, payee, memo, category_id, cleared, fingerprint, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1, NULL, ?, ?)`,
+        `INSERT INTO transactions (id, account_id, date, amount_cents, payee, memo, category_id, transfer_account_id, cleared, fingerprint, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, ?, ?)`,
       )
       .run(
         id,
@@ -362,6 +468,7 @@ export class BudgetStore {
         (input.payee ?? "").slice(0, 240),
         (input.memo ?? "").slice(0, 500),
         input.categoryId ?? null,
+        input.transferAccountId ?? null,
         now,
         now,
       );

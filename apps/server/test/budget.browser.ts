@@ -156,3 +156,77 @@ test("budget import UI: invert checkbox checked for saved inverted credit accoun
     await rm(dataDir, { recursive: true, force: true });
   }
 });
+
+async function seedDemoBudget(base: string, jwt: string) {
+  const headers = ownerHeaders(jwt);
+  const now = new Date();
+  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const day = `${month}-${String(Math.min(28, now.getDate())).padStart(2, "0")}`;
+  const checking = await fetch(`${base}/api/budget/accounts`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name: "Demo Checking", type: "checking", openingBalanceCents: 500000 }),
+  });
+  const { account } = (await checking.json()) as { account: { id: string } };
+  const cats = (await (await fetch(`${base}/api/budget/categories`, { headers })).json()) as {
+    categories: Array<{ id: string; name: string }>;
+  };
+  const groceries = cats.categories.find((c) => c.name === "Groceries")!.id;
+  await fetch(`${base}/api/budget/transactions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ accountId: account.id, date: day, amountCents: -4523, payee: "Demo Market", categoryId: groceries }),
+  });
+  await fetch(`${base}/api/budget/accounts`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name: "Demo Brokerage", type: "investment", currentBalanceCents: 1250000 }),
+  });
+  return month;
+}
+
+test("budget UI: overview and panel screenshots with demo seed", { timeout: 120_000 }, async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "cc-budget-shot-"));
+  const app = await openBudgetBrowserServer(dataDir);
+  const browser = await chromium.launch();
+  const shotDir = "/opt/cursor/artifacts/screenshots/budget-pr-b";
+  try {
+    await seedDemoBudget(app.base, app.ownerJwt);
+    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    await context.addCookies([
+      { name: "CF_Authorization", value: app.ownerJwt, domain: "127.0.0.1", path: "/" },
+    ]);
+    const page = await context.newPage();
+    const rollupDone = page.waitForResponse((r) => r.url().includes("/api/budget/rollup") && r.ok());
+    await page.goto(`${app.base}/budget?view=overview`);
+    await rollupDone;
+    await page.waitForFunction(() => {
+      const v = document.querySelector("#budget-panel-overview .stat-grid .stat-value");
+      return v && (v.textContent?.includes("$") ?? false);
+    });
+    await page.screenshot({ path: `${shotDir}/budget-overview.png`, fullPage: true });
+    await page.goto(`${app.base}/budget?view=transactions`);
+    await page.waitForSelector("#budget-tx-list table tbody tr");
+    await page.screenshot({ path: `${shotDir}/budget-transactions.png`, fullPage: true });
+    await page.goto(`${app.base}/budget?view=budget`);
+    await page.waitForSelector("#budget-month-grid table");
+    await page.screenshot({ path: `${shotDir}/budget-monthly.png`, fullPage: true });
+    await page.goto(`${app.base}/`);
+    await page.waitForSelector('[data-panel-id="budget"]', { timeout: 20_000 });
+    const budgetItem = page.locator('[data-panel-id="budget"]');
+    if (await budgetItem.evaluate((el) => el.classList.contains("is-collapsed"))) {
+      await budgetItem.locator(".dashboard-collapse").click();
+    }
+    await page.locator("#budget-panel-net").waitFor({ state: "visible" });
+    await page.screenshot({ path: `${shotDir}/budget-panel-blurred.png`, fullPage: true });
+    await page.click("#budget-panel-reveal");
+    await page.waitForFunction(() =>
+      document.querySelector("#budget-panel-net")?.classList.contains("is-revealed"),
+    );
+    await page.screenshot({ path: `${shotDir}/budget-panel-revealed.png`, fullPage: true });
+  } finally {
+    await browser.close();
+    await app.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});

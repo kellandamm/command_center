@@ -14,6 +14,7 @@ import { recallioDashboardScript } from "../panels/recallio";
 import { tasksDashboardScript } from "../panels/tasks";
 import { weatherDashboardScript } from "../panels/weather";
 import { agentsUsagePanelDashboardScript } from "../panels/agents-usage";
+import { budgetDashboardScript, budgetPanelDashboardCss, BUDGET_PANEL_ID } from "../panels/budget";
 import { agentsUsagePanelCss } from "./agents-usage-client";
 import { button, pageHeader } from "./components";
 import { dashboardGridCss, dashboardGridScript } from "./dashboard-grid";
@@ -72,10 +73,12 @@ const PANEL_SCRIPTS = [
   heatmapDashboardScript,
   launchpadDashboardScript,
   agentsUsagePanelDashboardScript,
+  budgetDashboardScript,
 ];
 
-function dashboardItemsHtml(): string {
+function dashboardItemsHtml(showBudgetPanel: boolean): string {
   return panels
+    .filter((panel) => showBudgetPanel || panel.id !== BUDGET_PANEL_ID)
     .map((panel) => {
       const entry = defaultEntryForPanel(panel.id);
       const collapsed = entry.collapsed ? " is-collapsed" : "";
@@ -88,11 +91,13 @@ function dashboardItemsHtml(): string {
     .join("\n");
 }
 
-export function dashboardPage(nav?: NavLink[]): string {
+export function dashboardPage(nav?: NavLink[], opts?: { showBudgetPanel?: boolean }): string {
+  const showBudgetPanel = opts?.showBudgetPanel ?? false;
+  const visiblePanels = panels.filter((p) => showBudgetPanel || p.id !== BUDGET_PANEL_ID);
   const pageLinks = Object.fromEntries(
-    panels.filter((p) => p.pageHref).map((p) => [p.id, p.pageHref!]),
+    visiblePanels.filter((p) => p.pageHref).map((p) => [p.id, p.pageHref!]),
   );
-  const panelTitles = Object.fromEntries(panels.map((p) => [p.id, p.title]));
+  const panelTitles = Object.fromEntries(visiblePanels.map((p) => [p.id, p.title]));
   const layoutActions = `<details class="page-header-menu">
   <summary class="btn btn-outline btn-sm">Layout</summary>
   <div class="page-header-menu-panel">
@@ -106,7 +111,7 @@ export function dashboardPage(nav?: NavLink[]): string {
     title: "Command center",
     active: "/",
     nav,
-    extraCss: dashboardGridCss + dashboardPanelCss + quickAddCss + agentsUsagePanelCss,
+    extraCss: dashboardGridCss + dashboardPanelCss + quickAddCss + agentsUsagePanelCss + budgetPanelDashboardCss(),
     body: `<div class="dashboard-page">
 ${pageHeader({ title: "Dashboard", description: "Drag panels, pin what matters, and jump in quickly.", actionsHtml: layoutActions })}
 <div class="dashboard-quick-add-bar quick-add-bar">
@@ -122,7 +127,7 @@ ${pageHeader({ title: "Dashboard", description: "Drag panels, pin what matters, 
   <ul class="voice-inbox-list"></ul>
 </section>
 <p class="dim dashboard-layout-hint" style="margin:0;font-size:.8125rem">Layout saves automatically.</p>
-<div id="dashboard-grid" class="dashboard-grid">${dashboardItemsHtml()}</div>
+<div id="dashboard-grid" class="dashboard-grid">${dashboardItemsHtml(showBudgetPanel)}</div>
 </div>`,
     script: `
 var PANEL_PAGE_LINKS=${JSON.stringify(pageLinks)};
@@ -139,7 +144,7 @@ document.getElementById("dashboard-import-layout")?.addEventListener("change",fu
   .catch(function(err){alert(err.message||"Import failed");})
   .finally(function(){input.value="";document.querySelector(".page-header-menu[open]")?.removeAttribute("open");});
 });
-${PANEL_SCRIPTS.map((fn) => fn()).join("\n")}
+${PANEL_SCRIPTS.filter((fn) => fn !== budgetDashboardScript || showBudgetPanel).map((fn) => fn()).join("\n")}
 ${quickAddScript}
 var dashboardQuickAdd=mountQuickAdd("dashboard-quick-add",{onVoiceCommitted:function(){if(window.__voiceInboxRefresh)window.__voiceInboxRefresh();}});
 ${voiceInboxScript}

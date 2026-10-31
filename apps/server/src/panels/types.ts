@@ -10,6 +10,7 @@ import type { CalendarWorkspace } from "../calendar/workspace";
 import type { AttentionStore } from "../attention/store";
 import type { LaunchpadStore } from "../launchpad/store";
 import type { FocusSessionsStore } from "../focus/store";
+import type { BudgetStore } from "../budget/store";
 
 export interface PanelContext {
   cfg: Config;
@@ -24,6 +25,7 @@ export interface PanelContext {
   launchpad: LaunchpadStore;
   focusSessions: FocusSessionsStore;
   owner: boolean;
+  budget?: BudgetStore;
 }
 
 export type PanelHandler = (ctx: PanelContext, req: IncomingMessage, res: ServerResponse, path: string) => Promise<boolean>;

@@ -92,4 +92,15 @@ CREATE TABLE IF NOT EXISTS csv_profiles (
 );
 `,
   },
+  {
+    version: 2,
+    description: "budget prefs",
+    sql: `
+CREATE TABLE IF NOT EXISTS budget_prefs (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+INSERT OR IGNORE INTO budget_prefs (key, value) VALUES ('over_budget_notify', '0');
+`,
+  },
 ];
