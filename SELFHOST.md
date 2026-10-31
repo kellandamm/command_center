@@ -154,6 +154,7 @@ The search accepts JSON either as an array of hits or as `{ results | items | me
 
 - `settings.json` — daily briefing time, sidebar tabs, and view preferences
 - `rss.sqlite` — Board cards/events and Wins, including weekly summaries (WAL mode); legacy starred articles and summaries are copied into Read later at startup without modifying the original tables
+- `budget.sqlite` — Budget accounts, transactions, and category budgets (owner-only; file mode `0600` when supported). Include it in **`homepage-data` volume backups** with the rest of `/data`.
 - `daily-briefings/` — per-day calendar, weather, and keyword digest snapshots (older files are preserved)
 - `state.json` — scheduler timestamps
 - `capture-access.json` — SHA-256 hash of the Chrome capture token (create or revoke it at `/settings/capture`)

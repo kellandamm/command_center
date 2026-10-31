@@ -1,5 +1,5 @@
 import type { NavLink } from "./layout";
-import { button, emptyState, field, pageHeader, tabs } from "./components";
+import { button, emptyState, field, pageHeader, skeleton, statCard, statGrid, tabs } from "./components";
 import { page } from "./layout";
 
 const VIEW_LINKS = [
@@ -19,7 +19,7 @@ function viewTabs(active: string): string {
 }
 
 export function budgetPage(nav: NavLink[], opts: { owner: boolean; initialView?: string }): string {
-  const initialView = opts.initialView ?? "accounts";
+  const initialView = opts.initialView ?? "overview";
   if (!opts.owner) {
     return page({
       title: "Budget",
@@ -32,49 +32,82 @@ export function budgetPage(nav: NavLink[], opts: { owner: boolean; initialView?:
     });
   }
 
-  const comingSoon = emptyState({
-    title: "Coming soon",
-    description: "Overview, transactions, and monthly budget views ship in the next Budget PR.",
-  });
-
   const accountsEmpty = emptyState({
     title: "No accounts yet",
     description: "Add an account, then import a CSV from your bank.",
     actionHtml: button({ label: "Add account", attrs: { id: "budget-add-account", type: "button" } }),
   });
 
-  const body = `${pageHeader({ title: "Budget", description: "CSV import and accounts (owner-only)." })}
+  const overviewShell = `${statGrid(
+    statCard({ label: "Net worth", value: "—", hint: "Equity coming soon" }) +
+      statCard({ label: "Income", value: "—" }) +
+      statCard({ label: "Spending", value: "—" }) +
+      statCard({ label: "Cash flow", value: "—" }),
+  )}
+<div id="budget-overview-categories" class="card card-sm" style="margin-top:1rem">${skeleton({ lines: 4 })}</div>`;
+
+  const body = `${pageHeader({ title: "Budget", description: "CSV import, accounts, and monthly views (owner-only)." })}
 ${viewTabs(initialView === "overview" ? "overview" : initialView)}
 <div id="budget-status" class="workspace-status" role="status"></div>
+<section id="budget-panel-overview" class="budget-panel" hidden>${overviewShell}</section>
+<section id="budget-panel-transactions" class="budget-panel" hidden>
+<div class="card card-sm"><div id="budget-tx-list">${skeleton({ lines: 5 })}</div></div>
+</section>
+<section id="budget-panel-budget" class="budget-panel" hidden>
+<div class="row" style="margin-bottom:.75rem;align-items:center;gap:.5rem">
+<label class="dim" for="budget-month-picker">Month</label>
+<input id="budget-month-picker" type="month" />
+</div>
+<div id="budget-month-grid" class="card card-sm">${skeleton({ lines: 6 })}</div>
+</section>
 <section id="budget-panel-accounts" class="budget-panel">${accountsEmpty}</section>
-<section id="budget-panel-placeholder" class="budget-panel" hidden>${comingSoon}</section>
 <section id="budget-panel-import" class="budget-panel" hidden>
 ${cardImportWizard()}
+</section>
+<section id="budget-panel-settings" class="budget-panel" hidden>
+<div class="card card-sm">
+<p class="dim">Export a backup or remove all budget data from this server.</p>
+<div class="row" style="margin:.75rem 0">${button({ label: "Export JSON", attrs: { id: "budget-export-json", type: "button" } })}${button({
+    label: "Export CSV",
+    variant: "secondary",
+    attrs: { id: "budget-export-csv", type: "button" },
+  })}</div>
+${field({
+  label: "Privacy",
+  id: "budget-over-notify",
+  hint: "Over-budget phone notifications are not available in v1; leave off.",
+  inputHtml: '<label><input type="checkbox" id="budget-over-notify" disabled> Over-budget notifications (coming later)</label>',
+})}
+<hr style="border:0;border-top:1px solid var(--border);margin:1rem 0" />
+<p class="dim">Type <strong>DELETE ALL BUDGET DATA</strong> to erase accounts, transactions, and budgets.</p>
+<input id="budget-delete-confirm" type="text" autocomplete="off" placeholder="DELETE ALL BUDGET DATA" style="width:100%;max-width:24rem;margin:.5rem 0" />
+${button({ label: "Delete all budget data", variant: "secondary", attrs: { id: "budget-delete-all", type: "button" } })}
+</div>
 </section>
 <script>
 (function(){
 var params=new URLSearchParams(location.search);
-var view=params.get("view")||"accounts";
-var panels={overview:"placeholder",transactions:"placeholder",budget:"placeholder",accounts:"accounts",import:"import",settings:"placeholder"};
-var active=panels[view]?view:"accounts";
+var view=params.get("view")||"overview";
+var panels={overview:"overview",transactions:"transactions",budget:"budget",accounts:"accounts",import:"import",settings:"settings"};
+var active=panels[view]?view:"overview";
 document.querySelectorAll(".ui-tabs a").forEach(function(a){
   var href=a.getAttribute("href")||"";
   var match=href==="/budget"?"overview":(href.split("view=")[1]||"");
   a.setAttribute("aria-current",match===active?"page":"false");
 });
-["accounts","import","placeholder"].forEach(function(id){
+["overview","transactions","budget","accounts","import","settings"].forEach(function(id){
   var el=document.getElementById("budget-panel-"+id);
-  if(el)el.hidden=(panels[active]!==id);
+  if(el)el.hidden=(active!==id);
 });
 function api(path,method,body){
   return fetch(path,{method:method||"GET",headers:{"content-type":"application/json","x-ah":"1"},body:body?JSON.stringify(body):undefined}).then(function(r){
     return r.json().then(function(j){if(!r.ok)throw new Error(j.error||("HTTP "+r.status));return j;});
   });
 }
-function fmt(cents){var n=Number(cents)||0;return (n<0?"-":"")+"$"+(Math.abs(n)/100).toFixed(2);}
-function setStatus(msg,bad){var el=document.getElementById("budget-status");el.textContent=msg||"";el.classList.toggle("bad",!!bad);}
+function fmt(cents){var n=Number(cents)||0;var sign=n<0?"-":"";return sign+"$"+(Math.abs(n)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});}
+function setStatus(msg,bad){var el=document.getElementById("budget-status");if(!el)return;el.textContent=msg||"";el.classList.toggle("bad",!!bad);}
 function textCell(tr,text){var td=document.createElement("td");td.textContent=text;tr.appendChild(td);}
-var state={accounts:[],preview:null,dateFormatTouched:false};
+var state={accounts:[],categories:[],groups:[],preview:null,dateFormatTouched:false,rollup:null,month:""};
 function importDateFormatFor(accountId){
   var acct=state.accounts.find(function(a){return a.id===accountId;});
   return (acct&&acct.importDateFormat)||"MM/DD/YYYY";
@@ -103,13 +136,93 @@ function renderAccounts(){
   state.accounts.forEach(function(a){
     var tr=document.createElement("tr");
     textCell(tr,a.name);textCell(tr,a.type);
-    var bal=a.type==="investment"?(a.currentBalanceCents||0):a.openingBalanceCents;
+    var bal=a.balanceCents!=null?a.balanceCents:(a.type==="investment"?(a.currentBalanceCents||0):a.openingBalanceCents);
     var tdBal=document.createElement("td");tdBal.className="tabular-nums";tdBal.textContent=fmt(bal);tr.appendChild(tdBal);
     var tdAct=document.createElement("td");
-    var imp=document.createElement("button");imp.type="button";imp.className="ghost btn-sm";imp.textContent="Import";imp.dataset.import=a.id;
+    var imp=document.createElement("button");imp.type="button";imp.className="ghost btn-sm";imp.textContent="Import";
     if(a.type==="investment")imp.disabled=true;
     imp.onclick=function(){location.href="/budget?view=import&account="+a.id;};
     tdAct.appendChild(imp);tr.appendChild(tdAct);
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);box.appendChild(table);
+}
+function renderOverview(){
+  var grid=document.querySelector("#budget-panel-overview .stat-grid");
+  if(!grid||!state.rollup)return;
+  var r=state.rollup;
+  var cards=grid.querySelectorAll(".stat-card");
+  if(cards[0]){cards[0].querySelector(".stat-value").textContent=state.netWorth!=null?fmt(state.netWorth):"—";}
+  if(cards[1])cards[1].querySelector(".stat-value").textContent=fmt(r.incomeCents);
+  if(cards[2])cards[2].querySelector(".stat-value").textContent=fmt(r.spendCents);
+  if(cards[3])cards[3].querySelector(".stat-value").textContent=fmt(r.cashFlowCents);
+  var box=document.getElementById("budget-overview-categories");
+  if(!box)return;
+  box.replaceChildren();
+  var h=document.createElement("h3");h.style.marginTop="0";h.textContent="Top categories";box.appendChild(h);
+  if(!r.topCategories||!r.topCategories.length){box.appendChild(document.createElement("p")).textContent="No spending this month.";return;}
+  var table=document.createElement("table");table.className="ui-table";
+  var thead=document.createElement("thead");var hr=document.createElement("tr");
+  ["Category","Spent","Budget"].forEach(function(x){var th=document.createElement("th");th.textContent=x;hr.appendChild(th);});
+  thead.appendChild(hr);table.appendChild(thead);
+  var tbody=document.createElement("tbody");
+  r.topCategories.forEach(function(row){
+    var tr=document.createElement("tr");
+    textCell(tr,row.categoryName||"Uncategorized");
+    textCell(tr,fmt(row.spentCents));
+    textCell(tr,fmt(row.budgetedCents));
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);box.appendChild(table);
+}
+function renderTransactions(){
+  var box=document.getElementById("budget-tx-list");
+  if(!box)return;
+  box.replaceChildren();
+  if(!state.transactions||!state.transactions.length){
+    box.innerHTML='<div class="ui-empty" role="status"><p class="ui-empty-title">No transactions yet.</p></div>';
+    return;
+  }
+  var table=document.createElement("table");table.className="ui-table";
+  var thead=document.createElement("thead");var hr=document.createElement("tr");
+  ["Date","Payee","Amount","Category"].forEach(function(h){var th=document.createElement("th");th.textContent=h;hr.appendChild(th);});
+  thead.appendChild(hr);table.appendChild(thead);
+  var tbody=document.createElement("tbody");
+  var catName=function(id){var c=state.categories.find(function(x){return x.id===id;});return c?c.name:"";};
+  state.transactions.forEach(function(tx){
+    var tr=document.createElement("tr");
+    textCell(tr,tx.date);textCell(tr,tx.payee||"");
+    var tdAmt=document.createElement("td");tdAmt.className="tabular-nums";tdAmt.textContent=fmt(tx.amountCents);tr.appendChild(tdAmt);
+    textCell(tr,catName(tx.categoryId));
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);box.appendChild(table);
+}
+function renderBudgetMonth(){
+  var box=document.getElementById("budget-month-grid");
+  if(!box||!state.rollup)return;
+  box.replaceChildren();
+  var table=document.createElement("table");table.className="ui-table";
+  var thead=document.createElement("thead");var hr=document.createElement("tr");
+  ["Category","Budgeted","Spent","Left"].forEach(function(h){var th=document.createElement("th");th.textContent=h;hr.appendChild(th);});
+  thead.appendChild(hr);table.appendChild(thead);
+  var tbody=document.createElement("tbody");
+  state.rollup.byCategory.filter(function(row){return !row.isIncome&&row.categoryId;}).forEach(function(row){
+    var left=row.budgetedCents+row.spentCents;
+    var tr=document.createElement("tr");
+    textCell(tr,row.categoryName||"Uncategorized");
+    var tdB=document.createElement("td");tdB.className="tabular-nums";
+    var inp=document.createElement("input");inp.type="number";inp.min="0";inp.step="0.01";inp.value=(row.budgetedCents/100).toFixed(2);
+    inp.dataset.categoryId=row.categoryId;inp.className="tabular-nums";inp.style.width="6rem";
+    inp.onchange=function(){
+      var cents=Math.round(Number(inp.value)*100)||0;
+      api("/api/budget/budget-months","PUT",{month:state.month,categoryId:row.categoryId,budgetedCents:cents}).then(loadRollup).catch(function(e){setStatus(e.message,true);});
+    };
+    tdB.appendChild(inp);tr.appendChild(tdB);
+    var tdS=document.createElement("td");tdS.className="tabular-nums";tdS.textContent=fmt(row.spentCents);tr.appendChild(tdS);
+    var tdL=document.createElement("td");tdL.className="tabular-nums";tdL.textContent=fmt(left);
+    if(row.budgetedCents>0&&left<0)tdL.style.color="var(--warning)";
+    tr.appendChild(tdL);
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);box.appendChild(table);
@@ -119,7 +232,17 @@ function openAccountDialog(){
   var type=(prompt("Type: checking, savings, credit, cash, investment","checking")||"checking").trim();
   api("/api/budget/accounts","POST",{name:name,type:type}).then(loadAccounts).catch(function(e){setStatus(e.message,true);});
 }
-function loadAccounts(){api("/api/budget/accounts").then(function(r){state.accounts=r.accounts;renderAccounts();if(active==="import")fillImportAccounts();}).catch(function(e){setStatus(e.message,true);});}
+function loadAccounts(){return api("/api/budget/accounts").then(function(r){state.accounts=r.accounts;renderAccounts();if(active==="import")fillImportAccounts();}).catch(function(e){setStatus(e.message,true);});}
+function loadCategories(){return api("/api/budget/categories").then(function(r){state.categories=r.categories;state.groups=r.groups;}).catch(function(){});}
+function loadRollup(){
+  var picker=document.getElementById("budget-month-picker");
+  var month=picker&&picker.value?picker.value:state.month;
+  if(!month){var d=new Date();month=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");}
+  state.month=month;
+  return api("/api/budget/rollup?month="+encodeURIComponent(month)).then(function(r){state.rollup=r.rollup;renderOverview();renderBudgetMonth();}).catch(function(e){setStatus(e.message,true);});
+}
+function loadNetWorth(){return api("/api/budget/net-worth").then(function(r){state.netWorth=r.totalCents;renderOverview();}).catch(function(){});}
+function loadTransactions(){return api("/api/budget/transactions").then(function(r){state.transactions=r.transactions;renderTransactions();}).catch(function(e){setStatus(e.message,true);});}
 function fillImportAccounts(){
   var sel=document.getElementById("budget-import-account"); if(!sel)return;
   sel.innerHTML="";
@@ -163,14 +286,31 @@ function commitImport(){
   if(!state.preview){setStatus("Run preview first.",true);return;}
   var invert=document.getElementById("budget-invert-confirm").checked;
   api("/api/budget/import/commit","POST",{previewId:state.preview.previewId,invertSign:invert}).then(function(){
-    setStatus("Import complete.");state.preview=null;loadAccounts();
+    setStatus("Import complete.");state.preview=null;loadAccounts();loadRollup();loadTransactions();
   }).catch(function(e){setStatus(e.message,true);});
 }
-document.getElementById("budget-preview-btn").onclick=runPreview;
-document.getElementById("budget-commit-btn").onclick=commitImport;
-document.getElementById("budget-date-format").onchange=function(){state.dateFormatTouched=true;};
-loadAccounts();
-if(active==="import")fillImportAccounts();
+document.getElementById("budget-preview-btn")?.addEventListener("click",runPreview);
+document.getElementById("budget-commit-btn")?.addEventListener("click",commitImport);
+document.getElementById("budget-date-format")?.addEventListener("change",function(){state.dateFormatTouched=true;});
+document.getElementById("budget-export-json")?.addEventListener("click",function(){window.location.href="/api/budget/export.json";});
+document.getElementById("budget-export-csv")?.addEventListener("click",function(){window.location.href="/api/budget/export.csv";});
+document.getElementById("budget-delete-all")?.addEventListener("click",function(){
+  var v=document.getElementById("budget-delete-confirm")?.value||"";
+  if(v!=="DELETE ALL BUDGET DATA"){setStatus("Type the confirmation phrase exactly.",true);return;}
+  api("/api/budget/delete-all","POST",{confirm:v}).then(function(){setStatus("All budget data deleted.");loadAccounts();loadRollup();loadTransactions();}).catch(function(e){setStatus(e.message,true);});
+});
+var monthPicker=document.getElementById("budget-month-picker");
+if(monthPicker){
+  var d=new Date();monthPicker.value=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+  monthPicker.addEventListener("change",loadRollup);
+}
+loadCategories().then(function(){
+  loadAccounts();
+  if(active==="overview"){loadNetWorth().then(loadRollup);}
+  if(active==="transactions")loadTransactions();
+  if(active==="budget")loadRollup();
+  if(active==="import")fillImportAccounts();
+});
 })();
 </script>`;
 

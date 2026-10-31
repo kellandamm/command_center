@@ -23,6 +23,11 @@ test("budget ui: non-owner nav hides Budget tab", () => {
   assert.ok(!nav.some((t) => t.href === "/budget"));
 });
 
+test("budget ui: budget grid script excludes income and uncategorized rollup rows", () => {
+  const src = readFileSync(join(process.cwd(), "src/ui/budget-page.ts"), "utf8");
+  assert.match(src, /byCategory\.filter\(function\(row\)\{return !row\.isIncome&&row\.categoryId;\}\)/);
+});
+
 test("budget ui: revert guard — preview must not always send dateFormat", () => {
   const src = readFileSync(join(process.cwd(), "src/ui/budget-page.ts"), "utf8");
   assert.doesNotMatch(src, /encodeURIComponent\(file\.name\)\+"&dateFormat="/);

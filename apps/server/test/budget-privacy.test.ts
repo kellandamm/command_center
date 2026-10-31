@@ -13,6 +13,12 @@ import { SettingsStore } from "../src/settings";
 import { NotesStore } from "../src/notes/store";
 import { BudgetStore } from "../src/budget/store";
 import { SERVICE_WORKER } from "../src/pwa";
+import {
+  SERVICE_WORKER_BYPASS_EXACT,
+  SERVICE_WORKER_BYPASS_PREFIXES,
+  serviceWorkerBypassesFetch,
+  serviceWorkerFetchBypassConditionJs,
+} from "../src/pwa-fetch-guard";
 import { notesForLlmContext } from "../src/notes/sensitive";
 import { logBudgetError } from "../src/budget/redact";
 import { transactionFingerprint } from "../src/budget/csv";
@@ -139,9 +145,56 @@ test("budget privacy: seeded budget payee absent from knowledge LLM note context
   await rm(dir, { recursive: true, force: true });
 });
 
-test("budget privacy: service worker skips /budget caching", () => {
-  assert.match(SERVICE_WORKER, /url\.pathname === "\/budget"/);
-  assert.match(SERVICE_WORKER, /startsWith\("\/budget\/"\)/);
+test("budget privacy: MCP tool list has no budget tools", () => {
+  const mcpServer = readFileSync(join(process.cwd(), "src/mcp/create-server.ts"), "utf8");
+  const names = [...mcpServer.matchAll(/registerTool\(\s*"([^"]+)"/g)].map((m) => m[1]!);
+  assert.ok(names.length >= 3);
+  assert.ok(!names.some((n) => n.toLowerCase().includes("budget")));
+});
+
+test("budget privacy: daily briefing record excludes planted payee", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-budget-brief-"));
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    CF_ACCESS_TEAM_DOMAIN: "team.example.com",
+    CF_ACCESS_AUD: "aud",
+    OWNER_EMAILS: OWNER,
+    TZ: "UTC",
+  });
+  const budget = BudgetStore.open(dir);
+  const acct = budget.createAccount({ name: "Checking", type: "checking" });
+  budget.createTransaction({ accountId: acct.id, date: "2026-07-01", amountCents: -100, payee: PLANT });
+  const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
+  const rec = await dailyBriefing.generate({
+    cfg,
+    trigger: "manual",
+    now: new Date("2026-07-02T12:00:00Z"),
+    fetchFn: async () => new Response("{}", { status: 200 }),
+  });
+  assert.ok(!JSON.stringify(rec).includes(PLANT));
+  budget.close();
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("budget privacy: shipped service worker uses shared bypass rules", () => {
+  assert.ok(SERVICE_WORKER.includes(serviceWorkerFetchBypassConditionJs()));
+  for (const p of SERVICE_WORKER_BYPASS_PREFIXES) {
+    assert.match(SERVICE_WORKER, new RegExp(JSON.stringify(p).slice(1, -1)));
+  }
+  for (const p of SERVICE_WORKER_BYPASS_EXACT) {
+    assert.match(SERVICE_WORKER, new RegExp(JSON.stringify(p).slice(1, -1)));
+  }
+});
+
+test("budget privacy: service worker fetch bypass behaviour", () => {
+  assert.equal(serviceWorkerBypassesFetch("GET", "/budget"), true);
+  assert.equal(serviceWorkerBypassesFetch("GET", "/budget/settings"), true);
+  assert.equal(serviceWorkerBypassesFetch("GET", "/api/budget/rollup"), true);
+  assert.equal(serviceWorkerBypassesFetch("GET", "/api/panels/budget"), true);
+  assert.equal(serviceWorkerBypassesFetch("GET", "/api/budget/export.csv"), true);
+  assert.equal(serviceWorkerBypassesFetch("GET", "/extension.zip"), true);
+  assert.equal(serviceWorkerBypassesFetch("GET", "/budgeting"), false);
+  assert.equal(serviceWorkerBypassesFetch("GET", "/"), false);
 });
 
 test("budget privacy: non-owner cannot read budget API", async () => {

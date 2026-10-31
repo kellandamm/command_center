@@ -22,6 +22,8 @@ import { importPreviewCache } from "./import-preview-cache";
 import { logBudgetError } from "./redact";
 import { BudgetStore, type BudgetAccount } from "./store";
 import type { AccountType } from "./constants";
+import { computeRollup, monthKey, parseBudgetMonth } from "./rollup";
+import { budgetExportCsvLines } from "./csv-export";
 
 function json(res: ServerResponse, status: number, data: unknown) {
   res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
@@ -30,7 +32,11 @@ function json(res: ServerResponse, status: number, data: unknown) {
 
 function accountForApi(store: BudgetStore, account: BudgetAccount) {
   const profile = store.getCsvProfile(account.id);
-  return { ...account, importDateFormat: profile?.dateFormat ?? null };
+  return {
+    ...account,
+    importDateFormat: profile?.dateFormat ?? null,
+    balanceCents: store.accountBalanceCents(account),
+  };
 }
 
 export async function handleBudgetRoutes(
@@ -111,6 +117,95 @@ export async function handleBudgetRoutes(
     if (path === "/api/budget/transactions" && req.method === "GET") {
       const accountId = url.searchParams.get("accountId") ?? undefined;
       json(res, 200, { transactions: store.listTransactions(accountId) });
+      return true;
+    }
+
+    if (path === "/api/budget/rollup" && req.method === "GET") {
+      const monthParam = url.searchParams.get("month");
+      if (monthParam && !parseBudgetMonth(monthParam)) {
+        json(res, 400, { error: "invalid month" });
+        return true;
+      }
+      const month = monthParam ?? monthKey(new Date(), cfg.tz);
+      json(res, 200, { rollup: computeRollup(store, cfg, month) });
+      return true;
+    }
+
+    if (path === "/api/budget/net-worth" && req.method === "GET") {
+      const nw = store.netWorth();
+      json(res, 200, {
+        totalCents: nw.totalCents,
+        equityLabel: "Equity coming soon",
+        accounts: nw.accounts,
+      });
+      return true;
+    }
+
+    if (path === "/api/budget/budget-months" && req.method === "GET") {
+      const monthParam = url.searchParams.get("month");
+      if (monthParam && !parseBudgetMonth(monthParam)) {
+        json(res, 400, { error: "invalid month" });
+        return true;
+      }
+      const month = monthParam ?? monthKey(new Date(), cfg.tz);
+      json(res, 200, { month, rows: store.listBudgetMonth(month) });
+      return true;
+    }
+
+    if (path === "/api/budget/budget-months" && req.method === "PUT") {
+      const body = (await readJson()) as Record<string, unknown>;
+      const month = String(body.month ?? monthKey(new Date(), cfg.tz));
+      if (!parseBudgetMonth(month)) {
+        json(res, 400, { error: "invalid month" });
+        return true;
+      }
+      const categoryId = String(body.categoryId ?? "");
+      const budgetedCents = Number(body.budgetedCents);
+      store.setBudgetMonth(month, categoryId, budgetedCents);
+      json(res, 200, { month, categoryId, budgetedCents });
+      return true;
+    }
+
+    if (path === "/api/budget/settings" && req.method === "GET") {
+      json(res, 200, { settings: store.getBudgetPrefs() });
+      return true;
+    }
+
+    if (path === "/api/budget/settings" && req.method === "PUT") {
+      const body = (await readJson()) as Record<string, unknown>;
+      const settings = store.setBudgetPrefs({
+        overBudgetNotify: body.overBudgetNotify != null ? Boolean(body.overBudgetNotify) : undefined,
+      });
+      json(res, 200, { settings });
+      return true;
+    }
+
+    if (path === "/api/budget/export.json" && req.method === "GET") {
+      json(res, 200, store.exportSnapshot());
+      return true;
+    }
+
+    if (path === "/api/budget/export.csv" && req.method === "GET") {
+      const snap = store.exportSnapshot();
+      const lines = budgetExportCsvLines(snap.accounts, snap.transactions);
+      res.writeHead(200, {
+        "content-type": "text/csv; charset=utf-8",
+        "cache-control": "no-store",
+        "content-disposition": 'attachment; filename="budget-export.csv"',
+      });
+      res.end(lines.join("\n"));
+      return true;
+    }
+
+    if (path === "/api/budget/delete-all" && req.method === "POST") {
+      const body = (await readJson()) as Record<string, unknown>;
+      if (String(body.confirm ?? "") !== "DELETE ALL BUDGET DATA") {
+        json(res, 400, { error: "confirmation required" });
+        return true;
+      }
+      importPreviewCache.clearForOwner(ownerEmail);
+      store.deleteAllData();
+      json(res, 200, { ok: true });
       return true;
     }
 

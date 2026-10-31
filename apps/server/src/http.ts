@@ -55,7 +55,7 @@ import { CaptureAccess } from "./read-later/capture-access";
 import { handleMeetingImportRoute } from "./meetings/routes";
 import { handleAgentsUsageImportRoute, handleAgentsUsageGetRoutes } from "./agents-usage/routes";
 import type { AgentsUsageStore } from "./agents-usage/store";
-import { budgetAvailable } from "./budget/gate";
+import { budgetAvailable, budgetPanelVisible } from "./budget/gate";
 import type { BudgetStore } from "./budget/store";
 import { handleBudgetRoutes } from "./budget/routes";
 import { handleCommandPaletteRoutes } from "./command-palette/routes";
@@ -167,6 +167,7 @@ export function createApp(app: App): Server {
     launchpad: app.launchpad,
     focusSessions: app.focusSessions,
     owner,
+    budget: budgetPanelVisible(app.cfg, owner) ? app.budget : undefined,
   });
 
   const readLater = new ReadLaterService(app.cfg, app.notes);
@@ -345,7 +346,15 @@ export function createApp(app: App): Server {
           budget: budgetAvailable(app.cfg) && who.owner === true,
         });
 
-      if (get && path === "/") return send(res, 200, dashboardPage(nav()), undefined, extra);
+      if (get && path === "/") {
+        return send(
+          res,
+          200,
+          dashboardPage(nav(), { showBudgetPanel: budgetPanelVisible(app.cfg, who.owner === true) }),
+          undefined,
+          extra,
+        );
+      }
       if (get && path === "/briefing") return send(res, 200, dailyBriefingPage(nav()), undefined, extra);
       if (get && (path === "/news" || path === "/summaries" || path === "/read-later")) {
         const query = new URLSearchParams(url.search);
@@ -393,7 +402,7 @@ export function createApp(app: App): Server {
       if (get && path === "/settings") return send(res, 200, settingsPage(nav()), undefined, extra);
       if (get && path === "/budget") {
         if (!budgetAvailable(app.cfg)) return json(res, 404, { error: "not found" });
-        const initialView = url.searchParams.get("view") ?? "accounts";
+        const initialView = url.searchParams.get("view") ?? "overview";
         return send(
           res,
           200,
