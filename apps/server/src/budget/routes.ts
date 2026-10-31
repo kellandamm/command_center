@@ -190,7 +190,7 @@ export async function handleBudgetRoutes(
       const lines = budgetExportCsvLines(snap.accounts, snap.transactions);
       res.writeHead(200, {
         "content-type": "text/csv; charset=utf-8",
-        "cache-control": "public",
+        "cache-control": "no-store",
         "content-disposition": 'attachment; filename="budget-export.csv"',
       });
       res.end(lines.join("\n"));

@@ -12,17 +12,19 @@ function csvQuoted(value: string): string {
 }
 
 export function budgetExportCsvLines(accounts: BudgetAccount[], transactions: BudgetTransaction[]): string[] {
+  const accountNameById = new Map(accounts.map((a) => [a.id, a.name]));
   const lines = ["type,id,account_id,account_name,date,amount_cents,payee,memo,category_id"];
   for (const a of accounts) {
     lines.push(["account", a.id, "", csvQuoted(a.name), "", "", "", "", ""].join(","));
   }
   for (const tx of transactions) {
+    const accountName = accountNameById.get(tx.accountId) ?? "";
     lines.push(
       [
         "transaction",
         tx.id,
         tx.accountId,
-        "",
+        csvQuoted(accountName),
         tx.date,
         String(tx.amountCents),
         csvQuoted(tx.payee),

@@ -63,21 +63,7 @@ export const MANIFEST = JSON.stringify({
   ],
 });
 
-/** Network-first for pages (the latest edition matters), cache as the offline fallback. Never touches /api. */
-/** Fetch bypass rules are mirrored in `pwa-fetch-guard.ts` (`serviceWorkerBypassesFetch`). Keep in sync. */
-export const SERVICE_WORKER = `
-const CACHE = "ah-v1";
-self.addEventListener("install", (e) => { self.skipWaiting(); });
-self.addEventListener("activate", (e) => { e.waitUntil(self.clients.claim()); });
-self.addEventListener("fetch", (e) => {
-  const req = e.request;
-  const url = new URL(req.url);
-  if (req.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/api/") || url.pathname === "/extension.zip" || url.pathname === "/budget" || url.pathname.startsWith("/budget/")) return;
-  e.respondWith(
-    fetch(req).then((res) => {
-      if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
-      return res;
-    }).catch(() => caches.match(req).then((hit) => hit || new Response("Offline", { status: 503 })))
-  );
-});
-`;
+import { buildServiceWorkerSource } from "./pwa-fetch-guard";
+
+/** Network-first for pages (the latest edition matters), cache as the offline fallback. Built from `pwa-fetch-guard.ts`. */
+export const SERVICE_WORKER = buildServiceWorkerSource();

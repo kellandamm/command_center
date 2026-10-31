@@ -13,7 +13,12 @@ import { SettingsStore } from "../src/settings";
 import { NotesStore } from "../src/notes/store";
 import { BudgetStore } from "../src/budget/store";
 import { SERVICE_WORKER } from "../src/pwa";
-import { serviceWorkerBypassesFetch } from "../src/pwa-fetch-guard";
+import {
+  SERVICE_WORKER_BYPASS_EXACT,
+  SERVICE_WORKER_BYPASS_PREFIXES,
+  serviceWorkerBypassesFetch,
+  serviceWorkerFetchBypassConditionJs,
+} from "../src/pwa-fetch-guard";
 import { notesForLlmContext } from "../src/notes/sensitive";
 import { logBudgetError } from "../src/budget/redact";
 import { transactionFingerprint } from "../src/budget/csv";
@@ -171,9 +176,17 @@ test("budget privacy: daily briefing record excludes planted payee", async () =>
   await rm(dir, { recursive: true, force: true });
 });
 
-test("budget privacy: service worker skips /budget caching", () => {
-  assert.match(SERVICE_WORKER, /url\.pathname === "\/budget"/);
-  assert.match(SERVICE_WORKER, /startsWith\("\/budget\/"\)/);
+test("budget privacy: shipped service worker uses shared bypass rules", () => {
+  assert.ok(SERVICE_WORKER.includes(serviceWorkerFetchBypassConditionJs()));
+  for (const p of SERVICE_WORKER_BYPASS_PREFIXES) {
+    assert.match(SERVICE_WORKER, new RegExp(JSON.stringify(p).slice(1, -1)));
+  }
+  for (const p of SERVICE_WORKER_BYPASS_EXACT) {
+    assert.match(SERVICE_WORKER, new RegExp(JSON.stringify(p).slice(1, -1)));
+  }
+  for (const required of ["/api/", "/budget/", "/budget", "/extension.zip"]) {
+    assert.ok(SERVICE_WORKER.includes(required), `missing bypass path ${required} in shipped sw.js`);
+  }
 });
 
 test("budget privacy: service worker bypasses budget and panel API paths", () => {

@@ -6,6 +6,18 @@ import { ACCOUNT_TYPES, BUDGET_IMPORT_MAX_ROWS } from "./constants";
 import type { CsvMapping, NormalizedImportRow } from "./csv";
 import { openBudgetDatabase } from "./db";
 
+const BUDGET_MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** Inclusive calendar date bounds for a budget month (YYYY-MM) in stored date strings. */
+export function monthDateBounds(month: string): { start: string; end: string } {
+  if (!BUDGET_MONTH_RE.test(month)) throw new ValidationError("invalid month");
+  const [y, mo] = month.split("-").map(Number);
+  const start = `${month}-01`;
+  const lastDay = new Date(Date.UTC(y!, mo!, 0)).getUTCDate();
+  const end = `${month}-${String(lastDay).padStart(2, "0")}`;
+  return { start, end };
+}
+
 export interface BudgetAccount {
   id: string;
   name: string;
@@ -422,7 +434,7 @@ export class BudgetStore {
       accounts: this.listAccounts(true),
       groups: this.listCategoryGroups(),
       categories: this.listCategories(),
-      transactions: this.listTransactions(undefined, 100_000),
+      transactions: this.listAllTransactions(),
       budgetMonths,
       prefs: this.getBudgetPrefs(),
     };
@@ -437,6 +449,27 @@ export class BudgetStore {
           string,
           unknown
         >[]);
+    return rows.map(rowTx);
+  }
+
+  listTransactionsInMonth(month: string, accountId?: string): BudgetTransaction[] {
+    const { start, end } = monthDateBounds(month);
+    const rows = accountId
+      ? (this.db
+          .prepare(
+            "SELECT * FROM transactions WHERE account_id = ? AND date >= ? AND date <= ? ORDER BY date DESC, created_at DESC",
+          )
+          .all(accountId, start, end) as Record<string, unknown>[])
+      : (this.db
+          .prepare("SELECT * FROM transactions WHERE date >= ? AND date <= ? ORDER BY date DESC, created_at DESC")
+          .all(start, end) as Record<string, unknown>[]);
+    return rows.map(rowTx);
+  }
+
+  listAllTransactions(): BudgetTransaction[] {
+    const rows = this.db
+      .prepare("SELECT * FROM transactions ORDER BY date DESC, created_at DESC")
+      .all() as Record<string, unknown>[];
     return rows.map(rowTx);
   }
 

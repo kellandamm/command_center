@@ -111,6 +111,30 @@ test("budget guard: dashboard blur uses CSS filter, not class name alone", () =>
   assert.match(css, /filter:\s*blur\(/);
 });
 
+test("budget guard: validation errors log via logBudgetError", async () => {
+  const h = await openOwnerBudgetHttp();
+  const errors: unknown[] = [];
+  const orig = console.error;
+  console.error = (...args: unknown[]) => {
+    errors.push(args);
+  };
+  try {
+    const acct = h.budget.createAccount({ name: "Checking", type: "checking" });
+    const res = await fetch(`${h.base}/api/budget/transactions`, {
+      method: "POST",
+      headers: { cookie: "CF_Authorization=t", "content-type": "application/json", "x-ah": "1" },
+      body: JSON.stringify({ accountId: acct.id, date: "2026-01-01", amountCents: 1.5 }),
+    });
+    assert.equal(res.status, 400);
+    const blob = JSON.stringify(errors);
+    assert.match(blob, /validation/);
+    assert.ok(!blob.includes("amount must be whole cents"));
+  } finally {
+    console.error = orig;
+    await h.close();
+  }
+});
+
 test("budget guard: route catch logs via logBudgetError without leaking err text", async () => {
   const h = await openOwnerBudgetHttp();
   const errors: unknown[] = [];
@@ -148,6 +172,21 @@ test("budget guard: delete-all requires exact confirmation phrase", async () => 
     });
     assert.equal(bad.status, 400);
     assert.equal(h.budget.listAccounts().length, 1);
+  } finally {
+    await h.close();
+  }
+});
+
+test("budget guard: CSV export includes account_name on transactions", async () => {
+  const h = await openOwnerBudgetHttp();
+  try {
+    const acct = h.budget.createAccount({ name: "Primary Checking", type: "checking" });
+    h.budget.createTransaction({ accountId: acct.id, date: "2026-01-02", amountCents: -100 });
+    const res = await fetch(`${h.base}/api/budget/export.csv`, {
+      headers: { cookie: "CF_Authorization=t", "x-ah": "1" },
+    });
+    const text = await res.text();
+    assert.match(text, /transaction,[^,]+,[^,]+,"Primary Checking"/);
   } finally {
     await h.close();
   }

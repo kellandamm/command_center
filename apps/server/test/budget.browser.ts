@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { AddressInfo } from "node:net";
@@ -225,7 +226,7 @@ test("budget UI: overview and panel screenshots with demo seed", { timeout: 120_
       document.querySelector("#budget-panel-net")?.classList.contains("is-revealed"),
     );
     await page.screenshot({ path: `${shotDir}/budget-panel-revealed.png`, fullPage: true });
-    await writeFile(join(shotDir, "git-sha.txt"), "see PR head SHA\n", "utf8");
+    await writeFile(join(shotDir, "git-sha.txt"), `${execSync("git rev-parse HEAD", { encoding: "utf8" }).trim()}\n`, "utf8");
   } finally {
     await browser.close();
     await app.close();

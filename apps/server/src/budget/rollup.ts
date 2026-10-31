@@ -2,15 +2,15 @@ import type { Config } from "../config";
 import { dayKey } from "../store";
 import type { BudgetCategory, BudgetCategoryGroup, BudgetTransaction } from "./store";
 import type { BudgetStore } from "./store";
-
-/** Max transactions scanned per rollup (explicit cap; panel uses the same rollup). */
-export const BUDGET_ROLLUP_TX_LIMIT = 100_000;
+import { monthDateBounds } from "./store";
 
 export const BUDGET_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 export function parseBudgetMonth(input: string): string | null {
   return BUDGET_MONTH_PATTERN.test(input) ? input : null;
 }
+
+export { monthDateBounds };
 
 export interface CategoryRollupRow {
   categoryId: string;
@@ -44,23 +44,23 @@ export function monthKey(d: Date, tz: string): string {
   return dayKey(d, tz).slice(0, 7);
 }
 
-function inMonth(date: string, month: string): boolean {
-  return date.length >= 7 && date.slice(0, 7) === month;
-}
-
 function isTransfer(tx: BudgetTransaction): boolean {
   return tx.transferAccountId != null && tx.transferAccountId !== "";
 }
 
 export function topSpendingCategoryRows(rows: CategoryRollupRow[], limit = 8): CategoryRollupRow[] {
   return rows
-    .filter((r) => r.spentCents !== 0)
+    .filter((r) => !r.isIncome && r.spentCents !== 0)
     .sort((a, b) => a.spentCents - b.spentCents)
     .slice(0, limit);
 }
 
 export function sumCategorySpentCents(rows: CategoryRollupRow[]): number {
-  return rows.reduce((sum, r) => sum + r.spentCents, 0);
+  return rows.filter((r) => !r.isIncome).reduce((sum, r) => sum + r.spentCents, 0);
+}
+
+export function sumCategoryIncomeCents(rows: CategoryRollupRow[]): number {
+  return rows.filter((r) => r.isIncome).reduce((sum, r) => sum + r.spentCents, 0);
 }
 
 export function computeRollup(
@@ -78,11 +78,13 @@ export function computeRollup(
   const budgetedByCat = new Map(budgeted.map((b) => [b.categoryId, b.budgetedCents]));
 
   const spentByCat = new Map<string, number>();
+  const incomeByCat = new Map<string, number>();
+  let uncategorizedIncomeCents = 0;
   let incomeCents = 0;
   let spendCents = 0;
 
-  for (const tx of store.listTransactions(undefined, BUDGET_ROLLUP_TX_LIMIT)) {
-    if (!inMonth(tx.date, resolvedMonth) || isTransfer(tx)) continue;
+  for (const tx of store.listTransactionsInMonth(resolvedMonth)) {
+    if (isTransfer(tx)) continue;
     const amount = tx.amountCents;
     const cat = tx.categoryId ? catById.get(tx.categoryId) : undefined;
     const group = cat ? groupById.get(cat.groupId) : undefined;
@@ -90,11 +92,13 @@ export function computeRollup(
 
     if (isIncome) {
       incomeCents += amount;
+      incomeByCat.set(cat!.id, (incomeByCat.get(cat!.id) ?? 0) + amount);
       continue;
     }
 
     if (!tx.categoryId && amount > 0) {
       incomeCents += amount;
+      uncategorizedIncomeCents += amount;
       continue;
     }
 
@@ -106,7 +110,21 @@ export function computeRollup(
   const byCategory: CategoryRollupRow[] = [];
   for (const cat of categories) {
     const group = groupById.get(cat.groupId);
-    if (group?.isIncome) continue;
+    if (group?.isIncome) {
+      const earned = incomeByCat.get(cat.id) ?? 0;
+      if (earned !== 0) {
+        byCategory.push({
+          categoryId: cat.id,
+          categoryName: cat.name,
+          groupId: cat.groupId,
+          groupName: group.name,
+          isIncome: true,
+          spentCents: earned,
+          budgetedCents: 0,
+        });
+      }
+      continue;
+    }
     const spent = spentByCat.get(cat.id) ?? 0;
     byCategory.push({
       categoryId: cat.id,
@@ -126,6 +144,17 @@ export function computeRollup(
       groupName: "",
       isIncome: false,
       spentCents: spentByCat.get("__uncategorized")!,
+      budgetedCents: 0,
+    });
+  }
+  if (uncategorizedIncomeCents !== 0) {
+    byCategory.push({
+      categoryId: "",
+      categoryName: "Uncategorized",
+      groupId: "",
+      groupName: "",
+      isIncome: true,
+      spentCents: uncategorizedIncomeCents,
       budgetedCents: 0,
     });
   }
