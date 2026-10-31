@@ -13,6 +13,7 @@ import { SettingsStore } from "../src/settings";
 import { NotesStore } from "../src/notes/store";
 import { BudgetStore } from "../src/budget/store";
 import { SERVICE_WORKER } from "../src/pwa";
+import { serviceWorkerBypassesFetch } from "../src/pwa-fetch-guard";
 import { notesForLlmContext } from "../src/notes/sensitive";
 import { logBudgetError } from "../src/budget/redact";
 import { transactionFingerprint } from "../src/budget/csv";
@@ -173,6 +174,13 @@ test("budget privacy: daily briefing record excludes planted payee", async () =>
 test("budget privacy: service worker skips /budget caching", () => {
   assert.match(SERVICE_WORKER, /url\.pathname === "\/budget"/);
   assert.match(SERVICE_WORKER, /startsWith\("\/budget\/"\)/);
+});
+
+test("budget privacy: service worker bypasses budget and panel API paths", () => {
+  assert.equal(serviceWorkerBypassesFetch("GET", "/api/budget/rollup"), true);
+  assert.equal(serviceWorkerBypassesFetch("GET", "/api/panels/budget"), true);
+  assert.equal(serviceWorkerBypassesFetch("GET", "/api/budget/export.csv"), true);
+  assert.equal(serviceWorkerBypassesFetch("GET", "/"), false);
 });
 
 test("budget privacy: non-owner cannot read budget API", async () => {

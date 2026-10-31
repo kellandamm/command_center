@@ -1,5 +1,5 @@
 import { budgetAvailable } from "../budget/gate";
-import { monthKey } from "../budget/rollup";
+import { computeRollup, monthKey } from "../budget/rollup";
 import { panelCard } from "../ui/components";
 import type { PanelModule } from "./types";
 
@@ -30,25 +30,14 @@ export const budgetPanel: PanelModule = {
     };
     const month = monthKey(new Date(), ctx.cfg.tz);
     const nw = ctx.budget.netWorth();
-    const txs = ctx.budget.listTransactions(undefined, 5000);
-    let income = 0;
-    let spend = 0;
-    const groups = ctx.budget.listCategoryGroups();
-    const incomeGroupIds = new Set(groups.filter((g) => g.isIncome).map((g) => g.id));
-    const cats = ctx.budget.listCategories();
-    const incomeCatIds = new Set(cats.filter((c) => incomeGroupIds.has(c.groupId)).map((c) => c.id));
-    for (const tx of txs) {
-      if (tx.transferAccountId || !tx.date.startsWith(month)) continue;
-      if (tx.categoryId && incomeCatIds.has(tx.categoryId)) income += tx.amountCents;
-      else if (tx.amountCents < 0) spend += tx.amountCents;
-    }
+    const rollup = computeRollup(ctx.budget, ctx.cfg, month);
     json(200, {
       month,
       netWorthCents: nw.totalCents,
       equityLabel: "Equity coming soon",
-      cashFlowCents: income + spend,
-      incomeCents: income,
-      spendCents: spend,
+      cashFlowCents: rollup.cashFlowCents,
+      incomeCents: rollup.incomeCents,
+      spendCents: rollup.spendCents,
     });
     return true;
   },
@@ -72,7 +61,8 @@ function budgetPanelApplyReveal(on){
 }
 function fmtBudget(cents){
   var n=Number(cents)||0;
-  return (n<0?"-":"")+"$"+(Math.abs(n)/100).toFixed(2);
+  var sign=n<0?"-":"";
+  return sign+"$"+(Math.abs(n)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 function renderBudgetPanel(d){
   var net=document.getElementById("budget-panel-net");

@@ -104,7 +104,7 @@ function api(path,method,body){
     return r.json().then(function(j){if(!r.ok)throw new Error(j.error||("HTTP "+r.status));return j;});
   });
 }
-function fmt(cents){var n=Number(cents)||0;return (n<0?"-":"")+"$"+(Math.abs(n)/100).toFixed(2);}
+function fmt(cents){var n=Number(cents)||0;var sign=n<0?"-":"";return sign+"$"+(Math.abs(n)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});}
 function setStatus(msg,bad){var el=document.getElementById("budget-status");if(!el)return;el.textContent=msg||"";el.classList.toggle("bad",!!bad);}
 function textCell(tr,text){var td=document.createElement("td");td.textContent=text;tr.appendChild(td);}
 var state={accounts:[],categories:[],groups:[],preview:null,dateFormatTouched:false,rollup:null,month:""};
@@ -160,14 +160,13 @@ function renderOverview(){
   if(!box)return;
   box.replaceChildren();
   var h=document.createElement("h3");h.style.marginTop="0";h.textContent="Top categories";box.appendChild(h);
-  if(!r.byCategory.length){box.appendChild(document.createElement("p")).textContent="No spending this month.";return;}
+  if(!r.topCategories||!r.topCategories.length){box.appendChild(document.createElement("p")).textContent="No spending this month.";return;}
   var table=document.createElement("table");table.className="ui-table";
   var thead=document.createElement("thead");var hr=document.createElement("tr");
   ["Category","Spent","Budget"].forEach(function(x){var th=document.createElement("th");th.textContent=x;hr.appendChild(th);});
   thead.appendChild(hr);table.appendChild(thead);
   var tbody=document.createElement("tbody");
-  r.byCategory.slice(0,8).forEach(function(row){
-    if(!row.spentCents) return;
+  r.topCategories.forEach(function(row){
     var tr=document.createElement("tr");
     textCell(tr,row.categoryName||"Uncategorized");
     textCell(tr,fmt(row.spentCents));

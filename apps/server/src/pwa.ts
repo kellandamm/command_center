@@ -64,6 +64,7 @@ export const MANIFEST = JSON.stringify({
 });
 
 /** Network-first for pages (the latest edition matters), cache as the offline fallback. Never touches /api. */
+/** Fetch bypass rules are mirrored in `pwa-fetch-guard.ts` (`serviceWorkerBypassesFetch`). Keep in sync. */
 export const SERVICE_WORKER = `
 const CACHE = "ah-v1";
 self.addEventListener("install", (e) => { self.skipWaiting(); });

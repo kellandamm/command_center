@@ -12,7 +12,7 @@ import { SettingsStore } from "../src/settings";
 import { NotesStore } from "../src/notes/store";
 import { BudgetStore } from "../src/budget/store";
 import { budgetPanelVisible } from "../src/budget/gate";
-import { BUDGET_AMOUNTS_BLUR_CLASS } from "../src/panels/budget";
+import { BUDGET_AMOUNTS_BLUR_CLASS, budgetPanelDashboardCss } from "../src/panels/budget";
 import { dashboardPage } from "../src/ui/dashboard-page";
 import { defaultDashboardLayout } from "../src/dashboard-layout/defaults";
 import { panels } from "../src/panels/registry";
@@ -23,6 +23,7 @@ const OWNER = "owner@example.com";
 test("budget panel: owner dashboard HTML includes blur class", () => {
   const html = dashboardPage([], { showBudgetPanel: true });
   assert.match(html, new RegExp(BUDGET_AMOUNTS_BLUR_CLASS));
+  assert.match(budgetPanelDashboardCss(), /filter:\s*blur\(/);
   assert.match(html, /panel-budget/);
   assert.match(html, /Equity coming soon/);
 });

@@ -22,7 +22,8 @@ import { importPreviewCache } from "./import-preview-cache";
 import { logBudgetError } from "./redact";
 import { BudgetStore, type BudgetAccount } from "./store";
 import type { AccountType } from "./constants";
-import { computeRollup, monthKey } from "./rollup";
+import { computeRollup, monthKey, parseBudgetMonth } from "./rollup";
+import { budgetExportCsvLines } from "./csv-export";
 
 function json(res: ServerResponse, status: number, data: unknown) {
   res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
@@ -120,7 +121,12 @@ export async function handleBudgetRoutes(
     }
 
     if (path === "/api/budget/rollup" && req.method === "GET") {
-      const month = url.searchParams.get("month") ?? monthKey(new Date(), cfg.tz);
+      const monthParam = url.searchParams.get("month");
+      if (monthParam && !parseBudgetMonth(monthParam)) {
+        json(res, 400, { error: "invalid month" });
+        return true;
+      }
+      const month = monthParam ?? monthKey(new Date(), cfg.tz);
       json(res, 200, { rollup: computeRollup(store, cfg, month) });
       return true;
     }
@@ -136,7 +142,12 @@ export async function handleBudgetRoutes(
     }
 
     if (path === "/api/budget/budget-months" && req.method === "GET") {
-      const month = url.searchParams.get("month") ?? monthKey(new Date(), cfg.tz);
+      const monthParam = url.searchParams.get("month");
+      if (monthParam && !parseBudgetMonth(monthParam)) {
+        json(res, 400, { error: "invalid month" });
+        return true;
+      }
+      const month = monthParam ?? monthKey(new Date(), cfg.tz);
       json(res, 200, { month, rows: store.listBudgetMonth(month) });
       return true;
     }
@@ -144,6 +155,10 @@ export async function handleBudgetRoutes(
     if (path === "/api/budget/budget-months" && req.method === "PUT") {
       const body = (await readJson()) as Record<string, unknown>;
       const month = String(body.month ?? monthKey(new Date(), cfg.tz));
+      if (!parseBudgetMonth(month)) {
+        json(res, 400, { error: "invalid month" });
+        return true;
+      }
       const categoryId = String(body.categoryId ?? "");
       const budgetedCents = Number(body.budgetedCents);
       store.setBudgetMonth(month, categoryId, budgetedCents);
@@ -172,18 +187,10 @@ export async function handleBudgetRoutes(
 
     if (path === "/api/budget/export.csv" && req.method === "GET") {
       const snap = store.exportSnapshot();
-      const lines = ["type,id,account_id,date,amount_cents,payee,memo,category_id"];
-      for (const a of snap.accounts) {
-        lines.push(`account,${a.id},,,,,,`);
-      }
-      for (const tx of snap.transactions) {
-        lines.push(
-          `transaction,${tx.id},${tx.accountId},${tx.date},${tx.amountCents},"${tx.payee.replace(/"/g, '""')}","${tx.memo.replace(/"/g, '""')}",${tx.categoryId ?? ""}`,
-        );
-      }
+      const lines = budgetExportCsvLines(snap.accounts, snap.transactions);
       res.writeHead(200, {
         "content-type": "text/csv; charset=utf-8",
-        "cache-control": "no-store",
+        "cache-control": "public",
         "content-disposition": 'attachment; filename="budget-export.csv"',
       });
       res.end(lines.join("\n"));

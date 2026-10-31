@@ -3,6 +3,15 @@ import { dayKey } from "../store";
 import type { BudgetCategory, BudgetCategoryGroup, BudgetTransaction } from "./store";
 import type { BudgetStore } from "./store";
 
+/** Max transactions scanned per rollup (explicit cap; panel uses the same rollup). */
+export const BUDGET_ROLLUP_TX_LIMIT = 100_000;
+
+export const BUDGET_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+export function parseBudgetMonth(input: string): string | null {
+  return BUDGET_MONTH_PATTERN.test(input) ? input : null;
+}
+
 export interface CategoryRollupRow {
   categoryId: string;
   categoryName: string;
@@ -19,20 +28,20 @@ export interface BudgetRollup {
   spendCents: number;
   cashFlowCents: number;
   byCategory: CategoryRollupRow[];
+  /** Expense categories with non-zero net spend/refund, largest spend first. */
+  topCategories: CategoryRollupRow[];
 }
 
+/**
+ * Rollup rules (totals match sum of expense-category rows):
+ * - Transfers (`transfer_account_id`) are excluded.
+ * - Income-category transactions add to `incomeCents` only.
+ * - Uncategorized **positive** amounts are inflows → `incomeCents` only.
+ * - All other non-transfer rows (expense categories and uncategorized outflows/refunds) add to
+ *   `spendCents` and per-category `spentCents` (refunds are positive and reduce net spend).
+ */
 export function monthKey(d: Date, tz: string): string {
   return dayKey(d, tz).slice(0, 7);
-}
-
-export function monthBounds(month: string, tz: string): { start: string; end: string } {
-  const [y, m] = month.split("-").map(Number);
-  if (!y || !m || m < 1 || m > 12) throw new Error("invalid month");
-  const start = `${month}-01`;
-  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  const end = `${month}-${String(lastDay).padStart(2, "0")}`;
-  void tz;
-  return { start, end };
 }
 
 function inMonth(date: string, month: string): boolean {
@@ -41,6 +50,17 @@ function inMonth(date: string, month: string): boolean {
 
 function isTransfer(tx: BudgetTransaction): boolean {
   return tx.transferAccountId != null && tx.transferAccountId !== "";
+}
+
+export function topSpendingCategoryRows(rows: CategoryRollupRow[], limit = 8): CategoryRollupRow[] {
+  return rows
+    .filter((r) => r.spentCents !== 0)
+    .sort((a, b) => a.spentCents - b.spentCents)
+    .slice(0, limit);
+}
+
+export function sumCategorySpentCents(rows: CategoryRollupRow[]): number {
+  return rows.reduce((sum, r) => sum + r.spentCents, 0);
 }
 
 export function computeRollup(
@@ -61,7 +81,7 @@ export function computeRollup(
   let incomeCents = 0;
   let spendCents = 0;
 
-  for (const tx of store.listTransactions(undefined, 50_000)) {
+  for (const tx of store.listTransactions(undefined, BUDGET_ROLLUP_TX_LIMIT)) {
     if (!inMonth(tx.date, resolvedMonth) || isTransfer(tx)) continue;
     const amount = tx.amountCents;
     const cat = tx.categoryId ? catById.get(tx.categoryId) : undefined;
@@ -70,13 +90,17 @@ export function computeRollup(
 
     if (isIncome) {
       incomeCents += amount;
-    } else if (amount < 0) {
-      spendCents += amount;
-      const cid = tx.categoryId ?? "__uncategorized";
-      spentByCat.set(cid, (spentByCat.get(cid) ?? 0) + amount);
-    } else if (amount > 0 && tx.categoryId) {
-      spentByCat.set(tx.categoryId, (spentByCat.get(tx.categoryId) ?? 0) + amount);
+      continue;
     }
+
+    if (!tx.categoryId && amount > 0) {
+      incomeCents += amount;
+      continue;
+    }
+
+    spendCents += amount;
+    const cid = tx.categoryId ?? "__uncategorized";
+    spentByCat.set(cid, (spentByCat.get(cid) ?? 0) + amount);
   }
 
   const byCategory: CategoryRollupRow[] = [];
@@ -107,11 +131,14 @@ export function computeRollup(
   }
   byCategory.sort((a, b) => a.groupName.localeCompare(b.groupName) || a.categoryName.localeCompare(b.categoryName));
 
+  const topCategories = topSpendingCategoryRows(byCategory);
+
   return {
     month: resolvedMonth,
     incomeCents,
     spendCents,
     cashFlowCents: incomeCents + spendCents,
     byCategory,
+    topCategories,
   };
 }
