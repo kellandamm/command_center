@@ -207,7 +207,7 @@ function renderBudgetMonth(){
   ["Category","Budgeted","Spent","Left"].forEach(function(h){var th=document.createElement("th");th.textContent=h;hr.appendChild(th);});
   thead.appendChild(hr);table.appendChild(thead);
   var tbody=document.createElement("tbody");
-  state.rollup.byCategory.forEach(function(row){
+  state.rollup.byCategory.filter(function(row){return !row.isIncome&&row.categoryId;}).forEach(function(row){
     var left=row.budgetedCents+row.spentCents;
     var tr=document.createElement("tr");
     textCell(tr,row.categoryName||"Uncategorized");

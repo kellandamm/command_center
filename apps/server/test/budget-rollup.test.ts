@@ -15,6 +15,7 @@ import { BudgetStore } from "../src/budget/store";
 import {
   computeRollup,
   monthKey,
+  rollupRowsForBudgetGrid,
   sumCategoryIncomeCents,
   sumCategorySpentCents,
   topSpendingCategoryRows,
@@ -57,44 +58,101 @@ test("budget rollup: excludes transfers from spend totals", async () => {
   }
 });
 
-test("budget rollup: month boundary uses cfg.tz (Chicago last evening vs next morning)", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "cc-budget-rollup-tz-"));
-  const store = BudgetStore.open(dir);
-  const cfg = loadConfig({ TZ: "America/Chicago" });
-  try {
-    const acct = store.createAccount({ name: "Checking", type: "checking" });
-    const food = foodCategoryId(store);
-    const jan31EveningCt = new Date("2026-02-01T05:30:00.000Z");
-    const feb1MorningCt = new Date("2026-02-01T06:30:00.000Z");
-    const janDate = dayKey(jan31EveningCt, cfg.tz);
-    const febDate = dayKey(feb1MorningCt, cfg.tz);
-    assert.equal(janDate, "2026-01-31");
-    assert.equal(febDate, "2026-02-01");
-    store.createTransaction({ accountId: acct.id, date: janDate, amountCents: -111, categoryId: food });
-    store.createTransaction({ accountId: acct.id, date: febDate, amountCents: -222, categoryId: food });
-    const jan = computeRollup(store, cfg, "2026-01");
-    const feb = computeRollup(store, cfg, "2026-02");
-    assert.equal(jan.spendCents, -111);
-    assert.equal(feb.spendCents, -222);
-  } finally {
-    store.close();
-    await rm(dir, { recursive: true, force: true });
+test("budget rollup: Chicago default month at 11:30 PM CT vs 12:30 AM CT (rollup + panel)", async (t) => {
+  const jan31_1130pmCt = new Date("2026-02-01T05:30:00.000Z");
+  const feb1_1230amCt = new Date("2026-02-01T06:30:00.000Z");
+
+  async function withChicagoPanel(now: Date, fn: (ctx: { budget: BudgetStore; base: string; cfg: ReturnType<typeof loadConfig> }) => Promise<void>) {
+    t.mock.timers.enable({ apis: ["Date"], now });
+    const dir = await mkdtemp(join(tmpdir(), "cc-budget-tz-panel-"));
+    const cfg = loadConfig({
+      DATA_DIR: dir,
+      ALLOW_INSECURE_NO_AUTH: "1",
+      CF_ACCESS_TEAM_DOMAIN: "team.example.com",
+      CF_ACCESS_AUD: "aud",
+      OWNER_EMAILS: "owner@example.com",
+      TZ: "America/Chicago",
+    });
+    const settings = new SettingsStore(dir);
+    await settings.load();
+    const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
+    const notes = await NotesStore.open(dir);
+    const integration = await openIntegrationStores(dir, cfg);
+    const budget = BudgetStore.open(dir);
+    const checking = budget.createAccount({ name: "Checking", type: "checking" });
+    const food = foodCategoryId(budget);
+    const janDate = dayKey(jan31_1130pmCt, cfg.tz);
+    const febDate = dayKey(feb1_1230amCt, cfg.tz);
+    budget.createTransaction({ accountId: checking.id, date: janDate, amountCents: -111, categoryId: food });
+    budget.createTransaction({ accountId: checking.id, date: febDate, amountCents: -222, categoryId: food });
+    const server = createApp({
+      cfg,
+      auth: makeAuthenticator(cfg, async () => ({ email: "owner@example.com" })),
+      settings,
+      dailyBriefing,
+      notes,
+      ...integration,
+      budget,
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      await fn({ budget, base, cfg });
+    } finally {
+      t.mock.timers.reset();
+      budget.close();
+      await closeIntegrationServer(server, integration);
+      await rm(dir, { recursive: true, force: true });
+    }
   }
+
+  await withChicagoPanel(jan31_1130pmCt, async ({ budget, base, cfg }) => {
+    assert.equal(monthKey(new Date(), cfg.tz), "2026-01");
+    const rollup = computeRollup(budget, cfg, "", new Date());
+    assert.equal(rollup.month, "2026-01");
+    assert.equal(rollup.spendCents, -111);
+    const panel = await fetch(`${base}/api/panels/budget`, {
+      headers: { cookie: "CF_Authorization=t", "x-ah": "1" },
+    });
+    const p = (await panel.json()) as { month: string; spendCents: number };
+    assert.equal(p.month, "2026-01");
+    assert.equal(p.spendCents, rollup.spendCents);
+  });
+
+  await withChicagoPanel(feb1_1230amCt, async ({ budget, base, cfg }) => {
+    assert.equal(monthKey(new Date(), cfg.tz), "2026-02");
+    const rollup = computeRollup(budget, cfg, "", new Date());
+    assert.equal(rollup.month, "2026-02");
+    assert.equal(rollup.spendCents, -222);
+    const panel = await fetch(`${base}/api/panels/budget`, {
+      headers: { cookie: "CF_Authorization=t", "x-ah": "1" },
+    });
+    const p = (await panel.json()) as { month: string; spendCents: number };
+    assert.equal(p.month, "2026-02");
+    assert.equal(p.spendCents, rollup.spendCents);
+  });
 });
 
-test("budget rollup: default month uses cfg.tz (not UTC) near month boundary", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "cc-budget-rollup-default-month-"));
+test("budget rollup: budget grid rows exclude income and uncategorized", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-budget-grid-rows-"));
   const store = BudgetStore.open(dir);
-  const cfg = loadConfig({ TZ: "America/Chicago" });
+  const cfg = loadConfig({ TZ: "UTC" });
   try {
     const acct = store.createAccount({ name: "Checking", type: "checking" });
     const food = foodCategoryId(store);
-    const janDate = dayKey(new Date("2026-02-01T05:30:00.000Z"), cfg.tz);
-    store.createTransaction({ accountId: acct.id, date: janDate, amountCents: -333, categoryId: food });
-    const now = new Date("2026-02-01T05:00:00.000Z");
-    const rollup = computeRollup(store, cfg, "", now);
-    assert.equal(rollup.month, "2026-01");
-    assert.equal(rollup.spendCents, -333);
+    const income = incomeCategoryId(store);
+    store.createTransaction({ accountId: acct.id, date: "2026-04-05", amountCents: 500000, categoryId: income });
+    store.createTransaction({ accountId: acct.id, date: "2026-04-06", amountCents: -12000, categoryId: food });
+    store.createTransaction({ accountId: acct.id, date: "2026-04-07", amountCents: 2500, payee: "Deposit" });
+    store.createTransaction({ accountId: acct.id, date: "2026-04-08", amountCents: -900, payee: "Cash" });
+    const rollup = computeRollup(store, cfg, "2026-04");
+    const grid = rollupRowsForBudgetGrid(rollup.byCategory);
+    assert.ok(grid.every((r) => !r.isIncome && r.categoryId));
+    assert.ok(rollup.byCategory.some((r) => r.isIncome));
+    assert.ok(rollup.byCategory.some((r) => !r.categoryId));
+    assert.ok(!grid.some((r) => r.isIncome || !r.categoryId));
+    assert.equal(grid.find((r) => r.categoryId === food)!.spentCents, -12000);
+    assert.equal(rollup.incomeCents, sumCategoryIncomeCents(rollup.byCategory));
   } finally {
     store.close();
     await rm(dir, { recursive: true, force: true });
@@ -249,60 +307,6 @@ test("budget rollup: older month stays complete after many newer-month transacti
     assert.equal(jan.spendCents, -4242);
   } finally {
     store.close();
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("budget panel: matches rollup at Chicago month boundary", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-02-01T05:00:00.000Z") });
-  const dir = await mkdtemp(join(tmpdir(), "cc-budget-panel-tz-"));
-  const cfg = loadConfig({
-    DATA_DIR: dir,
-    ALLOW_INSECURE_NO_AUTH: "1",
-    CF_ACCESS_TEAM_DOMAIN: "team.example.com",
-    CF_ACCESS_AUD: "aud",
-    OWNER_EMAILS: "owner@example.com",
-    TZ: "America/Chicago",
-  });
-  const settings = new SettingsStore(dir);
-  await settings.load();
-  const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
-  const notes = await NotesStore.open(dir);
-  const integration = await openIntegrationStores(dir, cfg);
-  const budget = BudgetStore.open(dir);
-  const checking = budget.createAccount({ name: "Checking", type: "checking" });
-  const food = budget.listCategories().find((c) => c.name === "Groceries")!.id;
-  const janDate = dayKey(new Date("2026-02-01T05:30:00.000Z"), cfg.tz);
-  const febDate = dayKey(new Date("2026-02-01T06:30:00.000Z"), cfg.tz);
-  assert.equal(monthKey(new Date(), cfg.tz), "2026-01");
-  budget.createTransaction({ accountId: checking.id, date: janDate, amountCents: -50, categoryId: food });
-  budget.createTransaction({ accountId: checking.id, date: febDate, amountCents: -80, categoryId: food });
-  const server = createApp({
-    cfg,
-    auth: makeAuthenticator(cfg, async () => ({ email: "owner@example.com" })),
-    settings,
-    dailyBriefing,
-    notes,
-    ...integration,
-    budget,
-  });
-  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  try {
-    const panel = await fetch(`${base}/api/panels/budget`, {
-      headers: { cookie: "CF_Authorization=t", "x-ah": "1" },
-    });
-    const p = (await panel.json()) as { spendCents: number; month: string };
-    const janRollup = computeRollup(budget, cfg, "2026-01");
-    assert.equal(p.month, "2026-01");
-    assert.equal(p.spendCents, -50);
-    assert.equal(p.spendCents, janRollup.spendCents);
-    const febRollup = computeRollup(budget, cfg, "2026-02");
-    assert.equal(febRollup.spendCents, -80);
-  } finally {
-    t.mock.timers.reset();
-    budget.close();
-    await closeIntegrationServer(server, integration);
     await rm(dir, { recursive: true, force: true });
   }
 });

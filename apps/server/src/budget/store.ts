@@ -372,9 +372,17 @@ export class BudgetStore {
   }
 
   setBudgetMonth(month: string, categoryId: string, budgetedCents: number): void {
+    if (!categoryId.trim()) throw new ValidationError("category required");
     if (!Number.isInteger(budgetedCents) || budgetedCents < 0) throw new ValidationError("budget must be whole cents");
-    const cat = this.db.prepare("SELECT 1 FROM categories WHERE id = ?").get(categoryId);
+    const cat = this.db
+      .prepare(
+        `SELECT c.id, g.is_income AS is_income FROM categories c
+         INNER JOIN category_groups g ON g.id = c.group_id
+         WHERE c.id = ? AND c.archived = 0`,
+      )
+      .get(categoryId) as { id: string; is_income: number } | undefined;
     if (!cat) throw new ValidationError("category not found");
+    if (cat.is_income) throw new ValidationError("income categories cannot be budgeted");
     this.db
       .prepare(
         `INSERT INTO budget_months (month, category_id, budgeted_cents) VALUES (?, ?, ?)

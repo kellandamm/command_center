@@ -184,15 +184,16 @@ test("budget privacy: shipped service worker uses shared bypass rules", () => {
   for (const p of SERVICE_WORKER_BYPASS_EXACT) {
     assert.match(SERVICE_WORKER, new RegExp(JSON.stringify(p).slice(1, -1)));
   }
-  for (const required of ["/api/", "/budget/", "/budget", "/extension.zip"]) {
-    assert.ok(SERVICE_WORKER.includes(required), `missing bypass path ${required} in shipped sw.js`);
-  }
 });
 
-test("budget privacy: service worker bypasses budget and panel API paths", () => {
+test("budget privacy: service worker fetch bypass behaviour", () => {
+  assert.equal(serviceWorkerBypassesFetch("GET", "/budget"), true);
+  assert.equal(serviceWorkerBypassesFetch("GET", "/budget/settings"), true);
   assert.equal(serviceWorkerBypassesFetch("GET", "/api/budget/rollup"), true);
   assert.equal(serviceWorkerBypassesFetch("GET", "/api/panels/budget"), true);
   assert.equal(serviceWorkerBypassesFetch("GET", "/api/budget/export.csv"), true);
+  assert.equal(serviceWorkerBypassesFetch("GET", "/extension.zip"), true);
+  assert.equal(serviceWorkerBypassesFetch("GET", "/budgeting"), false);
   assert.equal(serviceWorkerBypassesFetch("GET", "/"), false);
 });
 

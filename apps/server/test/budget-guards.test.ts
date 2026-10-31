@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import util from "node:util";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -111,6 +112,34 @@ test("budget guard: dashboard blur uses CSS filter, not class name alone", () =>
   assert.match(css, /filter:\s*blur\(/);
 });
 
+test("budget guard: budget-months PUT rejects empty or income category id", async () => {
+  const h = await openOwnerBudgetHttp();
+  try {
+    const income = h.budget.listCategories().find((c) => c.name === "Paycheck")!.id;
+    const food = h.budget.listCategories().find((c) => c.name === "Groceries")!.id;
+    const empty = await fetch(`${h.base}/api/budget/budget-months`, {
+      method: "PUT",
+      headers: { cookie: "CF_Authorization=t", "content-type": "application/json", "x-ah": "1" },
+      body: JSON.stringify({ month: "2026-03", categoryId: "", budgetedCents: 100 }),
+    });
+    assert.equal(empty.status, 400);
+    const badIncome = await fetch(`${h.base}/api/budget/budget-months`, {
+      method: "PUT",
+      headers: { cookie: "CF_Authorization=t", "content-type": "application/json", "x-ah": "1" },
+      body: JSON.stringify({ month: "2026-03", categoryId: income, budgetedCents: 100 }),
+    });
+    assert.equal(badIncome.status, 400);
+    const ok = await fetch(`${h.base}/api/budget/budget-months`, {
+      method: "PUT",
+      headers: { cookie: "CF_Authorization=t", "content-type": "application/json", "x-ah": "1" },
+      body: JSON.stringify({ month: "2026-03", categoryId: food, budgetedCents: 100 }),
+    });
+    assert.equal(ok.status, 200);
+  } finally {
+    await h.close();
+  }
+});
+
 test("budget guard: validation errors log via logBudgetError", async () => {
   const h = await openOwnerBudgetHttp();
   const errors: unknown[] = [];
@@ -126,7 +155,7 @@ test("budget guard: validation errors log via logBudgetError", async () => {
       body: JSON.stringify({ accountId: acct.id, date: "2026-01-01", amountCents: 1.5 }),
     });
     assert.equal(res.status, 400);
-    const blob = JSON.stringify(errors);
+    const blob = util.inspect(errors, { depth: 5 });
     assert.match(blob, /validation/);
     assert.ok(!blob.includes("amount must be whole cents"));
   } finally {

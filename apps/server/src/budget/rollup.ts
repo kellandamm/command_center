@@ -63,6 +63,11 @@ export function sumCategoryIncomeCents(rows: CategoryRollupRow[]): number {
   return rows.filter((r) => r.isIncome).reduce((sum, r) => sum + r.spentCents, 0);
 }
 
+/** Expense categories only — used by the Budget grid (not Overview income reconciliation). */
+export function rollupRowsForBudgetGrid(rows: CategoryRollupRow[]): CategoryRollupRow[] {
+  return rows.filter((r) => !r.isIncome && r.categoryId !== "");
+}
+
 export function computeRollup(
   store: BudgetStore,
   cfg: Config,
