@@ -52,7 +52,7 @@ Native **Budget** in Command Center (`apps/server`, server-rendered TS UI). **CS
 | Area | Files |
 |------|--------|
 | Engine | `apps/server/src/budget/loans/` — port MIT files from [AB-Asset-Tracker](https://github.com/gismc123/AB-Asset-Tracker): `amortize.ts`, `equity.ts`, `money.ts`, `dates.ts` (+ minimal `types.ts` slices). **Loans live only here** (no loan CSV import, no `loan` account type). Optional **manual balance override** on a loan record when amortization ≠ servicer statement. **Omit v1:** PMI, escrow ledger, daily-simple interest, skip/defer/catch-up, payoff quotes, `modules` toggles beyond mortgage/auto/personal label |
-| DB | migration **3**: `loans`, `loan_setup` (JSON), `loan_settings` (`category_id` → CC category), `loan_details`, `adjustments`, `loan_months` (`transaction_id` → `transactions`, **`ON DELETE SET NULL`**), `assets`, `asset_values` |
+| DB | migration **4**: `loans`, `loan_setup` (JSON), `loan_settings` (`category_id` → CC category), `loan_details`, `adjustments`, `loan_months` (`transaction_id` → `transactions`, **`ON DELETE SET NULL`**), `assets`, `asset_values` |
 | HTTP | `/api/budget/loans/*`, reconcile = link `loan_months.transaction_id` to imported tx (import undo clears link, does not block delete) |
 | UI | `/budget?view=loans` (or sub-routes): setup, schedule, equity, reconcile |
 | Legal | `THIRD_PARTY_NOTICES.md` — Ivan Santos / MIT block for AB engine |

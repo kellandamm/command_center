@@ -197,6 +197,29 @@ test("budget privacy: service worker fetch bypass behaviour", () => {
   assert.equal(serviceWorkerBypassesFetch("GET", "/"), false);
 });
 
+test("budget privacy: subscription scan does not log payee", async () => {
+  const errors: unknown[] = [];
+  const orig = console.error;
+  console.error = (...args: unknown[]) => {
+    errors.push(args);
+  };
+  const h = await openBudgetHttp();
+  try {
+    const acct = h.budget.createAccount({ name: "Checking", type: "checking" });
+    h.budget.createTransaction({ accountId: acct.id, date: "2026-09-01", amountCents: -999, payee: PLANT });
+    const res = await fetch(`${h.base}/api/budget/subscriptions/scan`, {
+      method: "POST",
+      headers: { cookie: "CF_Authorization=t", "content-type": "application/json", "x-ah": "1" },
+      body: "{}",
+    });
+    assert.equal(res.status, 200);
+    assert.ok(!JSON.stringify(errors).includes(PLANT));
+  } finally {
+    console.error = orig;
+    await h.close();
+  }
+});
+
 test("budget privacy: non-owner cannot read budget API", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-budget-owner-"));
   const cfg = loadConfig({
