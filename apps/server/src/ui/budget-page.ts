@@ -6,6 +6,7 @@ const VIEW_LINKS = [
   { id: "overview", label: "Overview", href: "/budget" },
   { id: "transactions", label: "Transactions", href: "/budget?view=transactions" },
   { id: "budget", label: "Budget", href: "/budget?view=budget" },
+  { id: "subscriptions", label: "Subscriptions", href: "/budget?view=subscriptions" },
   { id: "accounts", label: "Accounts", href: "/budget?view=accounts" },
   { id: "import", label: "Import", href: "/budget?view=import" },
   { id: "settings", label: "Settings", href: "/budget?view=settings" },
@@ -60,6 +61,16 @@ ${viewTabs(initialView === "overview" ? "overview" : initialView)}
 </div>
 <div id="budget-month-grid" class="card card-sm">${skeleton({ lines: 6 })}</div>
 </section>
+<section id="budget-panel-subscriptions" class="budget-panel" hidden>
+<style>.budget-sub-actions{white-space:nowrap;display:inline-flex;gap:.35rem;flex-wrap:nowrap}.budget-sub-next-due{white-space:nowrap}</style>
+<div class="row" style="margin-bottom:.75rem;gap:.5rem;flex-wrap:wrap;align-items:center">
+${button({ label: "Scan for subscriptions", attrs: { id: "budget-sub-scan", type: "button" } })}
+${button({ label: "Add manual", variant: "secondary", attrs: { id: "budget-sub-add", type: "button" } })}
+</div>
+<div id="budget-sub-stats" class="stat-grid" style="margin-bottom:1rem">${statCard({ label: "Annual recurring", value: "—" })}${statCard({ label: "Active", value: "—" })}</div>
+<div id="budget-sub-detections" class="card card-sm" style="margin-bottom:1rem">${skeleton({ lines: 3 })}</div>
+<div id="budget-sub-active" class="card card-sm">${skeleton({ lines: 4 })}</div>
+</section>
 <section id="budget-panel-accounts" class="budget-panel">${accountsEmpty}</section>
 <section id="budget-panel-import" class="budget-panel" hidden>
 ${cardImportWizard()}
@@ -88,14 +99,14 @@ ${button({ label: "Delete all budget data", variant: "secondary", attrs: { id: "
 (function(){
 var params=new URLSearchParams(location.search);
 var view=params.get("view")||"overview";
-var panels={overview:"overview",transactions:"transactions",budget:"budget",accounts:"accounts",import:"import",settings:"settings"};
+var panels={overview:"overview",transactions:"transactions",budget:"budget",subscriptions:"subscriptions",accounts:"accounts",import:"import",settings:"settings"};
 var active=panels[view]?view:"overview";
 document.querySelectorAll(".ui-tabs a").forEach(function(a){
   var href=a.getAttribute("href")||"";
   var match=href==="/budget"?"overview":(href.split("view=")[1]||"");
   a.setAttribute("aria-current",match===active?"page":"false");
 });
-["overview","transactions","budget","accounts","import","settings"].forEach(function(id){
+["overview","transactions","budget","subscriptions","accounts","import","settings"].forEach(function(id){
   var el=document.getElementById("budget-panel-"+id);
   if(el)el.hidden=(active!==id);
 });
@@ -107,7 +118,7 @@ function api(path,method,body){
 function fmt(cents){var n=Number(cents)||0;var sign=n<0?"-":"";return sign+"$"+(Math.abs(n)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});}
 function setStatus(msg,bad){var el=document.getElementById("budget-status");if(!el)return;el.textContent=msg||"";el.classList.toggle("bad",!!bad);}
 function textCell(tr,text){var td=document.createElement("td");td.textContent=text;tr.appendChild(td);}
-var state={accounts:[],categories:[],groups:[],preview:null,dateFormatTouched:false,rollup:null,month:""};
+var state={accounts:[],categories:[],groups:[],preview:null,dateFormatTouched:false,rollup:null,month:"",subscriptions:null};
 function importDateFormatFor(accountId){
   var acct=state.accounts.find(function(a){return a.id===accountId;});
   return (acct&&acct.importDateFormat)||"MM/DD/YYYY";
@@ -297,7 +308,129 @@ document.getElementById("budget-export-csv")?.addEventListener("click",function(
 document.getElementById("budget-delete-all")?.addEventListener("click",function(){
   var v=document.getElementById("budget-delete-confirm")?.value||"";
   if(v!=="DELETE ALL BUDGET DATA"){setStatus("Type the confirmation phrase exactly.",true);return;}
-  api("/api/budget/delete-all","POST",{confirm:v}).then(function(){setStatus("All budget data deleted.");loadAccounts();loadRollup();loadTransactions();}).catch(function(e){setStatus(e.message,true);});
+  api("/api/budget/delete-all","POST",{confirm:v}).then(function(){setStatus("All budget data deleted.");loadAccounts();loadRollup();loadTransactions();loadSubscriptions();}).catch(function(e){setStatus(e.message,true);});
+});
+function renderSubscriptions(){
+  var data=state.subscriptions;if(!data)return;
+  var stats=document.getElementById("budget-sub-stats");
+  if(stats){
+    var cards=stats.querySelectorAll(".stat-card");
+    var total=data.subscriptions.reduce(function(s,x){return s+(x.annualCostCents||0);},0);
+    if(cards[0])cards[0].querySelector(".stat-value").textContent=fmt(-total);
+    if(cards[1])cards[1].querySelector(".stat-value").textContent=String(data.subscriptions.length);
+  }
+  var detBox=document.getElementById("budget-sub-detections");
+  if(detBox){
+    detBox.replaceChildren();
+    var h=document.createElement("h3");h.style.marginTop="0";h.textContent="Pending detections";detBox.appendChild(h);
+    if(!data.detections.length){detBox.appendChild(document.createElement("p")).textContent="No pending detections.";detBox.lastChild.className="dim";}
+    else{
+      var table=document.createElement("table");table.className="ui-table";
+      var thead=document.createElement("thead");var hr=document.createElement("tr");
+      ["Payee","Amount","Cadence","Confidence",""].forEach(function(x){var th=document.createElement("th");th.textContent=x;hr.appendChild(th);});
+      thead.appendChild(hr);table.appendChild(thead);
+      var tbody=document.createElement("tbody");
+      data.detections.forEach(function(d){
+        var tr=document.createElement("tr");
+        var tdName=document.createElement("td");
+        tdName.textContent=d.displayName||d.payeeNormalized;
+        if(d.detectionKind==="possible_yearly"){
+          var badge=document.createElement("span");badge.className="ui-badge ui-badge-warning";badge.style.marginLeft=".5rem";badge.textContent="Possible yearly — please confirm";
+          tdName.appendChild(badge);
+        }
+        tr.appendChild(tdName);
+        textCell(tr,fmt(d.amountCents));textCell(tr,d.cadence);textCell(tr,(Math.round(d.confidence*100))+"%");
+        var tdAct=document.createElement("td");
+        var cBtn=document.createElement("button");cBtn.type="button";cBtn.className="btn btn-sm";cBtn.textContent="Confirm";
+        cBtn.onclick=function(){confirmDetection(d);};
+        var dBtn=document.createElement("button");dBtn.type="button";dBtn.className="ghost btn-sm";dBtn.textContent="Dismiss";
+        dBtn.onclick=function(){dismissDetection(d.id);};
+        tdAct.appendChild(cBtn);tdAct.appendChild(dBtn);tr.appendChild(tdAct);
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);detBox.appendChild(table);
+    }
+  }
+  var actBox=document.getElementById("budget-sub-active");
+  if(actBox){
+    actBox.replaceChildren();
+    var h2=document.createElement("h3");h2.style.marginTop="0";h2.textContent="Active subscriptions";actBox.appendChild(h2);
+    if(!data.subscriptions.length){actBox.appendChild(document.createElement("p")).textContent="No subscriptions yet.";actBox.lastChild.className="dim";}
+    else{
+      var table2=document.createElement("table");table2.className="ui-table";
+      var thead2=document.createElement("thead");var hr2=document.createElement("tr");
+      ["Name","Amount","Cadence","Annual","Next due","Category",""].forEach(function(x){var th=document.createElement("th");th.textContent=x;hr2.appendChild(th);});
+      thead2.appendChild(hr2);table2.appendChild(thead2);
+      var tbody2=document.createElement("tbody");
+      var catName=function(id){var c=state.categories.find(function(x){return x.id===id;});return c?c.name:"";};
+      data.subscriptions.forEach(function(s){
+        var tr=document.createElement("tr");
+        textCell(tr,s.displayName);textCell(tr,fmt(s.amountCents));textCell(tr,s.cadence);
+        textCell(tr,fmt(-s.annualCostCents));
+        var tdDue=document.createElement("td");tdDue.className="budget-sub-next-due";tdDue.textContent=s.nextDueDate||"—";tr.appendChild(tdDue);
+        textCell(tr,catName(s.categoryId));
+        var tdAct=document.createElement("td");tdAct.className="budget-sub-actions";
+        var editBtn=document.createElement("button");editBtn.type="button";editBtn.className="ghost btn-sm";editBtn.textContent="Edit";
+        editBtn.onclick=function(){editSubscription(s);};
+        var offBtn=document.createElement("button");offBtn.type="button";offBtn.className="ghost btn-sm";offBtn.textContent="Deactivate";
+        offBtn.onclick=function(){deactivateSubscription(s.id);};
+        tdAct.appendChild(editBtn);tdAct.appendChild(offBtn);tr.appendChild(tdAct);
+        tbody2.appendChild(tr);
+      });
+      table2.appendChild(tbody2);actBox.appendChild(table2);
+    }
+  }
+}
+function loadSubscriptions(){return api("/api/budget/subscriptions").then(function(r){state.subscriptions=r;renderSubscriptions();}).catch(function(e){setStatus(e.message,true);});}
+function activeSubscriptionRows(){
+  var data=state.subscriptions;
+  return data&&Array.isArray(data.subscriptions)?data.subscriptions:[];
+}
+function confirmDetection(d){
+  var catOpts=state.categories.filter(function(c){return !state.groups.find(function(g){return g.id===c.groupId&&g.isIncome;});});
+  var names=catOpts.map(function(c,i){return (i+1)+") "+c.name;}).join("\\n");
+  var pick=prompt("Pick category number:\\n"+names);
+  if(!pick)return;
+  var idx=Number(pick)-1;if(idx<0||idx>=catOpts.length){setStatus("Invalid category.",true);return;}
+  var cadence=(prompt("Cadence: weekly, monthly, yearly",d.cadence)||d.cadence).trim();
+  var deactivateConflicting=false;
+  var hasConflict=!!d.hasConflictingActiveSubscription&&cadence===d.cadence;
+  if(hasConflict){
+    deactivateConflicting=confirm("An active subscription exists for this payee at a different amount.\\n\\nOK — deactivate the older one and confirm this price.\\nCancel — keep both subscriptions active (annual totals may double-count).");
+  }
+  api("/api/budget/subscriptions/detections/"+encodeURIComponent(d.id)+"/confirm","POST",{categoryId:catOpts[idx].id,cadence:cadence,deactivateConflictingActive:deactivateConflicting}).then(function(){setStatus("Subscription confirmed.");loadSubscriptions();}).catch(function(e){setStatus(e.message,true);});
+}
+function dismissDetection(id){
+  api("/api/budget/subscriptions/detections/"+encodeURIComponent(id)+"/dismiss","POST",{}).then(function(){loadSubscriptions();}).catch(function(e){setStatus(e.message,true);});
+}
+document.getElementById("budget-sub-scan")?.addEventListener("click",function(){
+  api("/api/budget/subscriptions/scan","POST",{}).then(function(r){setStatus("Scan complete. New detections: "+r.inserted);loadSubscriptions();}).catch(function(e){setStatus(e.message,true);});
+});
+function localDateIso(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+function editSubscription(s){
+  var amt=prompt("Amount (dollars, outflow)",String(Math.abs(s.amountCents)/100));if(amt==null)return;
+  var cents=-Math.round(Number(amt)*100);if(!cents){setStatus("Invalid amount.",true);return;}
+  var cadence=(prompt("Cadence: weekly, monthly, yearly",s.cadence)||s.cadence).trim();
+  var anchor=prompt("Anchor date (YYYY-MM-DD)",s.anchorDate)||s.anchorDate;
+  api("/api/budget/subscriptions/"+encodeURIComponent(s.id),"PUT",{amountCents:cents,cadence:cadence,anchorDate:anchor}).then(function(){loadSubscriptions();}).catch(function(e){setStatus(e.message,true);});
+}
+function deactivateSubscription(id){
+  if(!confirm("Deactivate this subscription?"))return;
+  api("/api/budget/subscriptions/"+encodeURIComponent(id),"PUT",{active:false}).then(function(){loadSubscriptions();}).catch(function(e){setStatus(e.message,true);});
+}
+document.getElementById("budget-sub-add")?.addEventListener("click",function(){
+  var name=prompt("Display name");if(!name)return;
+  var payee=prompt("Bank payee (for matching imports)",name)||name;
+  var cadence=(prompt("Cadence: weekly, monthly, yearly","monthly")||"monthly").trim();
+  var amtLabel=cadence==="yearly"?"Yearly amount (dollars, outflow)":cadence==="weekly"?"Weekly amount (dollars, outflow)":"Monthly amount (dollars, outflow)";
+  var amt=prompt(amtLabel,"9.99");if(!amt)return;
+  var cents=-Math.round(Number(amt)*100);if(!cents){setStatus("Invalid amount.",true);return;}
+  var catOpts=state.categories.filter(function(c){return !state.groups.find(function(g){return g.id===c.groupId&&g.isIncome;});});
+  var pick=prompt("Category number:\\n"+catOpts.map(function(c,i){return (i+1)+") "+c.name;}).join("\\n"));
+  if(!pick)return;
+  var idx=Number(pick)-1;
+  if(idx<0||idx>=catOpts.length){setStatus("Invalid category.",true);return;}
+  api("/api/budget/subscriptions","POST",{displayName:name,payee:payee,amountCents:cents,cadence:cadence,categoryId:catOpts[idx].id,anchorDate:localDateIso()}).then(function(){loadSubscriptions();}).catch(function(e){setStatus(e.message,true);});
 });
 var monthPicker=document.getElementById("budget-month-picker");
 if(monthPicker){
@@ -309,6 +442,7 @@ loadCategories().then(function(){
   if(active==="overview"){loadNetWorth().then(loadRollup);}
   if(active==="transactions")loadTransactions();
   if(active==="budget")loadRollup();
+  if(active==="subscriptions")loadSubscriptions();
   if(active==="import")fillImportAccounts();
 });
 })();

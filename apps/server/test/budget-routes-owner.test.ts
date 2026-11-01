@@ -166,3 +166,16 @@ test("budget routes owner: owner can read rollup and net-worth", async () => {
     await h.close();
   }
 });
+
+test("budget routes owner: subscriptions list is owner-only with no-store", async () => {
+  const h = await openBudgetHttp({ ownerEmail: OWNER, insecure: true });
+  try {
+    const res = await fetch(`${h.base}/api/budget/subscriptions`, {
+      headers: { cookie: "CF_Authorization=t", "x-ah": "1" },
+    });
+    assert.equal(res.status, 200);
+    assert.match(String(res.headers.get("cache-control")), /no-store/);
+  } finally {
+    await h.close();
+  }
+});
