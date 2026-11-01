@@ -736,28 +736,51 @@ export class BudgetStore {
     return r ? this.rowDetection(r) : undefined;
   }
 
-  hasActiveSubscriptionLane(payeeNormalized: string, amountCents: number, cadence: SubscriptionCadence): boolean {
+  hasActiveSubscriptionForPayeeCadence(payeeNormalized: string, cadence: SubscriptionCadence): boolean {
+    const r = this.db
+      .prepare(
+        "SELECT 1 FROM subscriptions WHERE active = 1 AND payee_normalized = ? AND cadence = ? LIMIT 1",
+      )
+      .get(payeeNormalized, cadence);
+    return Boolean(r);
+  }
+
+  private detectionAmountMatches(storedAmountCents: number, candidateAmountCents: number): boolean {
+    return amountInCluster(Math.abs(storedAmountCents), candidateAmountCents);
+  }
+
+  isDetectionPermanentlyDismissed(
+    payeeNormalized: string,
+    cadence: SubscriptionCadence,
+    amountCents: number,
+  ): boolean {
     const rows = this.db
-      .prepare("SELECT amount_cents FROM subscriptions WHERE active = 1 AND payee_normalized = ? AND cadence = ?")
+      .prepare(
+        `SELECT amount_cents FROM subscription_detections
+         WHERE payee_normalized = ? AND cadence = ? AND dismissed_at IS NOT NULL`,
+      )
       .all(payeeNormalized, cadence) as Record<string, unknown>[];
     for (const r of rows) {
-      if (amountInCluster(Math.abs(Number(r.amount_cents)), amountCents)) return true;
+      if (this.detectionAmountMatches(Number(r.amount_cents), amountCents)) return true;
     }
     return false;
   }
 
-  isDetectionPermanentlyDismissed(laneKey: string): boolean {
-    const r = this.db
-      .prepare("SELECT 1 FROM subscription_detections WHERE lane_key = ? AND dismissed_at IS NOT NULL LIMIT 1")
-      .get(laneKey);
-    return Boolean(r);
-  }
-
-  hasPendingDetectionLane(laneKey: string): boolean {
-    const r = this.db
-      .prepare("SELECT 1 FROM subscription_detections WHERE lane_key = ? AND status = 'pending' LIMIT 1")
-      .get(laneKey);
-    return Boolean(r);
+  hasPendingDetectionMatch(
+    payeeNormalized: string,
+    cadence: SubscriptionCadence,
+    amountCents: number,
+  ): boolean {
+    const rows = this.db
+      .prepare(
+        `SELECT amount_cents FROM subscription_detections
+         WHERE payee_normalized = ? AND cadence = ? AND status = 'pending'`,
+      )
+      .all(payeeNormalized, cadence) as Record<string, unknown>[];
+    for (const r of rows) {
+      if (this.detectionAmountMatches(Number(r.amount_cents), amountCents)) return true;
+    }
+    return false;
   }
 
   insertDetection(input: {
@@ -793,6 +816,7 @@ export class BudgetStore {
 
   createSubscriptionManual(input: {
     displayName: string;
+    payee?: string;
     amountCents: number;
     cadence: SubscriptionCadence;
     anchorDate: string;
@@ -804,11 +828,12 @@ export class BudgetStore {
     }
     const name = input.displayName.trim().slice(0, 240);
     if (!name) throw new ValidationError("display name required");
+    const payeeRaw = (input.payee ?? name).trim().slice(0, 240);
+    const payeeNormalized = normalizePayee(payeeRaw);
     const cat = this.db.prepare("SELECT id FROM categories WHERE id = ? AND archived = 0").get(input.categoryId);
     if (!cat) throw new ValidationError("category not found");
     const now = new Date().toISOString();
     const id = randomUUID();
-    const payeeNormalized = normalizePayee(name);
     this.db
       .prepare(
         `INSERT INTO subscriptions (id, payee_normalized, display_name, amount_cents, currency, cadence, anchor_date, category_id, active, source, created_at, updated_at)
@@ -833,6 +858,7 @@ export class BudgetStore {
     id: string,
     patch: Partial<{
       displayName: string;
+      payee: string;
       amountCents: number;
       cadence: SubscriptionCadence;
       anchorDate: string;
@@ -847,12 +873,15 @@ export class BudgetStore {
     }
     const now = new Date().toISOString();
     const displayName = patch.displayName != null ? patch.displayName.trim().slice(0, 240) : cur.displayName;
+    const payeeNormalized =
+      patch.payee != null ? normalizePayee(patch.payee.trim().slice(0, 240)) : cur.payeeNormalized;
     this.db
       .prepare(
-        `UPDATE subscriptions SET display_name = ?, amount_cents = ?, cadence = ?, anchor_date = ?, category_id = ?, active = ?, updated_at = ?
+        `UPDATE subscriptions SET payee_normalized = ?, display_name = ?, amount_cents = ?, cadence = ?, anchor_date = ?, category_id = ?, active = ?, updated_at = ?
          WHERE id = ?`,
       )
       .run(
+        payeeNormalized,
         displayName,
         patch.amountCents ?? cur.amountCents,
         patch.cadence ?? cur.cadence,
@@ -871,6 +900,7 @@ export class BudgetStore {
   ): SubscriptionRow | undefined {
     const det = this.getDetection(detectionId);
     if (!det || det.status !== "pending") return undefined;
+    if (!input.categoryId.trim()) throw new ValidationError("category required");
     const cat = this.db.prepare("SELECT id FROM categories WHERE id = ? AND archived = 0").get(input.categoryId);
     if (!cat) throw new ValidationError("category not found");
     const cadence = input.cadence ?? det.cadence;

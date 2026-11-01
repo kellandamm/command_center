@@ -78,13 +78,13 @@ export function computeConfidence(
   return Math.min(1, Math.max(0, gs * as * ss));
 }
 
-export function laneKey(
+/** Stable detection identity: payee + cadence + band anchor (min abs cents in cluster). */
+export function stableLaneKey(
   payeeNormalized: string,
-  amountCents: number,
   cadence: SubscriptionCadence,
-  billingDay: number,
+  bandAnchorAbsCents: number,
 ): string {
-  return `${payeeNormalized}|${Math.abs(amountCents)}|${cadence}|${billingDay}`;
+  return `${payeeNormalized}|${cadence}|${Math.abs(bandAnchorAbsCents)}`;
 }
 
 /** Split monthly/yearly lanes when billing day jumps by >3 (circular). Weekly: one sublane. */
@@ -166,21 +166,6 @@ function passesCadenceRules(cadence: SubscriptionCadence, gaps: number[], n: num
   return med >= 345 && med <= 385 && stdev(gaps) <= 15;
 }
 
-function representativeBillingDay(charges: OutflowCharge[], tz: string): number {
-  const days = charges.map((c) => dayOfMonthInTz(c.date, tz));
-  const counts = new Map<number, number>();
-  for (const d of days) counts.set(d, (counts.get(d) ?? 0) + 1);
-  let best = days[0]!;
-  let bestN = 0;
-  for (const [d, n] of counts) {
-    if (n > bestN) {
-      bestN = n;
-      best = d;
-    }
-  }
-  return best;
-}
-
 export interface DetectionCandidate {
   payeeNormalized: string;
   displayName: string;
@@ -227,7 +212,7 @@ export function detectCandidatesFromCharges(charges: OutflowCharge[], tz: string
           kind === "possible_yearly" ? POSSIBLE_YEARLY_CONFIDENCE_THRESHOLD : STANDARD_CONFIDENCE_THRESHOLD;
         if (conf < threshold) continue;
 
-        const billingDay = representativeBillingDay(sub, tz);
+        const bandAnchorAbs = Math.min(...sub.map((c) => Math.abs(c.amountCents)));
         const repAmount = -Math.round(medAbs);
         const displayName = sub[sub.length - 1]!.payee.trim() || sub[0]!.payeeNormalized;
         out.push({
@@ -238,7 +223,7 @@ export function detectCandidatesFromCharges(charges: OutflowCharge[], tz: string
           detectionKind: kind,
           confidence: conf,
           sampleDates: dates,
-          laneKey: laneKey(sub[0]!.payeeNormalized, repAmount, run.cadence, billingDay),
+          laneKey: stableLaneKey(sub[0]!.payeeNormalized, run.cadence, bandAnchorAbs),
         });
       }
       }
@@ -286,9 +271,9 @@ export function runSubscriptionDetection(store: BudgetStore, cfg: Config): { ins
     const candidates = detectCandidatesFromCharges(charges, cfg.tz);
     let inserted = 0;
     for (const c of candidates) {
-      if (store.hasActiveSubscriptionLane(c.payeeNormalized, c.amountCents, c.cadence)) continue;
-      if (store.isDetectionPermanentlyDismissed(c.laneKey)) continue;
-      if (store.hasPendingDetectionLane(c.laneKey)) continue;
+      if (store.hasActiveSubscriptionForPayeeCadence(c.payeeNormalized, c.cadence)) continue;
+      if (store.isDetectionPermanentlyDismissed(c.payeeNormalized, c.cadence, c.amountCents)) continue;
+      if (store.hasPendingDetectionMatch(c.payeeNormalized, c.cadence, c.amountCents)) continue;
       store.insertDetection({
         id: randomUUID(),
         payeeNormalized: c.payeeNormalized,

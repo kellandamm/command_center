@@ -13,9 +13,12 @@ import { SettingsStore } from "../src/settings";
 import { NotesStore } from "../src/notes/store";
 import { BudgetStore } from "../src/budget/store";
 import { budgetAvailable } from "../src/budget/gate";
+import { budgetPage } from "../src/ui/budget-page";
+import { STANDARD_CONFIDENCE_THRESHOLD, POSSIBLE_YEARLY_CONFIDENCE_THRESHOLD } from "../src/budget/subscriptions/types";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
 const OWNER = "owner@example.com";
+const PLANT = "PLANT_SECRET_PAYEE";
 
 async function subHttp(opts: { ownerEmail?: string; gateOff?: boolean }) {
   const dir = await mkdtemp(join(tmpdir(), "cc-sub-guards-"));
@@ -141,4 +144,175 @@ test("subscriptions guard: budget routes enforce isBudgetOwner via shared helper
   assert.match(routes, /isBudgetOwner\(who\)/);
   const subRoutes = readFileSync(join(process.cwd(), "src/budget/subscription-routes.ts"), "utf8");
   assert.ok(!subRoutes.includes("canManageSharedServerState"));
+});
+
+async function openOwnerBudgetWithStore() {
+  const dir = await mkdtemp(join(tmpdir(), "cc-sub-guards-store-"));
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    ALLOW_INSECURE_NO_AUTH: "1",
+    CF_ACCESS_TEAM_DOMAIN: "team.example.com",
+    CF_ACCESS_AUD: "aud",
+    OWNER_EMAILS: OWNER,
+    TZ: "UTC",
+  });
+  const settings = new SettingsStore(dir);
+  await settings.load();
+  const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
+  const notes = await NotesStore.open(dir);
+  const integration = await openIntegrationStores(dir, cfg);
+  const budget = BudgetStore.open(dir);
+  const server = createApp({
+    cfg,
+    auth: makeAuthenticator(cfg, async () => ({ email: OWNER })),
+    settings,
+    dailyBriefing,
+    notes,
+    ...integration,
+    budget,
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const close = async () => {
+    budget.close();
+    await closeIntegrationServer(server, integration);
+    await rm(dir, { recursive: true, force: true });
+  };
+  return { base, budget, close };
+}
+
+test("subscriptions guard: scan logs via logBudgetError without payee (multi-charge path)", async () => {
+  const errors: unknown[] = [];
+  const orig = console.error;
+  console.error = (...args: unknown[]) => {
+    errors.push(args);
+  };
+  const h = await openOwnerBudgetWithStore();
+  try {
+    const acct = h.budget.createAccount({ name: "Checking", type: "checking" });
+    const base = new Date();
+    for (let i = 0; i < 3; i++) {
+      const d = new Date(base);
+      d.setUTCDate(d.getUTCDate() - 60 + i * 31);
+      h.budget.createTransaction({
+        accountId: acct.id,
+        date: d.toISOString().slice(0, 10),
+        amountCents: -999,
+        payee: PLANT,
+      });
+    }
+    (h.budget as BudgetStore & { listOutflowChargesSince: () => never }).listOutflowChargesSince = () => {
+      throw new Error(`${PLANT} leak`);
+    };
+    const res = await fetch(`${h.base}/api/budget/subscriptions/scan`, {
+      method: "POST",
+      headers: { cookie: "CF_Authorization=t", "content-type": "application/json", "x-ah": "1" },
+      body: "{}",
+    });
+    assert.equal(res.status, 200);
+    const blob = JSON.stringify(errors);
+    assert.ok(!blob.includes(PLANT));
+    assert.match(blob, /subscription_scan_failed|budget:/);
+  } finally {
+    console.error = orig;
+    await h.close();
+  }
+});
+
+test("subscriptions guard: subscriptions module has no LLM or ntfy imports", () => {
+  const detect = readFileSync(join(process.cwd(), "src/budget/subscriptions/detect.ts"), "utf8");
+  const due = readFileSync(join(process.cwd(), "src/budget/subscriptions/due.ts"), "utf8");
+  const routes = readFileSync(join(process.cwd(), "src/budget/subscription-routes.ts"), "utf8");
+  for (const src of [detect, due, routes]) {
+    assert.ok(!src.includes("llm/"));
+    assert.ok(!src.includes("daily-briefing"));
+    assert.ok(!src.includes("ntfy"));
+    assert.ok(!src.includes("notify/"));
+  }
+});
+
+test("subscriptions guard: budget page subscriptions tables use textContent (XSS)", () => {
+  const html = budgetPage([], { owner: true, initialView: "subscriptions" });
+  assert.match(html, /tdName\.textContent/);
+  assert.match(html, /textCell\(tr,s\.displayName\)/);
+  assert.doesNotMatch(html, /innerHTML\s*=\s*d\.displayName/);
+});
+
+test("subscriptions guard: import commit triggers subscription scan", () => {
+  const routes = readFileSync(join(process.cwd(), "src/budget/routes.ts"), "utf8");
+  assert.match(routes, /runSubscriptionDetection\(store, cfg\)/);
+});
+
+test("subscriptions guard: outflows exclude transfers in SQL", () => {
+  const store = readFileSync(join(process.cwd(), "src/budget/store.ts"), "utf8");
+  assert.match(store, /transfer_account_id IS NULL/);
+});
+
+test("subscriptions guard: delete-all clears subscription tables", async () => {
+  const h = await openOwnerBudgetWithStore();
+  try {
+    const cat = h.budget.listCategories()[0]!.id;
+    h.budget.createSubscriptionManual({
+      displayName: "Test",
+      payee: "test",
+      amountCents: -100,
+      cadence: "monthly",
+      anchorDate: "2025-01-01",
+      categoryId: cat,
+    });
+    h.budget.insertDetection({
+      id: "d1",
+      payeeNormalized: "x",
+      displayName: "x",
+      amountCents: -100,
+      cadence: "monthly",
+      detectionKind: "standard",
+      confidence: 0.9,
+      sampleDates: ["2025-01-01"],
+      laneKey: "x|monthly|100",
+    });
+    const res = await fetch(`${h.base}/api/budget/delete-all`, {
+      method: "POST",
+      headers: { cookie: "CF_Authorization=t", "content-type": "application/json", "x-ah": "1" },
+      body: JSON.stringify({ confirm: "DELETE ALL BUDGET DATA" }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(h.budget.listSubscriptions(true).length, 0);
+    assert.equal(h.budget.listPendingDetections().length, 0);
+  } finally {
+    await h.close();
+  }
+});
+
+test("subscriptions guard: confirm requires category id", async () => {
+  const h = await openOwnerBudgetWithStore();
+  try {
+    h.budget.insertDetection({
+      id: "d2",
+      payeeNormalized: "svc",
+      displayName: "svc",
+      amountCents: -500,
+      cadence: "monthly",
+      detectionKind: "standard",
+      confidence: 0.9,
+      sampleDates: ["2025-01-01", "2025-02-01", "2025-03-01"],
+      laneKey: "svc|monthly|500",
+    });
+    const res = await fetch(`${h.base}/api/budget/subscriptions/detections/d2/confirm`, {
+      method: "POST",
+      headers: { cookie: "CF_Authorization=t", "content-type": "application/json", "x-ah": "1" },
+      body: JSON.stringify({ categoryId: "" }),
+    });
+    assert.equal(res.status, 400);
+  } finally {
+    await h.close();
+  }
+});
+
+test("subscriptions guard: standard and possible-yearly thresholds are wired", () => {
+  assert.equal(STANDARD_CONFIDENCE_THRESHOLD, 0.7);
+  assert.equal(POSSIBLE_YEARLY_CONFIDENCE_THRESHOLD, 0.45);
+  const detect = readFileSync(join(process.cwd(), "src/budget/subscriptions/detect.ts"), "utf8");
+  assert.match(detect, /STANDARD_CONFIDENCE_THRESHOLD/);
+  assert.match(detect, /POSSIBLE_YEARLY_CONFIDENCE_THRESHOLD/);
 });

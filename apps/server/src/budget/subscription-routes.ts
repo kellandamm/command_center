@@ -38,6 +38,7 @@ export async function handleSubscriptionRoutes(
       }
       const sub = store.createSubscriptionManual({
         displayName: String(body.displayName ?? ""),
+        payee: body.payee != null ? String(body.payee) : undefined,
         amountCents: Number(body.amountCents),
         cadence,
         anchorDate: String(body.anchorDate ?? new Date().toISOString().slice(0, 10)),
@@ -65,6 +66,7 @@ export async function handleSubscriptionRoutes(
       }
       const sub = store.updateSubscription(id, {
         displayName: body.displayName != null ? String(body.displayName) : undefined,
+        payee: body.payee != null ? String(body.payee) : undefined,
         amountCents: body.amountCents != null ? Number(body.amountCents) : undefined,
         cadence: cadenceRaw as SubscriptionCadence | undefined,
         anchorDate: body.anchorDate != null ? String(body.anchorDate) : undefined,

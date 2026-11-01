@@ -124,7 +124,9 @@ test("subscriptions detect: permanent dismiss prevents re-detection", async () =
     store.dismissDetection(pending[0]!.id);
     runSubscriptionDetection(store, cfg);
     assert.equal(store.listPendingDetections().length, 0);
-    assert.ok(store.isDetectionPermanentlyDismissed(pending[0]!.laneKey));
+    assert.ok(
+      store.isDetectionPermanentlyDismissed(pending[0]!.payeeNormalized, pending[0]!.cadence, pending[0]!.amountCents),
+    );
   } finally {
     store.close();
     await rm(dir, { recursive: true, force: true });
@@ -198,6 +200,224 @@ test("budget migration v2 to v3 preserves existing data", async () => {
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('subscriptions','subscription_detections')")
       .all() as { name: string }[];
     assert.equal(tables.length, 2);
+  } finally {
+    store.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("subscriptions detect: dismissed 10.00 band stays dismissed after 10.40 charges", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-sub-1040-"));
+  const store = BudgetStore.open(dir);
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    CF_ACCESS_TEAM_DOMAIN: "t.example.com",
+    CF_ACCESS_AUD: "aud",
+    OWNER_EMAILS: "o@example.com",
+    TZ: "UTC",
+  });
+  try {
+    const acct = store.createAccount({ name: "Checking", type: "checking" });
+    const base = new Date();
+    const mk = (offset: number, cents: number, i: number) => {
+      const d = new Date(base);
+      d.setUTCDate(d.getUTCDate() - 120 + offset);
+      const date = d.toISOString().slice(0, 10);
+      return {
+        rowNumber: 2 + i,
+        date,
+        amountCents: cents,
+        payee: "Utility Co",
+        memo: "",
+        categoryId: null,
+        fingerprint: transactionFingerprint(acct.id, date, cents, "Utility Co", i),
+      };
+    };
+    store.commitImport({
+      accountId: acct.id,
+      fileName: "a.csv",
+      fileSha256: "x",
+      mapping: { dateColumn: "Date", dateFormat: "YYYY-MM-DD" },
+      invertSign: false,
+      rows: [mk(0, -1000, 0), mk(31, -1000, 1), mk(62, -1040, 2)],
+    });
+    runSubscriptionDetection(store, cfg);
+    const pending = store.listPendingDetections();
+    assert.equal(pending.length, 1);
+    store.dismissDetection(pending[0]!.id);
+    store.commitImport({
+      accountId: acct.id,
+      fileName: "b.csv",
+      fileSha256: "y",
+      mapping: { dateColumn: "Date", dateFormat: "YYYY-MM-DD" },
+      invertSign: false,
+      rows: [mk(93, -1040, 3), mk(124, -1040, 4)],
+    });
+    runSubscriptionDetection(store, cfg);
+    assert.equal(store.listPendingDetections().length, 0);
+  } finally {
+    store.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("subscriptions detect: dismissed weekly stays dismissed at 9 and 40 charges", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-sub-weekly-id-"));
+  const store = BudgetStore.open(dir);
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    CF_ACCESS_TEAM_DOMAIN: "t.example.com",
+    CF_ACCESS_AUD: "aud",
+    OWNER_EMAILS: "o@example.com",
+    TZ: "UTC",
+  });
+  try {
+    const acct = store.createAccount({ name: "Checking", type: "checking" });
+    const start = new Date();
+    start.setUTCDate(start.getUTCDate() - 200);
+    const rows = [];
+    for (let i = 0; i < 40; i++) {
+      const d = new Date(start);
+      d.setUTCDate(d.getUTCDate() + i * 7);
+      const date = d.toISOString().slice(0, 10);
+      rows.push({
+        rowNumber: 2 + i,
+        date,
+        amountCents: -500,
+        payee: "Gym Weekly",
+        memo: "",
+        categoryId: null,
+        fingerprint: transactionFingerprint(acct.id, date, -500, "Gym Weekly", i),
+      });
+    }
+    store.commitImport({
+      accountId: acct.id,
+      fileName: "g.csv",
+      fileSha256: "g",
+      mapping: { dateColumn: "Date", dateFormat: "YYYY-MM-DD" },
+      invertSign: false,
+      rows: rows.slice(0, 3),
+    });
+    runSubscriptionDetection(store, cfg);
+    const pending = store.listPendingDetections();
+    assert.equal(pending.length, 1);
+    store.dismissDetection(pending[0]!.id);
+    store.commitImport({
+      accountId: acct.id,
+      fileName: "g2.csv",
+      fileSha256: "g2",
+      mapping: { dateColumn: "Date", dateFormat: "YYYY-MM-DD" },
+      invertSign: false,
+      rows: rows.slice(3, 9),
+    });
+    runSubscriptionDetection(store, cfg);
+    assert.equal(store.listPendingDetections().length, 0);
+    store.commitImport({
+      accountId: acct.id,
+      fileName: "g3.csv",
+      fileSha256: "g3",
+      mapping: { dateColumn: "Date", dateFormat: "YYYY-MM-DD" },
+      invertSign: false,
+      rows: rows.slice(9, 40),
+    });
+    runSubscriptionDetection(store, cfg);
+    assert.equal(store.listPendingDetections().length, 0);
+  } finally {
+    store.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("subscriptions detect: rescan does not duplicate pending row", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-sub-dup-pending-"));
+  const store = BudgetStore.open(dir);
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    CF_ACCESS_TEAM_DOMAIN: "t.example.com",
+    CF_ACCESS_AUD: "aud",
+    OWNER_EMAILS: "o@example.com",
+    TZ: "UTC",
+  });
+  try {
+    const acct = store.createAccount({ name: "Checking", type: "checking" });
+    const base = new Date();
+    const rows = [0, 31, 62].map((offset, i) => {
+      const d = new Date(base);
+      d.setUTCDate(d.getUTCDate() - 90 + offset);
+      const date = d.toISOString().slice(0, 10);
+      return {
+        rowNumber: 2 + i,
+        date,
+        amountCents: -999,
+        payee: "Spotify",
+        memo: "",
+        categoryId: null,
+        fingerprint: transactionFingerprint(acct.id, date, -999, "Spotify", i),
+      };
+    });
+    store.commitImport({
+      accountId: acct.id,
+      fileName: "s.csv",
+      fileSha256: "s",
+      mapping: { dateColumn: "Date", dateFormat: "YYYY-MM-DD" },
+      invertSign: false,
+      rows,
+    });
+    runSubscriptionDetection(store, cfg);
+    runSubscriptionDetection(store, cfg);
+    assert.equal(store.listPendingDetections().length, 1);
+  } finally {
+    store.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("subscriptions detect: active subscription suppresses new price detection", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-sub-netflix-"));
+  const store = BudgetStore.open(dir);
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    CF_ACCESS_TEAM_DOMAIN: "t.example.com",
+    CF_ACCESS_AUD: "aud",
+    OWNER_EMAILS: "o@example.com",
+    TZ: "UTC",
+  });
+  try {
+    const acct = store.createAccount({ name: "Checking", type: "checking" });
+    const cat = store.listCategories().find((c) => c.name === "Streaming")!.id;
+    store.createSubscriptionManual({
+      displayName: "Netflix",
+      payee: "NETFLIX.COM",
+      amountCents: -1549,
+      cadence: "monthly",
+      anchorDate: "2025-01-05",
+      categoryId: cat,
+    });
+    const base = new Date();
+    const rows = [0, 31, 62, 93].map((offset, i) => {
+      const d = new Date(base);
+      d.setUTCDate(d.getUTCDate() - 120 + offset);
+      const date = d.toISOString().slice(0, 10);
+      return {
+        rowNumber: 2 + i,
+        date,
+        amountCents: -1799,
+        payee: "NETFLIX.COM",
+        memo: "",
+        categoryId: null,
+        fingerprint: transactionFingerprint(acct.id, date, -1799, "NETFLIX.COM", i),
+      };
+    });
+    store.commitImport({
+      accountId: acct.id,
+      fileName: "n.csv",
+      fileSha256: "n",
+      mapping: { dateColumn: "Date", dateFormat: "YYYY-MM-DD" },
+      invertSign: false,
+      rows,
+    });
+    runSubscriptionDetection(store, cfg);
+    assert.equal(store.listPendingDetections().length, 0);
   } finally {
     store.close();
     await rm(dir, { recursive: true, force: true });
