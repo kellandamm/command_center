@@ -988,6 +988,26 @@ export class BudgetStore {
       annualCostCents: annualCostCents(s.amountCents, s.cadence),
       nextDueDate: safeNextDueDate(s.cadence, s.anchorDate, cfg.tz, today) ?? "—",
     }));
-    return { subscriptions: subs, detections: this.listPendingDetections() };
+    const detections = this.listPendingDetections().map((d) => ({
+      ...d,
+      hasConflictingActiveSubscription: this.detectionHasConflictingActiveSubscription(d),
+    }));
+    return { subscriptions: subs, detections };
+  }
+
+  detectionHasConflictingActiveSubscription(
+    det: SubscriptionDetectionRow,
+    cadence: SubscriptionCadence = det.cadence,
+  ): boolean {
+    for (const s of this.listSubscriptions(false)) {
+      if (
+        s.payeeNormalized === det.payeeNormalized &&
+        s.cadence === cadence &&
+        !this.detectionAmountMatches(s.amountCents, det.amountCents)
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 }

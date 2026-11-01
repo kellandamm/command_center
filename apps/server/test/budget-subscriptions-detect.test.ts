@@ -711,6 +711,121 @@ test("subscriptions detect: confirm deactivates conflicting active price on requ
   }
 });
 
+test("subscriptions detect: deactivateConflictingActive ignores other payees", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-sub-d3-"));
+  const store = BudgetStore.open(dir);
+  try {
+    const cat = store.listCategories().find((c) => c.name === "Streaming")!.id;
+    const other = store.createSubscriptionManual({
+      displayName: "Spotify",
+      payee: "Spotify",
+      amountCents: -999,
+      cadence: "monthly",
+      anchorDate: "2025-01-01",
+      categoryId: cat,
+    });
+    const old = store.createSubscriptionManual({
+      displayName: "Netflix",
+      payee: "NETFLIX.COM",
+      amountCents: -1549,
+      cadence: "monthly",
+      anchorDate: "2025-01-01",
+      categoryId: cat,
+    });
+    store.insertDetection({
+      id: "d3",
+      payeeNormalized: "netflix.com",
+      displayName: "NETFLIX.COM",
+      amountCents: -1799,
+      cadence: "monthly",
+      detectionKind: "standard",
+      confidence: 0.9,
+      sampleDates: ["2025-01-01", "2025-02-01", "2025-03-01"],
+      laneKey: "d3|monthly|1799",
+    });
+    store.confirmDetection("d3", { categoryId: cat, deactivateConflictingActive: true });
+    assert.equal(store.getSubscription(other.id)!.active, true);
+    assert.equal(store.getSubscription(old.id)!.active, false);
+  } finally {
+    store.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("subscriptions detect: deactivateConflictingActive ignores other cadence", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-sub-d6-"));
+  const store = BudgetStore.open(dir);
+  try {
+    const cat = store.listCategories().find((c) => c.name === "Streaming")!.id;
+    const weekly = store.createSubscriptionManual({
+      displayName: "Netflix Weekly",
+      payee: "NETFLIX.COM",
+      amountCents: -499,
+      cadence: "weekly",
+      anchorDate: "2025-01-01",
+      categoryId: cat,
+    });
+    const old = store.createSubscriptionManual({
+      displayName: "Netflix",
+      payee: "NETFLIX.COM",
+      amountCents: -1549,
+      cadence: "monthly",
+      anchorDate: "2025-01-01",
+      categoryId: cat,
+    });
+    store.insertDetection({
+      id: "d6",
+      payeeNormalized: "netflix.com",
+      displayName: "NETFLIX.COM",
+      amountCents: -1799,
+      cadence: "monthly",
+      detectionKind: "standard",
+      confidence: 0.9,
+      sampleDates: ["2025-01-01", "2025-02-01", "2025-03-01"],
+      laneKey: "d6|monthly|1799",
+    });
+    store.confirmDetection("d6", { categoryId: cat, deactivateConflictingActive: true });
+    assert.equal(store.getSubscription(weekly.id)!.active, true);
+    assert.equal(store.getSubscription(old.id)!.active, false);
+  } finally {
+    store.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("subscriptions detect: confirm without deactivate flag leaves conflicting subscription active", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-sub-d2-"));
+  const store = BudgetStore.open(dir);
+  try {
+    const cat = store.listCategories().find((c) => c.name === "Streaming")!.id;
+    const old = store.createSubscriptionManual({
+      displayName: "Netflix",
+      payee: "NETFLIX.COM",
+      amountCents: -1549,
+      cadence: "monthly",
+      anchorDate: "2025-01-01",
+      categoryId: cat,
+    });
+    store.insertDetection({
+      id: "d2",
+      payeeNormalized: "netflix.com",
+      displayName: "NETFLIX.COM",
+      amountCents: -1799,
+      cadence: "monthly",
+      detectionKind: "standard",
+      confidence: 0.9,
+      sampleDates: ["2025-01-01", "2025-02-01", "2025-03-01"],
+      laneKey: "d2|monthly|1799",
+    });
+    store.confirmDetection("d2", { categoryId: cat });
+    assert.equal(store.getSubscription(old.id)!.active, true);
+    assert.equal(store.listSubscriptions(false).length, 2);
+  } finally {
+    store.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("subscriptions detect: clusterByAmount separates close amounts", () => {
   const clusters = clusterByAmount([
     charge("2025-01-01", -1499, "a"),

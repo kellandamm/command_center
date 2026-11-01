@@ -382,10 +382,9 @@ function renderSubscriptions(){
   }
 }
 function loadSubscriptions(){return api("/api/budget/subscriptions").then(function(r){state.subscriptions=r;renderSubscriptions();}).catch(function(e){setStatus(e.message,true);});}
-function subAmountMatches(storedCents,detCents){
-  var med=Math.abs(storedCents);
-  var tol=Math.max(50,Math.round(med*0.02));
-  return Math.abs(Math.abs(detCents)-med)<=tol;
+function activeSubscriptionRows(){
+  var data=state.subscriptions;
+  return data&&Array.isArray(data.subscriptions)?data.subscriptions:[];
 }
 function confirmDetection(d){
   var catOpts=state.categories.filter(function(c){return !state.groups.find(function(g){return g.id===c.groupId&&g.isIncome;});});
@@ -395,12 +394,9 @@ function confirmDetection(d){
   var idx=Number(pick)-1;if(idx<0||idx>=catOpts.length){setStatus("Invalid category.",true);return;}
   var cadence=(prompt("Cadence: weekly, monthly, yearly",d.cadence)||d.cadence).trim();
   var deactivateConflicting=false;
-  var conflicts=(state.subscriptions||[]).filter(function(s){
-    return s.payeeNormalized===d.payeeNormalized&&s.cadence===cadence&&!subAmountMatches(s.amountCents,d.amountCents);
-  });
-  if(conflicts.length){
-    if(!confirm("You already have an active subscription for this payee at a different amount. Deactivate the older one so annual totals do not double-count?"))return;
-    deactivateConflicting=true;
+  var hasConflict=!!d.hasConflictingActiveSubscription&&cadence===d.cadence;
+  if(hasConflict){
+    deactivateConflicting=confirm("An active subscription exists for this payee at a different amount.\\n\\nOK — deactivate the older one and confirm this price.\\nCancel — keep both subscriptions active (annual totals may double-count).");
   }
   api("/api/budget/subscriptions/detections/"+encodeURIComponent(d.id)+"/confirm","POST",{categoryId:catOpts[idx].id,cadence:cadence,deactivateConflictingActive:deactivateConflicting}).then(function(){setStatus("Subscription confirmed.");loadSubscriptions();}).catch(function(e){setStatus(e.message,true);});
 }

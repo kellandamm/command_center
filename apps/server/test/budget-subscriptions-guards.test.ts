@@ -238,7 +238,9 @@ test("subscriptions guard: budget page subscriptions tables use textContent (XSS
   assert.match(html, /tdName\.textContent/);
   assert.match(html, /textCell\(tr,s\.displayName\)/);
   assert.match(html, /budget-sub-next-due/);
+  assert.match(html, /hasConflictingActiveSubscription/);
   assert.match(html, /deactivateConflictingActive/);
+  assert.doesNotMatch(html, /subAmountMatches/);
   assert.doesNotMatch(html, /innerHTML\s*=\s*d\.displayName/);
 });
 
@@ -417,6 +419,121 @@ test("subscriptions guard: corrupt stored anchor does not 500 list API", async (
     const row = body.subscriptions.find((s) => s.id === sub.id);
     assert.ok(row);
     assert.equal(row!.nextDueDate, "—");
+  } finally {
+    await h.close();
+  }
+});
+
+test("subscriptions guard: GET detection exposes hasConflictingActiveSubscription", async () => {
+  const h = await openOwnerBudgetWithStore();
+  try {
+    const cat = h.budget.listCategories().find((c) => c.name === "Streaming")!.id;
+    h.budget.createSubscriptionManual({
+      displayName: "Netflix",
+      payee: "NETFLIX.COM",
+      amountCents: -1549,
+      cadence: "monthly",
+      anchorDate: "2025-01-01",
+      categoryId: cat,
+    });
+    h.budget.insertDetection({
+      id: "det-conflict",
+      payeeNormalized: "netflix.com",
+      displayName: "NETFLIX.COM",
+      amountCents: -1799,
+      cadence: "monthly",
+      detectionKind: "standard",
+      confidence: 0.9,
+      sampleDates: ["2025-01-01", "2025-02-01", "2025-03-01"],
+      laneKey: "n|monthly|1799",
+    });
+    const res = await fetch(`${h.base}/api/budget/subscriptions`, {
+      headers: { cookie: "CF_Authorization=t", "x-ah": "1" },
+    });
+    const body = (await res.json()) as {
+      detections: Array<{ id: string; hasConflictingActiveSubscription: boolean }>;
+    };
+    const row = body.detections.find((d) => d.id === "det-conflict");
+    assert.ok(row?.hasConflictingActiveSubscription);
+  } finally {
+    await h.close();
+  }
+});
+
+test("subscriptions guard: confirm route deactivateConflictingActive only when JSON true", async () => {
+  const h = await openOwnerBudgetWithStore();
+  try {
+    const cat = h.budget.listCategories().find((c) => c.name === "Streaming")!.id;
+    const old = h.budget.createSubscriptionManual({
+      displayName: "Netflix",
+      payee: "NETFLIX.COM",
+      amountCents: -1549,
+      cadence: "monthly",
+      anchorDate: "2025-01-01",
+      categoryId: cat,
+    });
+    h.budget.insertDetection({
+      id: "det-flag",
+      payeeNormalized: "netflix.com",
+      displayName: "NETFLIX.COM",
+      amountCents: -1799,
+      cadence: "monthly",
+      detectionKind: "standard",
+      confidence: 0.9,
+      sampleDates: ["2025-01-01", "2025-02-01", "2025-03-01"],
+      laneKey: "n2|monthly|1799",
+    });
+    const post = async (detId: string, body: Record<string, unknown>) =>
+      fetch(`${h.base}/api/budget/subscriptions/detections/${detId}/confirm`, {
+        method: "POST",
+        headers: { cookie: "CF_Authorization=t", "content-type": "application/json", "x-ah": "1" },
+        body: JSON.stringify(body),
+      });
+
+    assert.equal((await post("det-flag", { categoryId: cat })).status, 200);
+    assert.equal(h.budget.getSubscription(old.id)!.active, true);
+
+    h.budget.insertDetection({
+      id: "det-flag2",
+      payeeNormalized: "netflix.com",
+      displayName: "NETFLIX.COM",
+      amountCents: -1899,
+      cadence: "monthly",
+      detectionKind: "standard",
+      confidence: 0.9,
+      sampleDates: ["2025-01-01", "2025-02-01", "2025-03-01"],
+      laneKey: "n3|monthly|1899",
+    });
+    assert.equal((await post("det-flag2", { categoryId: cat, deactivateConflictingActive: false })).status, 200);
+    assert.equal(h.budget.getSubscription(old.id)!.active, true);
+
+    h.budget.insertDetection({
+      id: "det-flag3",
+      payeeNormalized: "netflix.com",
+      displayName: "NETFLIX.COM",
+      amountCents: -1999,
+      cadence: "monthly",
+      detectionKind: "standard",
+      confidence: 0.9,
+      sampleDates: ["2025-01-01", "2025-02-01", "2025-03-01"],
+      laneKey: "n4|monthly|1999",
+    });
+    assert.equal((await post("det-flag3", { categoryId: cat, deactivateConflictingActive: "true" })).status, 200);
+    assert.equal(h.budget.getSubscription(old.id)!.active, true);
+
+    h.budget.insertDetection({
+      id: "det-flag4",
+      payeeNormalized: "netflix.com",
+      displayName: "NETFLIX.COM",
+      amountCents: -2099,
+      cadence: "monthly",
+      detectionKind: "standard",
+      confidence: 0.9,
+      sampleDates: ["2025-01-01", "2025-02-01", "2025-03-01"],
+      laneKey: "n5|monthly|2099",
+    });
+    assert.equal((await post("det-flag4", { categoryId: cat, deactivateConflictingActive: true })).status, 200);
+    assert.equal(h.budget.getSubscription(old.id)!.active, false);
   } finally {
     await h.close();
   }
