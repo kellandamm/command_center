@@ -62,6 +62,7 @@ ${viewTabs(initialView === "overview" ? "overview" : initialView)}
 <div id="budget-month-grid" class="card card-sm">${skeleton({ lines: 6 })}</div>
 </section>
 <section id="budget-panel-subscriptions" class="budget-panel" hidden>
+<style>.budget-sub-actions{white-space:nowrap;display:inline-flex;gap:.35rem;flex-wrap:nowrap}</style>
 <div class="row" style="margin-bottom:.75rem;gap:.5rem;flex-wrap:wrap;align-items:center">
 ${button({ label: "Scan for subscriptions", attrs: { id: "budget-sub-scan", type: "button" } })}
 ${button({ label: "Add manual", variant: "secondary", attrs: { id: "budget-sub-add", type: "button" } })}
@@ -366,7 +367,7 @@ function renderSubscriptions(){
         var tr=document.createElement("tr");
         textCell(tr,s.displayName);textCell(tr,fmt(s.amountCents));textCell(tr,s.cadence);
         textCell(tr,fmt(-s.annualCostCents));textCell(tr,s.nextDueDate||"—");textCell(tr,catName(s.categoryId));
-        var tdAct=document.createElement("td");
+        var tdAct=document.createElement("td");tdAct.className="budget-sub-actions";
         var editBtn=document.createElement("button");editBtn.type="button";editBtn.className="ghost btn-sm";editBtn.textContent="Edit";
         editBtn.onclick=function(){editSubscription(s);};
         var offBtn=document.createElement("button");offBtn.type="button";offBtn.className="ghost btn-sm";offBtn.textContent="Deactivate";

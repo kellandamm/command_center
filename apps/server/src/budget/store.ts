@@ -8,7 +8,7 @@ import { normalizePayee } from "./csv";
 import { openBudgetDatabase } from "./db";
 import type { SubscriptionCadence, SubscriptionDetectionRow, SubscriptionRow, SubscriptionSource } from "./subscriptions/types";
 import { amountInCluster } from "./subscriptions/detect";
-import { annualCostCents, nextDueDate } from "./subscriptions/due";
+import { annualCostCents, nextDueDate, requireValidIsoDate, safeNextDueDate } from "./subscriptions/due";
 
 const BUDGET_MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -736,13 +736,37 @@ export class BudgetStore {
     return r ? this.rowDetection(r) : undefined;
   }
 
-  hasActiveSubscriptionForPayeeCadence(payeeNormalized: string, cadence: SubscriptionCadence): boolean {
-    const r = this.db
-      .prepare(
-        "SELECT 1 FROM subscriptions WHERE active = 1 AND payee_normalized = ? AND cadence = ? LIMIT 1",
-      )
-      .get(payeeNormalized, cadence);
-    return Boolean(r);
+  /** Active or deactivated subscriptions suppress detections in the same amount band. */
+  hasSubscriptionSuppressingDetection(
+    payeeNormalized: string,
+    cadence: SubscriptionCadence,
+    amountCents: number,
+  ): boolean {
+    const rows = this.db
+      .prepare("SELECT amount_cents FROM subscriptions WHERE payee_normalized = ? AND cadence = ?")
+      .all(payeeNormalized, cadence) as Record<string, unknown>[];
+    for (const r of rows) {
+      if (this.detectionAmountMatches(Number(r.amount_cents), amountCents)) return true;
+    }
+    return false;
+  }
+
+  syncActiveSubscriptionAmountsFromCharges(
+    charges: Array<{ payeeNormalized: string; amountCents: number; date: string }>,
+  ): void {
+    for (const sub of this.listSubscriptions(false)) {
+      const related = charges.filter(
+        (c) =>
+          c.payeeNormalized === sub.payeeNormalized &&
+          this.detectionAmountMatches(sub.amountCents, c.amountCents),
+      );
+      if (!related.length) continue;
+      related.sort((a, b) => b.date.localeCompare(a.date));
+      const latest = related[0]!.amountCents;
+      if (latest !== sub.amountCents) {
+        this.updateSubscription(sub.id, { amountCents: latest });
+      }
+    }
   }
 
   private detectionAmountMatches(storedAmountCents: number, candidateAmountCents: number): boolean {
@@ -830,6 +854,11 @@ export class BudgetStore {
     if (!name) throw new ValidationError("display name required");
     const payeeRaw = (input.payee ?? name).trim().slice(0, 240);
     const payeeNormalized = normalizePayee(payeeRaw);
+    try {
+      requireValidIsoDate(input.anchorDate);
+    } catch {
+      throw new ValidationError("invalid anchor date");
+    }
     const cat = this.db.prepare("SELECT id FROM categories WHERE id = ? AND archived = 0").get(input.categoryId);
     if (!cat) throw new ValidationError("category not found");
     const now = new Date().toISOString();
@@ -873,6 +902,13 @@ export class BudgetStore {
     }
     const now = new Date().toISOString();
     const displayName = patch.displayName != null ? patch.displayName.trim().slice(0, 240) : cur.displayName;
+    if (patch.anchorDate != null) {
+      try {
+        requireValidIsoDate(patch.anchorDate);
+      } catch {
+        throw new ValidationError("invalid anchor date");
+      }
+    }
     const payeeNormalized =
       patch.payee != null ? normalizePayee(patch.payee.trim().slice(0, 240)) : cur.payeeNormalized;
     this.db
@@ -952,7 +988,7 @@ export class BudgetStore {
     const subs = this.listSubscriptions(false).map((s) => ({
       ...s,
       annualCostCents: annualCostCents(s.amountCents, s.cadence),
-      nextDueDate: nextDueDate(s.cadence, s.anchorDate, cfg.tz, today),
+      nextDueDate: safeNextDueDate(s.cadence, s.anchorDate, cfg.tz, today) ?? "—",
     }));
     return { subscriptions: subs, detections: this.listPendingDetections() };
   }

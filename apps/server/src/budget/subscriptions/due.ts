@@ -1,6 +1,9 @@
 import type { SubscriptionCadence } from "./types";
 
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 export function isoParts(iso: string): { y: number; m: number; d: number } {
+  if (!ISO_DATE_RE.test(iso)) throw new Error("invalid iso date");
   const [y, m, d] = iso.split("-").map(Number);
   if (!y || !m || !d) throw new Error("invalid iso date");
   return { y, m, d };
@@ -14,7 +17,7 @@ export function compareIso(a: string, b: string): number {
   return a.localeCompare(b);
 }
 
-/** Civil calendar day-of-month from stored YYYY-MM-DD (not wall-clock shifted). */
+/** Civil calendar day-of-month from stored YYYY-MM-DD. */
 export function dayOfMonthInTz(isoDate: string, _tz: string): number {
   return isoParts(isoDate).d;
 }
@@ -31,27 +34,15 @@ function clampDayToMonth(y: number, month1: number, anchorDay: number): number {
   return Math.min(anchorDay, daysInMonth(y, month1));
 }
 
-/** Days since 1970-01-01 on the civil calendar (UTC serial math, no local TZ). */
-function civilEpochDays(iso: string): number {
+/** Days since 1970-01-01 UTC on the civil calendar (Date.UTC Y/M/D only). */
+export function civilEpochDays(iso: string): number {
   const { y, m, d } = isoParts(iso);
-  const a = Math.floor((14 - m) / 12);
-  const y2 = y + 4800 - a;
-  const m2 = m + 12 * a - 3;
-  return d + Math.floor((153 * m2 + 2) / 5) + 365 * y2 + Math.floor(y2 / 4) - Math.floor(y2 / 100) + Math.floor(y2 / 400) - 2483629;
+  return Math.floor(Date.UTC(y, m - 1, d) / 86_400_000);
 }
 
-function civilEpochToIso(epoch: number): string {
-  const z = epoch + 719468;
-  const era = Math.floor(z / 146097);
-  const doe = z - era * 146097;
-  const yoe = Math.floor((doe - Math.floor(doe / 1460) + Math.floor(doe / 36524) - Math.floor(doe / 146096)) / 365);
-  const y = yoe + era * 400;
-  const doy = doe - (365 * yoe + Math.floor(yoe / 4) - Math.floor(yoe / 100));
-  const mp = Math.floor((5 * doy + 2) / 153);
-  const d = doy - Math.floor((153 * mp + 2) / 5) + 1;
-  const m = mp + (mp < 10 ? 3 : -9);
-  const year = y + (m <= 2 ? 1 : 0);
-  return formatIso(year, m <= 2 ? m + 12 : m, d);
+export function civilEpochToIso(epoch: number): string {
+  const dt = new Date(epoch * 86_400_000);
+  return formatIso(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
 }
 
 export function addDaysIso(iso: string, days: number): string {
@@ -60,6 +51,29 @@ export function addDaysIso(iso: string, days: number): string {
 
 export function daysBetweenIso(a: string, b: string): number {
   return civilEpochDays(b) - civilEpochDays(a);
+}
+
+/** Returns iso when it is a real calendar date; throws otherwise. */
+export function requireValidIsoDate(iso: string): string {
+  if (!ISO_DATE_RE.test(iso)) throw new Error("invalid iso date");
+  const round = addDaysIso(iso, 0);
+  if (round !== iso) throw new Error("invalid iso date");
+  return iso;
+}
+
+export function safeNextDueDate(
+  cadence: SubscriptionCadence,
+  anchorDate: string,
+  tz: string,
+  afterIso: string,
+): string | null {
+  try {
+    requireValidIsoDate(anchorDate);
+    requireValidIsoDate(afterIso);
+    return nextDueDate(cadence, anchorDate, tz, afterIso);
+  } catch {
+    return null;
+  }
 }
 
 /** Circular distance on days 1–31 (month-end wrap). Jan 31 vs Feb 1 → 1. */
@@ -78,6 +92,8 @@ export function nextDueDate(
   tz: string,
   afterIso: string,
 ): string {
+  requireValidIsoDate(anchorDate);
+  requireValidIsoDate(afterIso);
   const anchorDay = anchorDayFromDate(anchorDate, tz);
 
   if (cadence === "weekly") {

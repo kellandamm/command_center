@@ -372,7 +372,7 @@ test("subscriptions detect: rescan does not duplicate pending row", async () => 
   }
 });
 
-test("subscriptions detect: active subscription suppresses new price detection", async () => {
+test("subscriptions detect: confirmed Netflix band suppresses same price but not price hike", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-sub-netflix-"));
   const store = BudgetStore.open(dir);
   const cfg = loadConfig({
@@ -417,6 +417,179 @@ test("subscriptions detect: active subscription suppresses new price detection",
       rows,
     });
     runSubscriptionDetection(store, cfg);
+    const pending = store.listPendingDetections();
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0]!.amountCents, -1799);
+  } finally {
+    store.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("subscriptions detect: confirming one Amazon amount still surfaces the other", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-sub-amazon-"));
+  const store = BudgetStore.open(dir);
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    CF_ACCESS_TEAM_DOMAIN: "t.example.com",
+    CF_ACCESS_AUD: "aud",
+    OWNER_EMAILS: "o@example.com",
+    TZ: "UTC",
+  });
+  try {
+    const acct = store.createAccount({ name: "Checking", type: "checking" });
+    const cat = store.listCategories().find((c) => c.name === "General")!.id;
+    const base = new Date();
+    const rows: Parameters<BudgetStore["commitImport"]>[0]["rows"] = [];
+    for (let m = 0; m < 4; m++) {
+      const dLow = new Date(base);
+      dLow.setUTCDate(dLow.getUTCDate() - 120 + m * 31);
+      const dHigh = new Date(dLow);
+      dHigh.setUTCDate(dHigh.getUTCDate() + 17);
+      const dateLow = dLow.toISOString().slice(0, 10);
+      const dateHigh = dHigh.toISOString().slice(0, 10);
+      rows.push({
+        rowNumber: rows.length + 2,
+        date: dateLow,
+        amountCents: -1499,
+        payee: "Amazon",
+        memo: "",
+        categoryId: null,
+        fingerprint: transactionFingerprint(acct.id, dateLow, -1499, "Amazon", rows.length),
+      });
+      rows.push({
+        rowNumber: rows.length + 2,
+        date: dateHigh,
+        amountCents: -1599,
+        payee: "Amazon",
+        memo: "",
+        categoryId: null,
+        fingerprint: transactionFingerprint(acct.id, dateHigh, -1599, "Amazon", rows.length + 1),
+      });
+    }
+    store.commitImport({
+      accountId: acct.id,
+      fileName: "a.csv",
+      fileSha256: "a",
+      mapping: { dateColumn: "Date", dateFormat: "YYYY-MM-DD" },
+      invertSign: false,
+      rows,
+    });
+    runSubscriptionDetection(store, cfg);
+    const firstPass = store.listPendingDetections();
+    assert.equal(firstPass.length, 2);
+    const low = firstPass.find((d) => d.amountCents === -1499)!;
+    store.confirmDetection(low.id, { categoryId: cat });
+    runSubscriptionDetection(store, cfg);
+    const secondPass = store.listPendingDetections();
+    assert.equal(secondPass.length, 1);
+    assert.equal(secondPass[0]!.amountCents, -1599);
+  } finally {
+    store.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("subscriptions detect: deactivated subscription still suppresses its amount band", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-sub-deact-"));
+  const store = BudgetStore.open(dir);
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    CF_ACCESS_TEAM_DOMAIN: "t.example.com",
+    CF_ACCESS_AUD: "aud",
+    OWNER_EMAILS: "o@example.com",
+    TZ: "UTC",
+  });
+  try {
+    const acct = store.createAccount({ name: "Checking", type: "checking" });
+    const cat = store.listCategories().find((c) => c.name === "Streaming")!.id;
+    const sub = store.createSubscriptionManual({
+      displayName: "Spotify",
+      payee: "Spotify",
+      amountCents: -999,
+      cadence: "monthly",
+      anchorDate: "2025-01-01",
+      categoryId: cat,
+    });
+    store.updateSubscription(sub.id, { active: false });
+    const base = new Date();
+    const rows = [0, 31, 62].map((offset, i) => {
+      const d = new Date(base);
+      d.setUTCDate(d.getUTCDate() - 90 + offset);
+      const date = d.toISOString().slice(0, 10);
+      return {
+        rowNumber: 2 + i,
+        date,
+        amountCents: -999,
+        payee: "Spotify",
+        memo: "",
+        categoryId: null,
+        fingerprint: transactionFingerprint(acct.id, date, -999, "Spotify", i),
+      };
+    });
+    store.commitImport({
+      accountId: acct.id,
+      fileName: "s.csv",
+      fileSha256: "s",
+      mapping: { dateColumn: "Date", dateFormat: "YYYY-MM-DD" },
+      invertSign: false,
+      rows,
+    });
+    runSubscriptionDetection(store, cfg);
+    assert.equal(store.listPendingDetections().length, 0);
+  } finally {
+    store.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("subscriptions detect: active subscription amount syncs from latest in-band charge", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-sub-sync-amt-"));
+  const store = BudgetStore.open(dir);
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    CF_ACCESS_TEAM_DOMAIN: "t.example.com",
+    CF_ACCESS_AUD: "aud",
+    OWNER_EMAILS: "o@example.com",
+    TZ: "UTC",
+  });
+  try {
+    const acct = store.createAccount({ name: "Checking", type: "checking" });
+    const cat = store.listCategories().find((c) => c.name === "Electric")!.id;
+    const sub = store.createSubscriptionManual({
+      displayName: "Utility Co",
+      payee: "Utility Co",
+      amountCents: -1000,
+      cadence: "monthly",
+      anchorDate: "2025-01-01",
+      categoryId: cat,
+    });
+    const base = new Date();
+    const rows = [0, 31, 62].map((offset, i) => {
+      const d = new Date(base);
+      d.setUTCDate(d.getUTCDate() - 90 + offset);
+      const date = d.toISOString().slice(0, 10);
+      return {
+        rowNumber: 2 + i,
+        date,
+        amountCents: -1040,
+        payee: "Utility Co",
+        memo: "",
+        categoryId: null,
+        fingerprint: transactionFingerprint(acct.id, date, -1040, "Utility Co", i),
+      };
+    });
+    store.commitImport({
+      accountId: acct.id,
+      fileName: "u.csv",
+      fileSha256: "u",
+      mapping: { dateColumn: "Date", dateFormat: "YYYY-MM-DD" },
+      invertSign: false,
+      rows,
+    });
+    runSubscriptionDetection(store, cfg);
+    const updated = store.getSubscription(sub.id)!;
+    assert.equal(updated.amountCents, -1040);
     assert.equal(store.listPendingDetections().length, 0);
   } finally {
     store.close();

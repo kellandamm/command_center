@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import type { AddressInfo } from "node:net";
 import { loadConfig } from "../src/config";
 import { makeAuthenticator } from "../src/auth";
@@ -14,6 +15,7 @@ import { NotesStore } from "../src/notes/store";
 import { BudgetStore } from "../src/budget/store";
 import { budgetAvailable } from "../src/budget/gate";
 import { budgetPage } from "../src/ui/budget-page";
+import { BUDGET_DATABASE_FILE } from "../src/budget/constants";
 import { STANDARD_CONFIDENCE_THRESHOLD, POSSIBLE_YEARLY_CONFIDENCE_THRESHOLD } from "../src/budget/subscriptions/types";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
@@ -178,7 +180,7 @@ async function openOwnerBudgetWithStore() {
     await closeIntegrationServer(server, integration);
     await rm(dir, { recursive: true, force: true });
   };
-  return { base, budget, close };
+  return { base, budget, close, dir };
 }
 
 test("subscriptions guard: scan logs via logBudgetError without payee (multi-charge path)", async () => {
@@ -304,6 +306,115 @@ test("subscriptions guard: confirm requires category id", async () => {
       body: JSON.stringify({ categoryId: "" }),
     });
     assert.equal(res.status, 400);
+  } finally {
+    await h.close();
+  }
+});
+
+test("subscriptions guard: multi-charge PLANT scan never logs payee on success", async () => {
+  const errors: unknown[] = [];
+  const orig = console.error;
+  console.error = (...args: unknown[]) => {
+    errors.push(args);
+  };
+  const h = await openOwnerBudgetWithStore();
+  try {
+    const acct = h.budget.createAccount({ name: "Checking", type: "checking" });
+    const base = new Date();
+    for (let i = 0; i < 4; i++) {
+      const d = new Date(base);
+      d.setUTCDate(d.getUTCDate() - 90 + i * 31);
+      h.budget.createTransaction({
+        accountId: acct.id,
+        date: d.toISOString().slice(0, 10),
+        amountCents: -999,
+        payee: PLANT,
+      });
+    }
+    const res = await fetch(`${h.base}/api/budget/subscriptions/scan`, {
+      method: "POST",
+      headers: { cookie: "CF_Authorization=t", "content-type": "application/json", "x-ah": "1" },
+      body: "{}",
+    });
+    assert.equal(res.status, 200);
+    const blob = JSON.stringify(errors);
+    assert.ok(!blob.includes(PLANT));
+  } finally {
+    console.error = orig;
+    await h.close();
+  }
+});
+
+test("subscriptions guard: invalid anchor on POST returns 400", async () => {
+  const h = await openOwnerBudgetWithStore();
+  try {
+    const cat = h.budget.listCategories()[0]!.id;
+    const res = await fetch(`${h.base}/api/budget/subscriptions`, {
+      method: "POST",
+      headers: { cookie: "CF_Authorization=t", "content-type": "application/json", "x-ah": "1" },
+      body: JSON.stringify({
+        displayName: "Bad",
+        payee: "bad",
+        amountCents: -500,
+        cadence: "monthly",
+        anchorDate: "2026-99-99",
+        categoryId: cat,
+      }),
+    });
+    assert.equal(res.status, 400);
+  } finally {
+    await h.close();
+  }
+});
+
+test("subscriptions guard: invalid anchor on PUT returns 400", async () => {
+  const h = await openOwnerBudgetWithStore();
+  try {
+    const cat = h.budget.listCategories()[0]!.id;
+    const sub = h.budget.createSubscriptionManual({
+      displayName: "Ok",
+      payee: "ok",
+      amountCents: -500,
+      cadence: "monthly",
+      anchorDate: "2025-01-01",
+      categoryId: cat,
+    });
+    const res = await fetch(`${h.base}/api/budget/subscriptions/${encodeURIComponent(sub.id)}`, {
+      method: "PUT",
+      headers: { cookie: "CF_Authorization=t", "content-type": "application/json", "x-ah": "1" },
+      body: JSON.stringify({ anchorDate: "not-a-date" }),
+    });
+    assert.equal(res.status, 400);
+  } finally {
+    await h.close();
+  }
+});
+
+test("subscriptions guard: corrupt stored anchor does not 500 list API", async () => {
+  const h = await openOwnerBudgetWithStore();
+  try {
+    const cat = h.budget.listCategories()[0]!.id;
+    const sub = h.budget.createSubscriptionManual({
+      displayName: "Corrupt",
+      payee: "corrupt",
+      amountCents: -500,
+      cadence: "monthly",
+      anchorDate: "2025-01-01",
+      categoryId: cat,
+    });
+    const db = new DatabaseSync(join(h.dir, BUDGET_DATABASE_FILE));
+    db.prepare("UPDATE subscriptions SET anchor_date = ? WHERE id = ?").run("979-10-16", sub.id);
+    db.close();
+    const res = await fetch(`${h.base}/api/budget/subscriptions`, {
+      headers: { cookie: "CF_Authorization=t", "x-ah": "1" },
+    });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as {
+      subscriptions: Array<{ id: string; nextDueDate: string }>;
+    };
+    const row = body.subscriptions.find((s) => s.id === sub.id);
+    assert.ok(row);
+    assert.equal(row!.nextDueDate, "—");
   } finally {
     await h.close();
   }
