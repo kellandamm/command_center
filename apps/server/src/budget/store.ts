@@ -751,24 +751,6 @@ export class BudgetStore {
     return false;
   }
 
-  syncActiveSubscriptionAmountsFromCharges(
-    charges: Array<{ payeeNormalized: string; amountCents: number; date: string }>,
-  ): void {
-    for (const sub of this.listSubscriptions(false)) {
-      const related = charges.filter(
-        (c) =>
-          c.payeeNormalized === sub.payeeNormalized &&
-          this.detectionAmountMatches(sub.amountCents, c.amountCents),
-      );
-      if (!related.length) continue;
-      related.sort((a, b) => b.date.localeCompare(a.date));
-      const latest = related[0]!.amountCents;
-      if (latest !== sub.amountCents) {
-        this.updateSubscription(sub.id, { amountCents: latest });
-      }
-    }
-  }
-
   private detectionAmountMatches(storedAmountCents: number, candidateAmountCents: number): boolean {
     return amountInCluster(Math.abs(storedAmountCents), candidateAmountCents);
   }
@@ -932,7 +914,12 @@ export class BudgetStore {
 
   confirmDetection(
     detectionId: string,
-    input: { categoryId: string; cadence?: SubscriptionCadence; displayName?: string },
+    input: {
+      categoryId: string;
+      cadence?: SubscriptionCadence;
+      displayName?: string;
+      deactivateConflictingActive?: boolean;
+    },
   ): SubscriptionRow | undefined {
     const det = this.getDetection(detectionId);
     if (!det || det.status !== "pending") return undefined;
@@ -946,6 +933,17 @@ export class BudgetStore {
     const id = randomUUID();
     this.db.exec("BEGIN");
     try {
+      if (input.deactivateConflictingActive) {
+        for (const s of this.listSubscriptions(false)) {
+          if (
+            s.payeeNormalized === det.payeeNormalized &&
+            s.cadence === cadence &&
+            !this.detectionAmountMatches(s.amountCents, det.amountCents)
+          ) {
+            this.updateSubscription(s.id, { active: false });
+          }
+        }
+      }
       this.db
         .prepare(
           `INSERT INTO subscriptions (id, payee_normalized, display_name, amount_cents, currency, cadence, anchor_date, category_id, active, source, created_at, updated_at)

@@ -269,7 +269,6 @@ export function runSubscriptionDetection(store: BudgetStore, cfg: Config): { ins
       payeeNormalized: normalizePayee(r.payee),
     }));
     const candidates = detectCandidatesFromCharges(charges, cfg.tz);
-    store.syncActiveSubscriptionAmountsFromCharges(charges);
     let inserted = 0;
     for (const c of candidates) {
       if (store.hasSubscriptionSuppressingDetection(c.payeeNormalized, c.cadence, c.amountCents)) continue;

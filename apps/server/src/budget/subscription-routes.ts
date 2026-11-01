@@ -95,6 +95,7 @@ export async function handleSubscriptionRoutes(
         categoryId,
         cadence: cadenceRaw as SubscriptionCadence | undefined,
         displayName: body.displayName != null ? String(body.displayName) : undefined,
+        deactivateConflictingActive: body.deactivateConflictingActive === true,
       });
       if (!sub) {
         json(res, 404, { error: "not found" });

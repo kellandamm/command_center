@@ -237,6 +237,8 @@ test("subscriptions guard: budget page subscriptions tables use textContent (XSS
   const html = budgetPage([], { owner: true, initialView: "subscriptions" });
   assert.match(html, /tdName\.textContent/);
   assert.match(html, /textCell\(tr,s\.displayName\)/);
+  assert.match(html, /budget-sub-next-due/);
+  assert.match(html, /deactivateConflictingActive/);
   assert.doesNotMatch(html, /innerHTML\s*=\s*d\.displayName/);
 });
 
@@ -416,6 +418,81 @@ test("subscriptions guard: corrupt stored anchor does not 500 list API", async (
     assert.ok(row);
     assert.equal(row!.nextDueDate, "—");
   } finally {
+    await h.close();
+  }
+});
+
+test("subscriptions guard: create route error path never logs PLANT payee", async () => {
+  const errors: unknown[] = [];
+  const orig = console.error;
+  console.error = (...args: unknown[]) => {
+    errors.push(args);
+  };
+  const h = await openOwnerBudgetWithStore();
+  try {
+    const cat = h.budget.listCategories()[0]!.id;
+    const origCreate = h.budget.createSubscriptionManual.bind(h.budget);
+    h.budget.createSubscriptionManual = () => {
+      throw new Error(`${PLANT} leak`);
+    };
+    const res = await fetch(`${h.base}/api/budget/subscriptions`, {
+      method: "POST",
+      headers: { cookie: "CF_Authorization=t", "content-type": "application/json", "x-ah": "1" },
+      body: JSON.stringify({
+        displayName: "Shown",
+        payee: PLANT,
+        amountCents: -500,
+        cadence: "monthly",
+        anchorDate: "2025-01-01",
+        categoryId: cat,
+      }),
+    });
+    h.budget.createSubscriptionManual = origCreate;
+    assert.equal(res.status, 500);
+    const blob = JSON.stringify(errors);
+    assert.ok(!blob.includes(PLANT));
+    assert.match(blob, /subscription_route_error|budget:/);
+  } finally {
+    console.error = orig;
+    await h.close();
+  }
+});
+
+test("subscriptions guard: confirm route error path never logs PLANT payee", async () => {
+  const errors: unknown[] = [];
+  const orig = console.error;
+  console.error = (...args: unknown[]) => {
+    errors.push(args);
+  };
+  const h = await openOwnerBudgetWithStore();
+  try {
+    h.budget.insertDetection({
+      id: "d-plant",
+      payeeNormalized: "x",
+      displayName: "x",
+      amountCents: -500,
+      cadence: "monthly",
+      detectionKind: "standard",
+      confidence: 0.9,
+      sampleDates: ["2025-01-01", "2025-02-01", "2025-03-01"],
+      laneKey: "x|monthly|500",
+    });
+    const origConfirm = h.budget.confirmDetection.bind(h.budget);
+    h.budget.confirmDetection = () => {
+      throw new Error(`${PLANT} leak`);
+    };
+    const res = await fetch(`${h.base}/api/budget/subscriptions/detections/d-plant/confirm`, {
+      method: "POST",
+      headers: { cookie: "CF_Authorization=t", "content-type": "application/json", "x-ah": "1" },
+      body: JSON.stringify({ categoryId: h.budget.listCategories()[0]!.id, payee: PLANT }),
+    });
+    h.budget.confirmDetection = origConfirm;
+    assert.equal(res.status, 500);
+    const blob = JSON.stringify(errors);
+    assert.ok(!blob.includes(PLANT));
+    assert.match(blob, /subscription_route_error|budget:/);
+  } finally {
+    console.error = orig;
     await h.close();
   }
 });

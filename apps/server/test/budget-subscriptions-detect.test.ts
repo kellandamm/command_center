@@ -543,8 +543,8 @@ test("subscriptions detect: deactivated subscription still suppresses its amount
   }
 });
 
-test("subscriptions detect: active subscription amount syncs from latest in-band charge", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "cc-sub-sync-amt-"));
+test("subscriptions detect: scan never mutates active subscription amount_cents", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-sub-no-amt-mut-"));
   const store = BudgetStore.open(dir);
   const cfg = loadConfig({
     DATA_DIR: dir,
@@ -559,24 +559,25 @@ test("subscriptions detect: active subscription amount syncs from latest in-band
     const sub = store.createSubscriptionManual({
       displayName: "Utility Co",
       payee: "Utility Co",
-      amountCents: -1000,
+      amountCents: -1579,
       cadence: "monthly",
       anchorDate: "2025-01-01",
       categoryId: cat,
     });
+    store.updateSubscription(sub.id, { amountCents: -1579 });
     const base = new Date();
-    const rows = [0, 31, 62].map((offset, i) => {
+    const rows = [0, 31, 62, 93].map((offset, i) => {
       const d = new Date(base);
-      d.setUTCDate(d.getUTCDate() - 90 + offset);
+      d.setUTCDate(d.getUTCDate() - 120 + offset);
       const date = d.toISOString().slice(0, 10);
       return {
         rowNumber: 2 + i,
         date,
-        amountCents: -1040,
+        amountCents: i % 2 === 0 ? -1040 : -1545,
         payee: "Utility Co",
         memo: "",
         categoryId: null,
-        fingerprint: transactionFingerprint(acct.id, date, -1040, "Utility Co", i),
+        fingerprint: transactionFingerprint(acct.id, date, i % 2 === 0 ? -1040 : -1545, "Utility Co", i),
       };
     });
     store.commitImport({
@@ -588,9 +589,122 @@ test("subscriptions detect: active subscription amount syncs from latest in-band
       rows,
     });
     runSubscriptionDetection(store, cfg);
-    const updated = store.getSubscription(sub.id)!;
-    assert.equal(updated.amountCents, -1040);
+    runSubscriptionDetection(store, cfg);
+    assert.equal(store.getSubscription(sub.id)!.amountCents, -1579);
+  } finally {
+    store.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("subscriptions detect: manual payee field drives import matching", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-sub-manual-payee-"));
+  const store = BudgetStore.open(dir);
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    CF_ACCESS_TEAM_DOMAIN: "t.example.com",
+    CF_ACCESS_AUD: "aud",
+    OWNER_EMAILS: "o@example.com",
+    TZ: "UTC",
+  });
+  try {
+    const acct = store.createAccount({ name: "Checking", type: "checking" });
+    const cat = store.listCategories().find((c) => c.name === "General")!.id;
+    store.createSubscriptionManual({
+      displayName: "Prime Membership",
+      payee: "AMZN PRIME*MEMBER",
+      amountCents: -1499,
+      cadence: "monthly",
+      anchorDate: "2025-01-03",
+      categoryId: cat,
+    });
+    const base = new Date();
+    const rows = [0, 31, 62].map((offset, i) => {
+      const d = new Date(base);
+      d.setUTCDate(d.getUTCDate() - 90 + offset);
+      const date = d.toISOString().slice(0, 10);
+      return {
+        rowNumber: 2 + i,
+        date,
+        amountCents: -1499,
+        payee: "AMZN PRIME*MEMBER",
+        memo: "",
+        categoryId: null,
+        fingerprint: transactionFingerprint(acct.id, date, -1499, "AMZN PRIME*MEMBER", i),
+      };
+    });
+    store.commitImport({
+      accountId: acct.id,
+      fileName: "p.csv",
+      fileSha256: "p",
+      mapping: { dateColumn: "Date", dateFormat: "YYYY-MM-DD" },
+      invertSign: false,
+      rows,
+    });
+    runSubscriptionDetection(store, cfg);
     assert.equal(store.listPendingDetections().length, 0);
+    assert.equal(store.getSubscription(store.listSubscriptions(false)[0]!.id)!.payeeNormalized, "amzn prime*member");
+  } finally {
+    store.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("subscriptions detect: confirm deactivates conflicting active price on request", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-sub-confirm-deact-"));
+  const store = BudgetStore.open(dir);
+  const cfg = loadConfig({
+    DATA_DIR: dir,
+    CF_ACCESS_TEAM_DOMAIN: "t.example.com",
+    CF_ACCESS_AUD: "aud",
+    OWNER_EMAILS: "o@example.com",
+    TZ: "UTC",
+  });
+  try {
+    const acct = store.createAccount({ name: "Checking", type: "checking" });
+    const cat = store.listCategories().find((c) => c.name === "Streaming")!.id;
+    const old = store.createSubscriptionManual({
+      displayName: "Netflix",
+      payee: "NETFLIX.COM",
+      amountCents: -1549,
+      cadence: "monthly",
+      anchorDate: "2025-01-05",
+      categoryId: cat,
+    });
+    const base = new Date();
+    const rows = [0, 31, 62, 93].map((offset, i) => {
+      const d = new Date(base);
+      d.setUTCDate(d.getUTCDate() - 120 + offset);
+      const date = d.toISOString().slice(0, 10);
+      return {
+        rowNumber: 2 + i,
+        date,
+        amountCents: -1799,
+        payee: "NETFLIX.COM",
+        memo: "",
+        categoryId: null,
+        fingerprint: transactionFingerprint(acct.id, date, -1799, "NETFLIX.COM", i),
+      };
+    });
+    store.commitImport({
+      accountId: acct.id,
+      fileName: "n.csv",
+      fileSha256: "n",
+      mapping: { dateColumn: "Date", dateFormat: "YYYY-MM-DD" },
+      invertSign: false,
+      rows,
+    });
+    runSubscriptionDetection(store, cfg);
+    const pending = store.listPendingDetections();
+    assert.equal(pending.length, 1);
+    const created = store.confirmDetection(pending[0]!.id, {
+      categoryId: cat,
+      deactivateConflictingActive: true,
+    })!;
+    assert.equal(created.amountCents, -1799);
+    assert.equal(store.getSubscription(old.id)!.active, false);
+    assert.equal(store.listSubscriptions(false).length, 1);
+    assert.equal(store.listSubscriptions(false)[0]!.id, created.id);
   } finally {
     store.close();
     await rm(dir, { recursive: true, force: true });

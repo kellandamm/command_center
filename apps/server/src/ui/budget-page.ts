@@ -62,7 +62,7 @@ ${viewTabs(initialView === "overview" ? "overview" : initialView)}
 <div id="budget-month-grid" class="card card-sm">${skeleton({ lines: 6 })}</div>
 </section>
 <section id="budget-panel-subscriptions" class="budget-panel" hidden>
-<style>.budget-sub-actions{white-space:nowrap;display:inline-flex;gap:.35rem;flex-wrap:nowrap}</style>
+<style>.budget-sub-actions{white-space:nowrap;display:inline-flex;gap:.35rem;flex-wrap:nowrap}.budget-sub-next-due{white-space:nowrap}</style>
 <div class="row" style="margin-bottom:.75rem;gap:.5rem;flex-wrap:wrap;align-items:center">
 ${button({ label: "Scan for subscriptions", attrs: { id: "budget-sub-scan", type: "button" } })}
 ${button({ label: "Add manual", variant: "secondary", attrs: { id: "budget-sub-add", type: "button" } })}
@@ -366,7 +366,9 @@ function renderSubscriptions(){
       data.subscriptions.forEach(function(s){
         var tr=document.createElement("tr");
         textCell(tr,s.displayName);textCell(tr,fmt(s.amountCents));textCell(tr,s.cadence);
-        textCell(tr,fmt(-s.annualCostCents));textCell(tr,s.nextDueDate||"—");textCell(tr,catName(s.categoryId));
+        textCell(tr,fmt(-s.annualCostCents));
+        var tdDue=document.createElement("td");tdDue.className="budget-sub-next-due";tdDue.textContent=s.nextDueDate||"—";tr.appendChild(tdDue);
+        textCell(tr,catName(s.categoryId));
         var tdAct=document.createElement("td");tdAct.className="budget-sub-actions";
         var editBtn=document.createElement("button");editBtn.type="button";editBtn.className="ghost btn-sm";editBtn.textContent="Edit";
         editBtn.onclick=function(){editSubscription(s);};
@@ -380,14 +382,27 @@ function renderSubscriptions(){
   }
 }
 function loadSubscriptions(){return api("/api/budget/subscriptions").then(function(r){state.subscriptions=r;renderSubscriptions();}).catch(function(e){setStatus(e.message,true);});}
+function subAmountMatches(storedCents,detCents){
+  var med=Math.abs(storedCents);
+  var tol=Math.max(50,Math.round(med*0.02));
+  return Math.abs(Math.abs(detCents)-med)<=tol;
+}
 function confirmDetection(d){
   var catOpts=state.categories.filter(function(c){return !state.groups.find(function(g){return g.id===c.groupId&&g.isIncome;});});
   var names=catOpts.map(function(c,i){return (i+1)+") "+c.name;}).join("\\n");
   var pick=prompt("Pick category number:\\n"+names);
   if(!pick)return;
   var idx=Number(pick)-1;if(idx<0||idx>=catOpts.length){setStatus("Invalid category.",true);return;}
-  var cadence=prompt("Cadence: weekly, monthly, yearly",d.cadence)||d.cadence;
-  api("/api/budget/subscriptions/detections/"+encodeURIComponent(d.id)+"/confirm","POST",{categoryId:catOpts[idx].id,cadence:cadence.trim()}).then(function(){setStatus("Subscription confirmed.");loadSubscriptions();}).catch(function(e){setStatus(e.message,true);});
+  var cadence=(prompt("Cadence: weekly, monthly, yearly",d.cadence)||d.cadence).trim();
+  var deactivateConflicting=false;
+  var conflicts=(state.subscriptions||[]).filter(function(s){
+    return s.payeeNormalized===d.payeeNormalized&&s.cadence===cadence&&!subAmountMatches(s.amountCents,d.amountCents);
+  });
+  if(conflicts.length){
+    if(!confirm("You already have an active subscription for this payee at a different amount. Deactivate the older one so annual totals do not double-count?"))return;
+    deactivateConflicting=true;
+  }
+  api("/api/budget/subscriptions/detections/"+encodeURIComponent(d.id)+"/confirm","POST",{categoryId:catOpts[idx].id,cadence:cadence,deactivateConflictingActive:deactivateConflicting}).then(function(){setStatus("Subscription confirmed.");loadSubscriptions();}).catch(function(e){setStatus(e.message,true);});
 }
 function dismissDetection(id){
   api("/api/budget/subscriptions/detections/"+encodeURIComponent(id)+"/dismiss","POST",{}).then(function(){loadSubscriptions();}).catch(function(e){setStatus(e.message,true);});

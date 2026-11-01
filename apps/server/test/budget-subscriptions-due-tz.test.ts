@@ -32,10 +32,19 @@ test("subscriptions due: weekly next due advances seven civil days", () => {
 });
 
 test("subscriptions due: subprocess with TZ=America/Chicago matches civil calendar", async () => {
-  const script = join(process.cwd(), "test/scripts/assert-due-chicago.ts");
+  const script = join(process.cwd(), "test/scripts/assert-due-tz.ts");
   const { stdout } = await execFileAsync("pnpm", ["exec", "tsx", script], {
     cwd: process.cwd(),
     env: { ...process.env, TZ: "America/Chicago" },
+  });
+  assert.match(stdout, /OK/);
+});
+
+test("subscriptions due: subprocess with TZ=Asia/Tokyo matches civil calendar", async () => {
+  const script = join(process.cwd(), "test/scripts/assert-due-tz.ts");
+  const { stdout } = await execFileAsync("pnpm", ["exec", "tsx", script], {
+    cwd: process.cwd(),
+    env: { ...process.env, TZ: "Asia/Tokyo" },
   });
   assert.match(stdout, /OK/);
 });
