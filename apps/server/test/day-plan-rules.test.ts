@@ -95,6 +95,7 @@ test("rule: todoist only overdue and today partitions", async () => {
       new Response(
         JSON.stringify({
           results: [
+            { id: "0", content: "Overdue", due: { date: "2026-06-09", string: "2026-06-09" }, priority: 2 },
             { id: "1", content: "Tomorrow", due: { date: "2026-06-11", string: "2026-06-11" }, priority: 1 },
             { id: "2", content: "Today", due: { date: "2026-06-10", string: "2026-06-10" }, priority: 1 },
           ],
@@ -110,9 +111,11 @@ test("rule: todoist only overdue and today partitions", async () => {
       fetchFn,
     });
     assert.deepEqual(
-      ctx.tasks.map((t) => t.id),
-      ["2"],
+      ctx.tasks.map((t) => t.id).sort(),
+      ["0", "2"],
     );
+    const plan = buildDeterministicPlan({ context: ctx, weekendOverride: true });
+    assert.ok(plan.mustDos.some((m) => m.refId === "0" && m.title === "Overdue"));
     board.close();
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -127,6 +130,22 @@ test("rule: clipIntervalToWindow drops events outside work window", () => {
   assert.equal(before, null);
   const inside = clipIntervalToWindow(win.startMs + 60_000, win.startMs + 120 * 60_000, win);
   assert.ok(inside);
+});
+
+test("rule: capacityFromOccurrences clips event crossing work-window start", () => {
+  const day = "2026-06-02";
+  const tz = "America/Chicago";
+  const win = workWindowBoundsMs(day, tz, "09:00", "17:00")!;
+  const cap = capacityFromOccurrences({
+    day,
+    tz,
+    workStart: "09:00",
+    workEnd: "17:00",
+    weekendOverride: false,
+    occurrences: [{ startMs: win.startMs - 60 * 60_000, endMs: win.startMs + 60 * 60_000, isBlock: false }],
+    unscheduledEstimateMinutes: 0,
+  });
+  assert.equal(cap.meetingMinutes, 60);
 });
 
 test("rule: pickBreakInterval requires gap >= 15 minutes (rolled.ts ~84)", () => {
@@ -164,6 +183,7 @@ test("rule: overlapping block and meeting occupy once for over-capacity", () => 
   const win = workWindowBoundsMs(day, tz, "09:00", "17:00")!;
   const start = win.startMs + 2 * 60_000;
   const end = start + 60 * 60_000;
+  const unscheduled = 430;
   const cap = capacityFromOccurrences({
     day,
     tz,
@@ -174,11 +194,11 @@ test("rule: overlapping block and meeting occupy once for over-capacity", () => 
       { startMs: start, endMs: end, isBlock: false },
       { startMs: start, endMs: end, isBlock: true },
     ],
-    unscheduledEstimateMinutes: 0,
+    unscheduledEstimateMinutes: unscheduled,
   });
   assert.equal(cap.meetingMinutes, 60);
   assert.equal(cap.blockedTaskMinutes, 60);
-  assert.equal(cap.overByMinutes, 0);
+  assert.equal(cap.overByMinutes, 10);
   assert.ok(cap.meetingMinutes + cap.blockedTaskMinutes > 60);
 });
 
@@ -217,17 +237,26 @@ test("day-plan store: failed save rolls back previous plan", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-dp-tx-"));
   try {
     const store = DayPlanStore.open(dir);
+    const day = "2026-08-01";
+    const win = workWindowBoundsMs(day, "UTC", "09:00", "17:00")!;
+    const tasks = [
+      { source: "board" as const, id: "a", title: "A", priority: 2, dueDay: day, estimateMinutes: 30, scheduled: false },
+      { source: "board" as const, id: "b", title: "B", priority: 1, dueDay: day, estimateMinutes: 45, scheduled: false },
+      { source: "board" as const, id: "c", title: "C", priority: 1, dueDay: day, estimateMinutes: 30, scheduled: false },
+    ];
     const base = buildDeterministicPlan({
       context: {
-        day: "2026-08-01",
+        day,
         tz: "UTC",
-        occurrences: [],
-        tasks: [],
-        allDayLabels: [],
+        occurrences: [{ startMs: win.startMs + 60_000, endMs: win.startMs + 90 * 60_000, isBlock: false }],
+        tasks,
+        allDayLabels: [{ title: "Hold" }],
         sources: { calendarUnavailable: false, todoistUnavailable: false },
       },
       weekendOverride: true,
     });
+    assert.ok(base.items.length >= 2);
+    assert.equal(base.mustDos.length, 3);
     store.save(base);
     const broken = {
       ...base,
@@ -246,12 +275,16 @@ test("day-plan store: failed save rolls back previous plan", async () => {
         },
       ],
     };
-    __setSaveFailAtItemIndex(0);
+    __setSaveFailAtItemIndex(1);
     assert.throws(() => store.save(broken));
     __setSaveFailAtItemIndex(null);
-    const loaded = store.load("2026-08-01");
-    assert.equal(loaded?.mustDos.length, base.mustDos.length);
+    const loaded = store.load(day);
+    assert.equal(loaded?.mustDos.length, 3);
     assert.equal(loaded?.items.length, base.items.length);
+    assert.deepEqual(
+      loaded?.items.map((i) => i.title),
+      base.items.map((i) => i.title),
+    );
     store.close();
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -307,4 +340,24 @@ test("weekend empty plan: no over-capacity and no break", () => {
   assert.equal(plan.capacity.availableMinutes, 0);
   assert.equal(plan.capacity.overByMinutes, 0);
   assert.ok(!plan.items.some((i) => i.kind === "break"));
+});
+
+test("weekend 0h available: keeps meetings, no break, over-capacity when tasks exist", () => {
+  const day = "2026-11-07";
+  const tz = "America/Chicago";
+  const win = workWindowBoundsMs(day, tz, "09:00", "17:00")!;
+  const plan = buildDeterministicPlan({
+    context: {
+      day,
+      tz,
+      occurrences: [{ startMs: win.startMs + 60_000, endMs: win.startMs + 61 * 60_000, isBlock: false }],
+      tasks: [{ source: "board", id: "t1", title: "Sat task", priority: 1, dueDay: day, estimateMinutes: 60, scheduled: false }],
+      allDayLabels: [],
+      sources: { calendarUnavailable: false, todoistUnavailable: false },
+    },
+  });
+  assert.equal(plan.capacity.availableMinutes, 0);
+  assert.ok(plan.items.some((i) => i.kind === "meeting"));
+  assert.ok(!plan.items.some((i) => i.kind === "break"));
+  assert.ok(plan.capacity.overByMinutes >= 60);
 });
