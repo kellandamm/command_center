@@ -49,8 +49,8 @@ export function iconPng(size: number, maskable = false): Buffer {
 }
 
 export const MANIFEST = JSON.stringify({
-  name: "AI Homepage",
-  short_name: "Homepage",
+  name: "Stremmy",
+  short_name: "Stremmy",
   start_url: "/",
   scope: "/",
   display: "standalone",

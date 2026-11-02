@@ -4,7 +4,7 @@ import { defineConfig } from "wxt";
 export default defineConfig({
   modules: ["@wxt-dev/module-react"],
   manifest: {
-    name: "AI Homepage",
+    name: "Stremmy",
     description: "A new-tab page an agent rebuilds daily from what you've actually been browsing.",
     permissions: [
       "history", //       getHistory tool

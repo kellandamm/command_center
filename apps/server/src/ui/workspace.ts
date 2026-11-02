@@ -137,7 +137,7 @@ export function workspacePage(opts: {
   body: string; script: string; tabs?: string; actions?: string;
 }): string {
   return page({
-    title: `${opts.title} — Command Center`, active: opts.active, nav: opts.nav, extraCss: workspaceCss,
+    title: `${opts.title} — Stremmy`, active: opts.active, nav: opts.nav, extraCss: workspaceCss,
     body: `<header class="workspace-head"><div><h1>${esc(opts.title)}</h1><p>${esc(opts.description)}</p></div>${opts.actions ?? ""}</header>
 ${opts.tabs ?? ""}${opts.body}<p id="workspace-status" class="workspace-status" role="status" aria-live="polite"></p>`,
     script: `${workspaceScript}\n${opts.script}`,

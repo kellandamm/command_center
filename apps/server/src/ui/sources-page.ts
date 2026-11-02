@@ -245,7 +245,7 @@ ${button({ label: "Save changes", attrs: { type: "submit" } })}</form></details>
     script: `
 var id=decodeURIComponent(location.pathname.split("/").pop()),source=null,spaces=[];
 function renderSource(){
-  $("source-detail").hidden=false;$("source-title").textContent=source.title;document.title=source.title+" — Command Center";
+  $("source-detail").hidden=false;$("source-title").textContent=source.title;document.title=source.title+" — Stremmy";
   $("source-origin").textContent=host(source.url)+" · Saved "+new Date(source.createdAt).toLocaleDateString();
   var url=safeLink(source.url);$("source-original").hidden=!url;if(url)$("source-original").href=url;
   $("source-summary").textContent=source.summary||"No summary yet. Summarize when you want help understanding this page.";

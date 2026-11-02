@@ -435,7 +435,7 @@ export const notesPanel: PanelModule = {
       const { zip: archive, exported, skippedSensitive } = buildNotesZipExport(ctx.notes.listNotes(), ctx.notes.listSpaces());
       res.writeHead(200, {
         "content-type": "application/zip",
-        "content-disposition": 'attachment; filename="command-center-notes.zip"',
+        "content-disposition": 'attachment; filename="stremmy-notes.zip"',
         "cache-control": "no-store",
         "x-cc-notes-exported": String(exported),
         "x-cc-notes-skipped-sensitive": String(skippedSensitive),
@@ -456,7 +456,7 @@ export const notesPanel: PanelModule = {
       ).join("\n\n---\n\n");
       res.writeHead(200, {
         "content-type": "text/markdown; charset=utf-8",
-        "content-disposition": 'attachment; filename="command-center-notes.md"',
+        "content-disposition": 'attachment; filename="stremmy-notes.md"',
         "cache-control": "no-store",
       });
       res.end(content);
@@ -469,7 +469,7 @@ export const notesPanel: PanelModule = {
       if (includeSensitive && !ctx.owner) return ownerDenied(res), true;
       res.writeHead(200, {
         "content-type": "application/json; charset=utf-8",
-        "content-disposition": 'attachment; filename="command-center-knowledge.json"',
+        "content-disposition": 'attachment; filename="stremmy-knowledge.json"',
         "cache-control": "no-store",
       });
       res.end(JSON.stringify(ctx.notes.exportBackup(includeSensitive), null, 2));

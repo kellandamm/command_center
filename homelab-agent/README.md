@@ -1,6 +1,6 @@
 # Homelab agent (Infra Ops)
 
-Outbound-only worker that polls Command Center `/api/queue`, calls an LLM through an egress proxy, and reaches Home Assistant only through `ha-proxy`.
+Outbound-only worker that polls Stremmy `/api/queue`, calls an LLM through an egress proxy, and reaches Home Assistant only through `ha-proxy`.
 
 Homelab hosts are **unprivileged Proxmox LXCs** (Docker via nesting). A typical target is an LXC such as **CT 110** (not necessarily a full VM). Enable nesting before `docker compose up`:
 
@@ -16,16 +16,16 @@ The same compose hardening applies on an LXC or a VM: `read_only` rootfs, `cap_d
 |---|---|
 | **worker** | Polls queue, runs tool loop (`openai` + `httpx` only). Never sees `HA_TOKEN`. |
 | **ha-proxy** | Injects HA + Cloudflare Access headers; allowlists read-only HA paths + `script.notify_kellan`. |
-| **egress** | Squid allowlist to LLM host and Command Center host only. |
+| **egress** | Squid allowlist to LLM host and Stremmy host only. |
 
 ## Environment
 
-See `env/*.env.example`. Command Center additionally needs `QUEUE_HMAC_KEY_PRODUCER`, `QUEUE_HMAC_KEY_WORKER`, and existing `CF_ACCESS_*` JWT settings.
+See `env/*.env.example`. Stremmy additionally needs `QUEUE_HMAC_KEY_PRODUCER`, `QUEUE_HMAC_KEY_WORKER`, and existing `CF_ACCESS_*` JWT settings.
 
 ## Deploy
 
 1. Copy `env/*.env.example` to `env/worker.env` and `env/ha-proxy.env`; fill secrets.
-2. Edit `egress/squid.conf` with your Command Center hostname.
+2. Edit `egress/squid.conf` with your Stremmy hostname.
 3. On the **host** (LXC or VM), create the container status file (read-only mount into the worker):
 
 ```bash
@@ -42,7 +42,7 @@ mkdir -p /srv/homelab-agent/status
 - From a debug shell on the agent network: `curl -X POST http://ha-proxy:8080/api/services/light/turn_on` → **403** (upstream must not see the request).
 - From worker container: `curl https://example.com` → **fails** (egress deny).
 - `docker logs` worker | grep -E 'KEY|TOKEN|SECRET|Authorization` → **0 hits** at INFO.
-- Post 10 tasks via `/api/queue`; confirm results and token usage in Command Center.
+- Post 10 tasks via `/api/queue`; confirm results and token usage in Stremmy.
 
 ## Security notes
 

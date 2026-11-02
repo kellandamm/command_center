@@ -2,7 +2,7 @@
 
 ## Lucide icons (ISC)
 
-Command Center inlines a subset of [Lucide](https://lucide.dev/) icons in `apps/server/src/ui/icons.ts`
+Stremmy inlines a subset of [Lucide](https://lucide.dev/) icons in `apps/server/src/ui/icons.ts`
 for sidebar and chrome navigation. Lucide is licensed under the ISC License.
 
 ---
@@ -27,7 +27,7 @@ PERFORMANCE OF THIS SOFTWARE.
 
 ## grokbot-usage-checkin (ideas only)
 
-The Agents → Usage feature in Command Center reimplements dashboard concepts described in
+The Agents → Usage feature in Stremmy reimplements dashboard concepts described in
 https://github.com/yuehzhan/grokbot-usage-checkin (weekly pace baseline, burn rate, projection,
 and related panel layout). No Python from that repository is embedded or executed in this project.
 

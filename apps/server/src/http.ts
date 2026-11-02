@@ -400,7 +400,7 @@ export function createApp(app: App): Server {
       if (get && path === "/settings/connections") return send(res, 200, connectionsPage(nav()), undefined, extra);
       if (get && path === "/settings/calendars") return send(res, 200, calendarSettingsPage(nav()), undefined, extra);
       if (get && path === "/capture-extension.zip") {
-        return send(res, 200, extensionZip, "application/zip", { ...extra, "content-disposition": 'attachment; filename="command-center-capture.zip"' });
+        return send(res, 200, extensionZip, "application/zip", { ...extra, "content-disposition": 'attachment; filename="stremmy-capture.zip"' });
       }
       if (get && (path === "/notes/connections" || path === "/notes/transfer")) {
         return send(res, 200, noteToolsPage(nav(), path === "/notes/connections"), undefined, extra);
@@ -429,7 +429,7 @@ export function createApp(app: App): Server {
       if (get && path === "/api/bookmarks") return json(res, 200, app.bookmarks.list());
       if (get && path === "/api/bookmarks/export.json") {
         return send(res, 200, JSON.stringify(app.bookmarks.list(), null, 2), "application/json", {
-          ...extra, "content-disposition": 'attachment; filename="command-center-bookmarks.json"',
+          ...extra, "content-disposition": 'attachment; filename="stremmy-bookmarks.json"',
         });
       }
       if (path.startsWith("/api/bookmarks/")) {

@@ -8,7 +8,7 @@ import { calendarPlanningScript } from "./calendar-planning-script";
 export function calendarPage(nav?: NavLink[]): string {
   const headerActions = `${button({ label: "New event", href: "/calendar/event" })}${button({ label: "Calendar settings", variant: "outline", href: "/settings/calendars" })}${button({ label: "Refresh calendars", variant: "ghost", attrs: { id: "cal-refresh" } })}`;
   return page({
-    title: "Calendar — Command center",
+    title: "Calendar — Stremmy",
     active: "/calendar",
     nav,
     extraCss: PHASE2_PAGE_CSS,

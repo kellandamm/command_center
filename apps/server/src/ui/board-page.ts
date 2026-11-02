@@ -20,7 +20,7 @@ const boardCss = `
 
 export function boardPage(nav?: NavLink[]): string {
   return page({
-    title: "Board — Command center",
+    title: "Board — Stremmy",
     active: "/board",
     nav,
     extraCss: boardCss,

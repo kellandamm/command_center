@@ -5,7 +5,7 @@ import { PHASE2_PAGE_CSS } from "./phase2-pages-css";
 export function bookmarksPage(nav?: NavLink[]): string {
   const headerActions = `${button({ label: "Add bookmark", attrs: { id: "bookmark-add", disabled: true } })}${button({ label: "New group", variant: "ghost", attrs: { id: "bookmark-new-group", disabled: true } })}`;
   return page({
-    title: "Bookmarks — Command center",
+    title: "Bookmarks — Stremmy",
     active: "/bookmarks",
     nav,
     extraCss: PHASE2_PAGE_CSS,

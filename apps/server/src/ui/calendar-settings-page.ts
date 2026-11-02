@@ -15,7 +15,7 @@ export function calendarSettingsPage(nav?: NavLink[]) {
 </section>
 <form id="calendar-add" class="workspace-form" hidden>
 <h2>Add a calendar</h2>
-<label for="calendar-kind">Type</label><select id="calendar-kind"><option value="native">Command Center calendar</option><option value="ics">Existing calendar (ICS subscription)</option></select>
+<label for="calendar-kind">Type</label><select id="calendar-kind"><option value="native">Stremmy calendar</option><option value="ics">Existing calendar (ICS subscription)</option></select>
 <label for="calendar-name">Name</label><input id="calendar-name" maxlength="120" required placeholder="Personal, work, focus...">
 <label for="calendar-color">Color</label><input id="calendar-color" type="color" value="#2767ad">
 <div id="calendar-url-field" hidden><label for="calendar-url">Private HTTPS subscription URL</label><input id="calendar-url" type="password" autocomplete="off" maxlength="4096">

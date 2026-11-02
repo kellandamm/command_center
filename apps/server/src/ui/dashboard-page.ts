@@ -141,7 +141,7 @@ export function dashboardPage(
     .join("\n");
 
   return page({
-    title: "Command center",
+    title: "Stremmy",
     active: "/",
     nav,
     extraCss: dashboardGridCss + dashboardPanelCss + quickAddCss + agentsUsagePanelCss + budgetPanelDashboardCss(),
