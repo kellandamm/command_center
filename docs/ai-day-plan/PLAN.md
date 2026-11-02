@@ -16,7 +16,7 @@
 2. **Todoist → LLM:** **`content` (title), `priority`, due day only** — no description, url, or other fields.
 3. **Shutdown review:** **`GET /api/briefing/shutdown`** requires **CF-verified owner** — shipped (PR #105).
 4. **Must-do completion:** Checking off a must-do **also completes** the linked Todoist task or Board card. **Only the owner’s UI click** may trigger that write — never the LLM, auto-run, or background jobs. Owner-only **`POST /api/day-plan/must-do/complete`** with **`csrfOk` + `x-ah`**. **Idempotency:** second POST for same `(day, slot)` when already completed → **200** unchanged. On failure: generic error (no task title in logs), local plan row stays open. **Undo:** **`POST /api/day-plan/must-do/reopen`** — Board card moved out of `Done`; Todoist **`POST /api/v1/tasks/{id}/reopen`**. On reopen failure: show error and **do not** desync local state (keep completed until reopen succeeds).
-5. **Auto AI plan:** On **first owner load of the day**, if **`autoAiPlan`** is **ON** (default) and `llmConfigured` and **no LLM attempt yet today** → run **exactly one LLM attempt** for that owner/calendar day, cache result. **At most one LLM attempt per owner per calendar day** (not six). **Single-run guard:** claim the day in SQLite **before** calling the model — e.g. `INSERT INTO plan_llm_day (day, llm_attempted_at) VALUES (?, ?) ON CONFLICT(day) DO NOTHING` and proceed only when `changes === 1`; or conditional `UPDATE ... WHERE llm_attempted_at IS NULL`. Count **attempts**, not successes, so a failed LLM does **not** retry on every page/widget load. Concurrent widget + page loads must result in **one** LLM HTTP call. If auto already ran: **Generate with AI** shows the **cached AI plan** plus a **deterministic refresh** action (replan without LLM). If auto is off: the first **Generate with AI** uses the day’s **only** LLM attempt. **Manual re-runs that consume a second LLM call:** *pending Kellan*. **Deterministic planner** remains instant fallback when LLM off, claim lost, or failure.
+5. **Auto AI plan:** **Daily LLM cap:** at most **2 attempts per owner per calendar day** when **`autoAiPlan`** is **ON** (default) — **1 auto + 1 manual**. When **`autoAiPlan`** is **OFF**, at most **1 manual** attempt (no auto run on first load). **Slot claims:** before each LLM HTTP call, claim **`auto`** or **`manual`** in SQLite with **one atomic statement** (`INSERT ... ON CONFLICT DO NOTHING` or `UPDATE ... WHERE <slot>_attempted_at IS NULL`); call the model only when the claim wins (`changes === 1`). Count **attempts**, not successes — a failed LLM still consumes that slot and must **not** retry on every page/widget load. Concurrent widget + page loads contending for the same slot → **one** LLM call. **Auto:** first owner load of the day when auto is on and `llmConfigured` → claim auto slot, run LLM once, cache on success (`llm_generated_at`). **Manual Generate with AI** **may** claim the **manual** slot and run the model **once more** even after morning auto (success or failure). If auto is off, the first **Generate with AI** uses the only allowed attempt (manual slot). When a slot is exhausted or cap reached: show **cached AI plan** (if any) plus **deterministic refresh** (replan without LLM). **Deterministic planner** remains instant fallback when LLM off, claim lost, cap exhausted, or failure.
 6. **Breaks:** **Nearest free gap ≥ 15 min** to **work-window midpoint**, not overlapping meetings/blocks. No break when **weekend 0h** and nothing to schedule (no false over-capacity).
 
 **`autoAiPlan` toggle:** **`PUT /api/day-plan/settings`** gated by **`isDayPlanOwner`** only — **not** the shared **`SettingsStore` / `PUT /api/settings`** path (`canManageSharedServerState` / admin-token). Stored via owner-scoped day-plan storage, not global settings writes.
@@ -25,9 +25,9 @@
 
 ## User flow
 
-1. **Morning (owner):** Open **Day plan** widget or **`/day-plan`**. If no plan, **generate** deterministic plan; if **`autoAiPlan`** + LLM configured + **no `llm_attempted_at` today**, claim attempt and run LLM once.
+1. **Morning (owner):** Open **Day plan** widget or **`/day-plan`**. If no plan, **generate** deterministic plan; if **`autoAiPlan`** + LLM configured + **auto slot unclaimed**, atomically claim auto and run LLM once.
 2. **Edit:** Swap must-dos, PUT edits, **complete** POST (Todoist/Board).
-3. **Generate with AI:** If attempt already used → show cached AI output + deterministic refresh; else use the single daily attempt (*extra manual LLM re-runs pending Kellan*).
+3. **Generate with AI:** If **manual slot** still available → claim manual and run LLM (including **once more** after morning auto). If both slots used (or auto off and manual already used) → cached AI output + deterministic refresh only.
 4. **Refresh plan:** Deterministic replan only (no LLM).
 5. **Shutdown:** Owner-only shutdown APIs. **`rolledToTomorrow`** at read time; rolled refs **boost** tomorrow’s must-do score.
 6. **Auto AI toggle:** Day-plan owner settings route only.
@@ -54,9 +54,10 @@ Gather in `day-plan/gather.ts` with **explicit field picks**. On calendar/Todois
 
 ### When LLM runs
 
-- **Once per owner per calendar day** (attempt recorded in **`llm_attempted_at`** before HTTP call).
-- **Auto:** first owner load when `autoAiPlan` + configured + claim succeeds.
-- **Manual Generate:** uses the single attempt if not yet attempted; otherwise cached plan + deterministic refresh.
+- **Cap:** **2 attempts/day** with **`autoAiPlan` ON** (auto + manual slots); **1 attempt/day** with auto **OFF** (manual slot only).
+- **Auto:** first owner load when `autoAiPlan` + configured + **auto slot** claim succeeds (`llm_auto_attempted_at` set before HTTP).
+- **Manual Generate:** when **manual slot** claim succeeds (`llm_manual_attempted_at` before HTTP) — allowed after auto already ran.
+- **Not:** deterministic refresh alone; not a third LLM call after both slots consumed.
 
 ### Input allowlist
 
@@ -64,8 +65,11 @@ Gather in `day-plan/gather.ts` with **explicit field picks**. On calendar/Todois
 
 ### Tests (LLM PR)
 
-- **Concurrency:** parallel generate calls → one claim, one mock LLM invocation.
-- **Failure no-retry:** failed LLM leaves `llm_attempted_at` set; second load does not call LLM again.
+- **Concurrency (auto slot):** parallel first-load / auto generate → one auto claim, one mock LLM invocation.
+- **Concurrency (manual slot):** parallel **Generate with AI** → one manual claim, one mock LLM invocation.
+- **Failure no-retry:** failed auto leaves `llm_auto_attempted_at` set; reload does not call LLM for auto again; failed manual leaves `llm_manual_attempted_at` set; second manual click does not call LLM again.
+- **Cap auto on:** auto then manual each invoke LLM once; a third LLM request same day does not call the model.
+- **Cap auto off:** no auto LLM on load; exactly one manual Generate may call LLM; second manual does not.
 
 ---
 
@@ -75,7 +79,7 @@ Gather in `day-plan/gather.ts` with **explicit field picks**. On calendar/Todois
 
 | Table / column | Purpose |
 |----------------|---------|
-| `plan_days` | … **`llm_attempted_at`**, **`llm_generated_at`** |
+| `plan_days` | … **`llm_auto_attempted_at`**, **`llm_manual_attempted_at`**, **`llm_generated_at`** (successful AI cache) |
 | `plan_items`, `plan_must_dos` | as before |
 | owner prefs | **`auto_ai_plan`** via owner route |
 
@@ -100,7 +104,7 @@ Gather in `day-plan/gather.ts` with **explicit field picks**. On calendar/Todois
 
 ## Test plan
 
-Unit: gather/capacity/planner regression tests; store transaction; TZ tests; excluded glob `day-plan/*`. LLM PR: leak, concurrency, failure no-retry.
+Unit: gather/capacity/planner regression tests; store transaction; TZ tests; excluded glob `day-plan/*`. LLM PR: leak, concurrency (auto + manual), failure no-retry (per slot), cap tests (2 with auto on, 1 with auto off).
 
 ---
 
