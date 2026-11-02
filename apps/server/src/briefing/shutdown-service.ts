@@ -1,8 +1,7 @@
 import type { BoardStore } from "../board/store";
 import { DONE } from "../board/types";
 import type { CalendarWorkspace } from "../calendar/workspace";
-import { calendarLocalInstant, validDay } from "../calendar/store";
-import { ValidationError } from "../settings";
+import { dayRangeIso, durationMsOnDay, hoursFromMs } from "../calendar/day-duration";
 import type { Config } from "../config";
 import { llmConfig, todoistConfigured } from "../config";
 import { dayKeyFromIso } from "../heatmap/counts";
@@ -77,13 +76,7 @@ function nextDayKey(day: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-export function dayRangeIso(day: string, tz: string): { since: string; until: string } {
-  if (!validDay(day)) throw new ValidationError("Invalid review day");
-  const since = calendarLocalInstant(day, "00:00", tz);
-  const until = calendarLocalInstant(nextDayKey(day), "00:00", tz);
-  if (!since || !until) throw new ValidationError("The selected day boundary does not exist in this timezone");
-  return { since: since.toISOString(), until: until.toISOString() };
-}
+export { dayRangeIso } from "../calendar/day-duration";
 
 export function completedOnDay(completedAt: string, day: string, tz: string): boolean {
   return dayKeyFromIso(completedAt, tz) === day;
@@ -94,35 +87,8 @@ export function completedOnChicagoDay(completedAt: string, day: string): boolean
   return completedOnDay(completedAt, day, SHUTDOWN_TZ);
 }
 
-function hoursFromMs(ms: number): number {
-  return Math.round((ms / 3_600_000) * 100) / 100;
-}
-
-function durationMsOnDay(
-  spec: { start: Date | string; end: Date | string | null; allDay: boolean; timezone?: string },
-  day: string,
-  tz: string,
-): number {
-  if (!spec.end) return 0;
-  const range = dayRangeIso(day, tz);
-  const dayStart = Date.parse(range.since);
-  const dayEnd = Date.parse(range.until);
-  const zone = spec.timezone ?? tz;
-  let startMs: number;
-  let endMs: number;
-  if (spec.allDay) {
-    const startDay = typeof spec.start === "string" ? spec.start.slice(0, 10) : spec.start.toISOString().slice(0, 10);
-    const endDay = typeof spec.end === "string" ? spec.end.slice(0, 10) : spec.end.toISOString().slice(0, 10);
-    const start = calendarLocalInstant(startDay, "00:00", zone), end = calendarLocalInstant(endDay, "00:00", zone);
-    if (!start || !end) throw new ValidationError("The selected all-day boundary does not exist in this timezone");
-    startMs = start.getTime();
-    endMs = end.getTime();
-  } else {
-    startMs = typeof spec.start === "string" ? Date.parse(spec.start) : spec.start.getTime();
-    endMs = typeof spec.end === "string" ? Date.parse(spec.end) : spec.end.getTime();
-  }
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return 0;
-  return Math.max(0, Math.min(endMs, dayEnd) - Math.max(startMs, dayStart));
+function hoursFromMsLocal(ms: number): number {
+  return hoursFromMs(ms);
 }
 
 function capReflectionStr(value: unknown): string | null {
@@ -320,7 +286,7 @@ export async function buildShutdownReview(opts: {
     todoistConfigured: todoistConfigured(opts.cfg),
     done: { todoist: doneTodoist, board: doneBoard },
     unfinished: { todoist: { overdue, today }, blockedToday: [...planned.values()] },
-    time: { calendarHours: hoursFromMs(calendarMs), blockedTaskHours: hoursFromMs(blockedMs) },
+    time: { calendarHours: hoursFromMsLocal(calendarMs), blockedTaskHours: hoursFromMsLocal(blockedMs) },
     tomorrowPreview: { events: tomorrowEvents, tasksDue: tasksDueTomorrow, nativeTasksDue: cards.filter((card) => card.column !== DONE && card.dueDate === tomorrow).map((card) => ({ cardId: card.id, title: card.title, dueDate: card.dueDate })) },
     llmEnabled: Boolean(llmConfig(opts.cfg)),
     errors,
