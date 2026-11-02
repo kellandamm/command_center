@@ -21,7 +21,7 @@ export function buildDeterministicPlan(opts: {
   const workEnd = opts.workEnd ?? DEFAULT_WORK_END;
   const weekendOverride = opts.weekendOverride ?? false;
   const rollBoost = opts.rollBoost ?? new Set<string>();
-  const { day, tz, occurrences, tasks, allDayLabels } = opts.context;
+  const { day, tz, occurrences, tasks, allDayLabels, sources } = opts.context;
   const unscheduled = unscheduledEstimateMinutes(tasks);
   const capacity = capacityFromOccurrences({
     day,
@@ -65,7 +65,10 @@ export function buildDeterministicPlan(opts: {
       completedAt: null,
     });
   }
-  const brk = pickBreakInterval({ day, tz, workStart, workEnd, occurrences });
+  const brk =
+    capacity.availableMinutes > 0 && (unscheduled > 0 || occurrences.length > 0)
+      ? pickBreakInterval({ day, tz, workStart, workEnd, occurrences })
+      : null;
   if (brk) {
     items.push({
       id: randomUUID(),
@@ -92,6 +95,7 @@ export function buildDeterministicPlan(opts: {
     generatedBy: "deterministic",
     theme: null,
     capacity,
+    sources,
     mustDos,
     items,
     alternates,

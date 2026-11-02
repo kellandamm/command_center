@@ -3,6 +3,13 @@ import { DatabaseSync } from "node:sqlite";
 import { DAY_PLAN_DB, initDayPlanSchema } from "./db";
 import type { DayPlanSnapshot } from "./types";
 
+/** Test hook: throw while inserting plan_items at this zero-based index. */
+let saveFailAtItemIndex: number | null = null;
+
+export function __setSaveFailAtItemIndex(index: number | null): void {
+  saveFailAtItemIndex = index;
+}
+
 export class DayPlanStore {
   private constructor(private db: DatabaseSync) {}
 
@@ -17,50 +24,60 @@ export class DayPlanStore {
   }
 
   save(snapshot: DayPlanSnapshot): void {
-    const delItems = this.db.prepare(`DELETE FROM plan_items WHERE day = ?`);
-    const delMust = this.db.prepare(`DELETE FROM plan_must_dos WHERE day = ?`);
-    const delDay = this.db.prepare(`DELETE FROM plan_days WHERE day = ?`);
-    delItems.run(snapshot.day);
-    delMust.run(snapshot.day);
-    delDay.run(snapshot.day);
-    this.db
-      .prepare(
-        `INSERT INTO plan_days (day, timezone, work_start, work_end, generated_at, generated_by, theme, capacity_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        snapshot.day,
-        snapshot.timezone,
-        snapshot.workStart,
-        snapshot.workEnd,
-        snapshot.generatedAt,
-        snapshot.generatedBy,
-        snapshot.theme,
-        JSON.stringify(snapshot.capacity),
-      );
-    const insItem = this.db.prepare(
-      `INSERT INTO plan_items (id, day, kind, source, ref_id, title, start_iso, end_iso, sort_order, completed_at)
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db.prepare(`DELETE FROM plan_items WHERE day = ?`).run(snapshot.day);
+      this.db.prepare(`DELETE FROM plan_must_dos WHERE day = ?`).run(snapshot.day);
+      this.db.prepare(`DELETE FROM plan_days WHERE day = ?`).run(snapshot.day);
+      this.db
+        .prepare(
+          `INSERT INTO plan_days (day, timezone, work_start, work_end, generated_at, generated_by, theme, capacity_json, sources_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          snapshot.day,
+          snapshot.timezone,
+          snapshot.workStart,
+          snapshot.workEnd,
+          snapshot.generatedAt,
+          snapshot.generatedBy,
+          snapshot.theme,
+          JSON.stringify(snapshot.capacity),
+          JSON.stringify(snapshot.sources),
+        );
+      const insItem = this.db.prepare(
+        `INSERT INTO plan_items (id, day, kind, source, ref_id, title, start_iso, end_iso, sort_order, completed_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    );
-    for (const item of snapshot.items) {
-      insItem.run(
-        item.id,
-        snapshot.day,
-        item.kind,
-        item.source,
-        item.refId,
-        item.title,
-        item.startIso,
-        item.endIso,
-        item.sortOrder,
-        item.completedAt,
       );
-    }
-    const insMust = this.db.prepare(
-      `INSERT INTO plan_must_dos (day, slot, source, ref_id, title, user_locked, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    );
-    for (const m of snapshot.mustDos) {
-      insMust.run(snapshot.day, m.slot, m.source, m.refId, m.title, m.userLocked ? 1 : 0, m.completedAt);
+      let itemIndex = 0;
+      for (const item of snapshot.items) {
+        if (saveFailAtItemIndex !== null && itemIndex === saveFailAtItemIndex) {
+          throw new Error("day-plan save test abort");
+        }
+        insItem.run(
+          item.id,
+          snapshot.day,
+          item.kind,
+          item.source,
+          item.refId,
+          item.title,
+          item.startIso,
+          item.endIso,
+          item.sortOrder,
+          item.completedAt,
+        );
+        itemIndex++;
+      }
+      const insMust = this.db.prepare(
+        `INSERT INTO plan_must_dos (day, slot, source, ref_id, title, user_locked, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      );
+      for (const m of snapshot.mustDos) {
+        insMust.run(snapshot.day, m.slot, m.source, m.refId, m.title, m.userLocked ? 1 : 0, m.completedAt);
+      }
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
     }
   }
 
@@ -82,6 +99,7 @@ export class DayPlanStore {
       completedAt: m.completed_at ? String(m.completed_at) : null,
     }));
     const capacity = JSON.parse(String(row.capacity_json)) as DayPlanSnapshot["capacity"];
+    const sources = JSON.parse(String(row.sources_json ?? "{}")) as DayPlanSnapshot["sources"];
     return {
       day: String(row.day),
       timezone: String(row.timezone),
@@ -91,6 +109,7 @@ export class DayPlanStore {
       generatedBy: String(row.generated_by) as DayPlanSnapshot["generatedBy"],
       theme: row.theme == null ? null : String(row.theme),
       capacity,
+      sources,
       mustDos,
       items: items.map((i) => ({
         id: String(i.id),

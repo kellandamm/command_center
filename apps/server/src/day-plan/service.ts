@@ -41,7 +41,6 @@ export async function generateAndPersistDeterministicPlan(opts: {
     now: opts.now,
     weekendOverride: opts.weekendOverride,
   });
-  plan.alternates = plan.alternates;
   plan.rolledToTomorrow = computeRolledAtRead(plan.mustDos, context.tasks);
   opts.store.save(plan);
   return plan;

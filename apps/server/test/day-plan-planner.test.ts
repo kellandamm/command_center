@@ -40,6 +40,7 @@ test("day-plan planner: break lands in free gap near midpoint", () => {
     occurrences: [
       { startMs: Date.parse(`${day}T14:00:00-05:00`), endMs: Date.parse(`${day}T15:00:00-05:00`), isBlock: false },
     ],
+    sources: { calendarUnavailable: false, todoistUnavailable: false },
   };
   const plan = buildDeterministicPlan({ context: ctx, now: new Date(`${day}T12:00:00-05:00`) });
   const brk = plan.items.find((i) => i.kind === "break");
@@ -73,7 +74,8 @@ test("day-plan integration: store round-trip and rolledToTomorrow at read", asyn
     assert.ok(loaded);
     const context = await gatherDayPlanContext({ cfg, board, calendar, now, day: "2026-06-05" });
     loaded!.rolledToTomorrow = computeRolledAtRead(loaded!.mustDos, context.tasks);
-    assert.ok(Array.isArray(loaded!.rolledToTomorrow));
+    assert.equal(loaded!.rolledToTomorrow.length, 1);
+    assert.equal(loaded!.rolledToTomorrow[0]?.title, "Due today");
     store.close();
     board.close();
   } finally {
