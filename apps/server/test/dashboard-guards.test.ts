@@ -1,19 +1,28 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { BlockedUrlError } from "../src/ssrf";
 import { dashboardLayoutUserKey } from "../src/dashboard-layout/user-key";
-import { normalizeDashboardLayout } from "../src/dashboard-layout/normalize";
+import { DashboardLayoutStore } from "../src/dashboard-layout/storage";
 import { packAfterMove, rectanglesOverlap } from "../src/dashboard-layout/pack";
-import { CURRENT_REGISTRY_EPOCH, widgetIdsForSession } from "../src/dashboard-layout/widgets";
+import { CURRENT_REGISTRY_EPOCH } from "../src/dashboard-layout/widgets";
 import { fetchEnvConfiguredUrl } from "../src/service-status/env-fetch";
 import {
   getServiceStatusSnapshot,
-  redactServiceStatusString,
   resetServiceStatusCacheForTests,
+  serviceStatusJson,
 } from "../src/service-status/checks";
 import { loadConfig } from "../src/config";
+import { DailyBriefingService } from "../src/daily-briefing/service";
+import { makeAuthenticator } from "../src/auth";
+import { createApp } from "../src/http";
+import { NotesStore } from "../src/notes/store";
+import { SettingsStore } from "../src/settings";
+import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
 test("env-fetch: blocks redirect to off-origin host", async () => {
   let evil: Server | undefined;
@@ -68,13 +77,20 @@ test("service-status: concurrent snapshots share one upstream HA fetch", async (
   }
 });
 
-test("service-status: redactServiceStatusString removes planted secrets", () => {
-  const secret = "PLANTED_REDACT_guard_test_secret";
-  const cfg = loadConfig({ DATA_DIR: "/tmp/x", ADMIN_TOKEN: secret, HA_TOKEN: secret });
-  const raw = JSON.stringify({ note: secret, nested: { token: secret } });
-  const out = redactServiceStatusString(raw, cfg);
-  assert.doesNotMatch(out, new RegExp(secret));
-  assert.match(out, /\[redacted\]/);
+test("service-status: serviceStatusJson redacts planted secret in service error string", async () => {
+  resetServiceStatusCacheForTests();
+  const secret = "PLANTED_serviceStatusJson_err_secret99";
+  const cfg = loadConfig({ DATA_DIR: "/tmp/x", HA_TOKEN: secret });
+  const json = serviceStatusJson(cfg, [
+    {
+      id: "home-assistant",
+      label: "Home Assistant",
+      state: "down",
+      downFor: `HTTP 401: authorization Bearer ${secret} rejected`,
+    },
+  ]);
+  assert.doesNotMatch(json, new RegExp(secret));
+  assert.match(json, /\[redacted\]/);
 });
 
 test("dashboard userKey: hashed, stable, distinct for different users", () => {
@@ -98,14 +114,32 @@ test("dashboard layout: packAfterMove pushes overlapping panels down", () => {
   assert.ok(b.y >= a.y + a.h);
 });
 
-test("dashboard layout: registry epoch appends newly introduced widgets only", () => {
-  const ids = widgetIdsForSession({ showBudget: false, showServiceStatus: true });
-  const beforeEpoch = 0;
-  assert.ok(CURRENT_REGISTRY_EPOCH >= 1);
-  const raw = { version: 3, registryEpoch: beforeEpoch, widgets: [{ id: "tasks", size: "W" as const }] };
-  const next = normalizeDashboardLayout(raw, ids, false, { appendMissing: false, appendNewRegistryWidgets: true });
-  assert.ok(next.widgets.some((w) => w.id === "today-agenda"), "epoch bump should append revamp widgets");
-  assert.ok(!next.widgets.some((w) => w.id === "heatmap"), "must not re-add user-removed panels");
+test("dashboard layout: at current registry epoch, removed epoch widgets stay removed on load", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-epoch-current-"));
+  try {
+    const cfg = loadConfig({ DATA_DIR: dir, OWNER_EMAILS: "owner@example.com" });
+    const principal = { who: "owner@example.com", email: "owner@example.com", owner: true };
+    const userKey = dashboardLayoutUserKey(principal);
+    const saved = {
+      version: 3,
+      registryEpoch: CURRENT_REGISTRY_EPOCH,
+      widgets: [
+        { id: "tasks", size: "W" },
+        { id: "today-agenda", size: "XL" },
+        { id: "agent-jobs", size: "L" },
+        { id: "countdown", size: "S" },
+        // epoch-1 widget "world-clock" deliberately removed
+      ],
+    };
+    await mkdir(join(dir, "dashboard-layouts"), { recursive: true });
+    await writeFile(join(dir, "dashboard-layouts", `${userKey}.json`), JSON.stringify(saved, null, 2));
+    const store = await DashboardLayoutStore.open(dir, cfg);
+    const layout = await store.getForUser(principal, false, true);
+    assert.ok(layout.widgets.some((w) => w.id === "tasks"));
+    assert.ok(!layout.widgets.some((w) => w.id === "world-clock"), "world-clock must stay removed at current epoch");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("service-status API: admin-token is not owner when OWNER_EMAILS is set (prod CF Access)", async () => {
