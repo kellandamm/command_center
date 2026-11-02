@@ -320,7 +320,7 @@ test("bookmarks APIs support a separate authenticated launchpad and bounded impo
     assert.equal((await write("preferences", { density: "compact", columns: 2 }, "PUT")).status, 200);
     assert.equal((await write("groups", { id: group.id }, "DELETE")).status, 400);
     const backup = await fetch(`${h.base}/api/bookmarks/export.json`, { headers: authz });
-    assert.match(backup.headers.get("content-disposition")!, /command-center-bookmarks.json/);
+    assert.match(backup.headers.get("content-disposition")!, /stremmy-bookmarks.json/);
     const data = await backup.json();
     assert.equal(data.bookmarks[0].title, "Edited");
     assert.deepEqual(await (await write("import", data)).json(), { added: 0, skipped: 1 });
