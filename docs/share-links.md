@@ -17,7 +17,7 @@ The app rate-limits using `CF-Connecting-IP` when present. **Only trust that hea
 
 ## Cloudflare Zero Trust (Infra Ops)
 
-Command Center is normally protected by a Cloudflare Access **self-hosted** application on `command.gobison.io` (apex or path empty / `/*`), with Allow policies for your identity.
+Stremmy is normally protected by a Cloudflare Access **self-hosted** application on `command.gobison.io` (apex or path empty / `/*`), with Allow policies for your identity.
 
 Share links must work **without** an Access JWT on everything under **`/share/`** only:
 
@@ -36,7 +36,7 @@ Use a **second** self-hosted application for the public share tree so it can use
 ### Dashboard steps
 
 1. **Zero Trust** → **Access controls** → **Applications** → **Add an application** → **Self-hosted**.
-2. **Application name:** e.g. `Command Center — public share links`.
+2. **Application name:** e.g. `Stremmy — public share links`.
 3. **Session duration:** your choice (Bypass still applies at the edge).
 4. Under **Add public hostname** (or **Application domains**):
    - **Subdomain:** `command` (or leave blank if the UI uses the full hostname `command.gobison.io`).
@@ -47,7 +47,7 @@ Use a **second** self-hosted application for the public share tree so it can use
    - **Action:** **Bypass**
    - **Rule:** **Everyone** (or equivalent include-all rule).
 6. Leave your **existing** `command.gobison.io` Access application (broader path) unchanged with its normal Allow policies.
-7. Set `SHARE_LINKS_ENABLED=1` on Command Center and redeploy/restart.
+7. Set `SHARE_LINKS_ENABLED=1` on Stremmy and redeploy/restart.
 
 ### Optional: WAF rate limiting
 
@@ -77,7 +77,7 @@ Create a real share from the Notes UI as owner, open the full URL (including `#`
 
 ### Roll back
 
-1. Set `SHARE_LINKS_ENABLED=0` (or unset) and restart Command Center.
+1. Set `SHARE_LINKS_ENABLED=0` (or unset) and restart Stremmy.
 2. Delete or disable the **Bypass** Access application for `/share/*` only.
 3. Optionally delete `share-links.json` in the server data directory.
 

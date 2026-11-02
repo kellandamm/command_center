@@ -4,7 +4,7 @@ import { workspacePage } from "./workspace";
 export function calendarEventPage(nav?: NavLink[]) {
   return workspacePage({
     title: "Calendar event", active: "/calendar", nav,
-    description: "Reserve time on a Command Center calendar. Subscribed calendars remain read-only.",
+    description: "Reserve time on a Stremmy calendar. Subscribed calendars remain read-only.",
     body: `<p><a href="/calendar">Back to Calendar</a> &middot; <a href="/settings/calendars">Calendar settings</a></p>
 <section id="task-planning" class="workspace-details" hidden aria-labelledby="task-heading">
 <h2 id="task-heading">Board task</h2><p id="task-identity" style="overflow-wrap:anywhere"></p>
@@ -95,10 +95,10 @@ Promise.all([api("/api/calendars"),api("/api/google-calendar/calendars"),api("/a
   var native=data.calendars.filter(function(calendar){return calendar.kind==="native";});
   var writableGoogle=(google.calendars||[]).filter(function(calendar){return calendar.selected&&calendar.writable;});
   if(!data.canManage){$("event-load-status").textContent="Sign in through Cloudflare Access as a configured owner to edit calendars.";return;}
-  if(!native.length&&!writableGoogle.length){$("event-load-status").textContent="Create a Command Center calendar or select a writable Google calendar in Calendar settings before adding events.";return;}
+  if(!native.length&&!writableGoogle.length){$("event-load-status").textContent="Create a Stremmy calendar or select a writable Google calendar in Calendar settings before adding events.";return;}
   native.forEach(function(calendar){$("event-calendar").add(new Option(calendar.name+(calendar.enabled?"":" (paused)"),calendar.id));});
   if(!taskId||savedEvent)writableGoogle.forEach(function(calendar){$("event-calendar").add(new Option(calendar.name+" · Google Calendar",calendar.id));});
-  if(taskId&&!savedEvent&&!native.length){$("event-load-status").textContent="Create a native Command Center calendar in Calendar settings before scheduling a task. Tasks never write to Google calendars.";return;}
+  if(taskId&&!savedEvent&&!native.length){$("event-load-status").textContent="Create a native Stremmy calendar in Calendar settings before scheduling a task. Tasks never write to Google calendars.";return;}
   $("event-calendar").onchange=calendarProviderChanged;
   (knowledge.spaces||[]).forEach(function(space){$("event-space").add(new Option(space.name,space.id));});
   (knowledge.notes||[]).forEach(function(note){$("event-note").add(new Option(note.title,note.id));});

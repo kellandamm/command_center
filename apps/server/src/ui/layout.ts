@@ -528,7 +528,7 @@ function breadcrumbHtml(opts: {
   const label =
     opts.active === "/"
       ? "Dashboard"
-      : opts.pageTitle.replace(/\s*—\s*Command Center.*/i, "").trim() || "Command Center";
+      : opts.pageTitle.replace(/\s*—\s*Stremmy.*/i, "").trim() || "Stremmy";
   return `<span aria-current="page">${esc(label)}</span>`;
 }
 
@@ -567,8 +567,8 @@ export function page(opts: {
 <aside class="sidebar" aria-label="Main navigation">
   <div class="sidebar-header">
     <a class="sidebar-brand" href="/">
-      <span class="sidebar-logo" aria-hidden="true">CC</span>
-      <span class="sidebar-brand-text"><strong>Command Center</strong><span>command.gobison.io</span></span>
+      <span class="sidebar-logo" aria-hidden="true">S</span>
+      <span class="sidebar-brand-text"><strong>Stremmy</strong><span>command.gobison.io</span></span>
     </a>
   </div>
   <div class="sidebar-content">${sidebarGroups}</div>
@@ -601,7 +601,7 @@ export function page(opts: {
 <link rel="icon" href="/icon-192.png"><link rel="apple-touch-icon" href="/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<title>${esc(agentSectionMeta ? `Agent · ${agentSectionMeta.label} — Command Center` : opts.title)}</title><style>${CSS}${opts.extraCss ?? ""}
+<title>${esc(agentSectionMeta ? `Agent · ${agentSectionMeta.label} — Stremmy` : opts.title)}</title><style>${CSS}${opts.extraCss ?? ""}
 html,body{font-family:Inter,ui-sans-serif,system-ui,sans-serif}
 html[data-sidebar-state=collapsed] .app-shell .sidebar{width:var(--sidebar-width-icon)}
 html[data-sidebar-state=collapsed] .app-shell .sidebar-label,

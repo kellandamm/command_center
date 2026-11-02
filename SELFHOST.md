@@ -1,4 +1,4 @@
-# Self-hosting the command center
+# Self-hosting Stremmy
 
 `apps/server` is a single-container personal dashboard with Notes, Read Later, Spaces, Agent, Bookmarks, Calendar, and a scheduled Daily Briefing. Agent brings Board, Hobie Queue, Wins, Assistant, and Activity into a single tabbed destination. Chrome capture saves selected pages; optional summaries and cited answers use an OpenAI-compatible `/chat/completions` endpoint (including [Command Code Provider API](https://api.commandcode.ai/provider/v1)).
 
@@ -169,7 +169,7 @@ The search accepts JSON either as an array of hits or as `{ results | items | me
 
 Back up the volume to keep Board, Wins, briefings, and personal knowledge. The Notes page can export an ordinary Markdown bundle or a complete JSON backup; JSON imports merge records without overwriting existing entries.
 
-**ZIP import/export (owner login):** Import & export can also move a folder tree as a ZIP of Markdown (Obsidian vaults, Notion Markdown exports, or Mintype-style archives). Top-level folders become Spaces; deeper folders become tags. Attachments under `attachments/` are reported but not stored (Command Center does not host note file attachments). Exports are plaintext—treat ZIP files like any unencrypted backup. Limits are configurable:
+**ZIP import/export (owner login):** Import & export can also move a folder tree as a ZIP of Markdown (Obsidian vaults, Notion Markdown exports, or Mintype-style archives). Top-level folders become Spaces; deeper folders become tags. Attachments under `attachments/` are reported but not stored (Stremmy does not host note file attachments). Exports are plaintext—treat ZIP files like any unencrypted backup. Limits are configurable:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -241,7 +241,7 @@ Questions in the Assistant, a space, or a saved page use the configured LLM and 
 
 ### Calendar workspace
 
-The `/calendar` workspace has mini-month navigation, a period agenda, Day/Week/Month views, a Today shortcut, event search, and color-coded calendar filters. **Settings > Calendars** adds named/color-coded Command Center calendars or existing HTTPS ICS subscriptions. Deployment-managed `ICS_URLS` and `ICS_LOCAL_FILES` continue to work. Private subscription URLs require the encrypted connection vault and are never returned in metadata, errors, or ordinary exports.
+The `/calendar` workspace has mini-month navigation, a period agenda, Day/Week/Month views, a Today shortcut, event search, and color-coded calendar filters. **Settings > Calendars** adds named/color-coded Stremmy calendars or existing HTTPS ICS subscriptions. Deployment-managed `ICS_URLS` and `ICS_LOCAL_FILES` continue to work. Private subscription URLs require the encrypted connection vault and are never returned in metadata, errors, or ordinary exports.
 
 **New event** creates a native event; select a native event and choose **Edit event** to change or delete it. These mutations require a verified owner login, not an admin/machine token. Events support explicit IANA timezones, all-day exclusive end dates, location/description, and optional Note/Space links. Daily, weekly, and monthly repeats require an end date within 366 days. Edits/deletions affect the whole series; monthly overflow dates and nonexistent spring-forward times are skipped, while repeated fall-back times use the earlier occurrence. Timed recurrence preserves the start wall time and elapsed duration. Concurrent edits return a conflict without overwriting the form's draft. Notes links and the shared Calendar/Dashboard/Briefing service use the same native records.
 

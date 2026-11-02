@@ -2,10 +2,10 @@ import { EXCERPT_MAX_UTF8_BYTES, truncateUtf8ToBytesExtensionSource } from "../u
 
 const manifest = {
   manifest_version: 3,
-  name: "Command Center Capture",
+  name: "Stremmy Capture",
   version: "1.0.1",
-  description: "Save the page you are reading to Command Center, and optionally summarize it.",
-  action: { default_title: "Save to Command Center", default_popup: "popup.html" },
+  description: "Save the page you are reading to Stremmy, and optionally summarize it.",
+  action: { default_title: "Save to Stremmy", default_popup: "popup.html" },
   options_page: "options.html",
   permissions: ["activeTab", "scripting", "storage"],
   optional_host_permissions: ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
@@ -52,7 +52,7 @@ for (const [id, summarize] of [["save", false], ["summarize", true]]) {
 }`;
 
 const optionsHtml = `<!doctype html><meta charset="utf-8"><title>Settings</title><style>${style} body{width:auto;max-width:480px}</style>
-<h1>Command Center capture</h1>
+<h1>Stremmy capture</h1>
 <label for="server">Server address</label><input id="server" placeholder="https://command.example.com">
 <label for="token">Capture token</label><input id="token" type="password" autocomplete="off">
 <button id="save">Save settings</button><p id="status" role="status"></p><script src="options.js"></script>`;

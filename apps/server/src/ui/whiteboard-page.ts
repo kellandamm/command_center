@@ -16,7 +16,7 @@ const whiteboardHead = `<link rel="stylesheet" href="/assets/excalidraw/index.cs
 
 export function whiteboardPage(nav?: NavLink[]): string {
   return page({
-    title: "Whiteboard — Command center",
+    title: "Whiteboard — Stremmy",
     active: "/whiteboard",
     nav,
     extraCss: whiteboardCss,

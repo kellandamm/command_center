@@ -4,7 +4,7 @@ import { workspacePage } from "./workspace";
 export function agentQueuePage(nav?: NavLink[]): string {
   return workspacePage({
     title: "Queue",
-    description: "Hobie board tasks and homelab agent work (Command Center queue).",
+    description: "Hobie board tasks and homelab agent work (Stremmy queue).",
     active: "/agent/queue",
     nav,
     actions: '<button id="queue-refresh" type="button" class="ghost">Refresh</button>',

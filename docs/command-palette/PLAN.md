@@ -1,6 +1,6 @@
 # Command palette (Cmd+K) — implementation plan
 
-Global **command palette** for Command Center: fuzzy navigation, quick actions, and search across notes, tasks, bookmarks, meetings (meeting notes), and agent views. **No AI.** Budget PR A is on `main`; palette may surface budget hits only when `budgetAvailable(cfg)` and the shared owner check pass on the server.
+Global **command palette** for Stremmy: fuzzy navigation, quick actions, and search across notes, tasks, bookmarks, meetings (meeting notes), and agent views. **No AI.** Budget PR A is on `main`; palette may surface budget hits only when `budgetAvailable(cfg)` and the shared owner check pass on the server.
 
 **Out of scope:** email triage, agent memory, direct bank connection, natural-language command parsing, MCP tools.
 
