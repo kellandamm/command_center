@@ -1,21 +1,22 @@
 # AI day plan — implementation plan
 
-**AI day plan** for Stremmy (Dayplan-style): build today’s schedule from calendar, Todoist, and Board time blocks; warn on over-capacity; **exactly three** editable must-dos; scheduled breaks; end-of-day shutdown tied to existing review data. **Budget, subscriptions, and home-vault data must never reach the LLM.** Reuses `chatCompletion` (`apps/server/src/llm/provider.ts`), calendar snapshot/planning, Todoist client, and `buildShutdownReview` (`apps/server/src/briefing/shutdown-service.ts`).
+**AI day plan** for Stremmy (Dayplan-style): build today’s schedule from calendar, Todoist, and Board time blocks; warn on over-capacity; **up to three** editable must-dos; scheduled breaks; end-of-day shutdown tied to existing review data. **Budget, subscriptions, and home-vault data must never reach the LLM.** Reuses `chatCompletion` (`apps/server/src/llm/provider.ts`), calendar snapshot + block matching (same `eventId` join as `buildShutdownReview`), Todoist `partitionTodayAndOverdue`, and shutdown review shapes.
 
 **Out of scope:** new LLM provider, MCP tools, ntfy push of plans, auto-writing Todoist/Board without explicit user actions, budget/subscription/vault surfaces.
 
-**Cross-cutting:** prefer **no new env vars**; **`cfg.tz`** for all day boundaries; shadcn gray + royal blue (`--primary`) + orange warnings (`--warning` / `dashboard-status-dot--orange`).
+**Cross-cutting:** **no new env vars**; **`cfg.tz`** for all day boundaries (including shutdown paths — see PR1); shadcn gray + royal blue (`--primary`) + orange warnings (`--warning` / `dashboard-status-dot--orange`).
 
-**Build order:** PR-sized steps at end (store → planner → LLM → API → page → widget).
+**Build order:** PR-sized steps at end (**core → API → page → widget → LLM last**; deterministic planner covers the full spec without a model).
 
 ---
 
 ## User flow
 
-1. **Morning (owner):** Open dashboard **Day plan** widget or **`/day-plan`**. Server loads or generates plan for `dayKey(now, cfg.tz)`. If no saved plan or user clicks **Refresh plan**, gather sources → optional LLM rank/schedule → persist. Widget shows capacity bar, three must-dos, next meeting; link **Open full plan**.
-2. **Edit:** On `/day-plan`, user toggles must-do completion, swaps a must-do from ranked alternates, adjusts break times (within working window), edits working hours for this day only. Saves via POST (no LLM).
-3. **During day:** Widget refreshes on load (no WebSocket). Over-capacity banner uses **orange** (`var(--warning)`); lists deterministic **defer suggestions** (lowest-priority / unscheduled tasks first).
-4. **Shutdown:** Same page section **End of day** (or link to `/briefing` shutdown tab): `GET /api/briefing/shutdown` + optional reflection POST (existing). Day plan marks rolled items: open must-dos + unfinished scheduled tasks → **`rolledToTomorrow`** on save or auto at day boundary.
+1. **Morning (owner):** Open dashboard **Day plan** widget or **`/day-plan`**. Server loads plan for `dayKey(now, cfg.tz)`. On **first owner load of the day** with no saved plan, run **deterministic generate only** (no LLM). Widget shows capacity bar, must-dos (1–3), next meeting; link **Open full plan**.
+2. **Edit:** On `/day-plan`, user toggles must-do completion (UI-only v1), swaps a must-do from **alternates** returned on `GET /api/day-plan`, adjusts break times (within working window), edits working hours for this day only. Saves via PUT (no LLM).
+3. **AI refresh:** **Generate with AI** button only when `llmConfigured(cfg)` — never on first load. **Refresh plan** re-runs deterministic planner only.
+4. **During day:** Widget refreshes on page load (no WebSocket). Over-capacity banner uses **orange**; lists deterministic **defer suggestions**.
+5. **Shutdown:** Same page section **End of day** (or link to `/briefing` shutdown tab): `GET /api/briefing/shutdown` + optional reflection POST (existing). **`rolledToTomorrow`** is computed **at read time** on `GET /api/day-plan` (open must-dos + unfinished scheduled items for today) — no day-boundary cron or background job.
 
 Non-owners: no nav tab, no widget in catalog, all `/api/day-plan/*` → **403** `OWNER_ACTION_FORBIDDEN`.
 
@@ -23,15 +24,19 @@ Non-owners: no nav tab, no widget in catalog, all `/api/day-plan/*` → **403** 
 
 ## Data sources (exact fields read)
 
+Gather in `day-plan/gather.ts` with **explicit field picks** — never spread `planning().cards` (`workspace.ts` spreads `...card` and would pull `notes`).
+
 | Source | API / module | Fields used in planner (server) | Never sent to LLM |
 |--------|----------------|----------------------------------|-------------------|
-| Calendar | `CalendarWorkspace.snapshot({ rangeStart, rangeEnd, limit: 500 })` | `events[]`: `summary`, `start`, `end`, `allDay`, `timezone` (fallback `cfg.tz`), `eventId`; block link via `planning().blocks` → `taskId`, block `start`/`end`/`durationMinutes` | `description`, `location`, feed names/URLs, Google ids, `noteId`, `spaceId` |
-| Board | `BoardStore.list()` + `planning().cards` | `id`, `title`, `column`, `estimatedMinutes`, `dueDate`, `priority`, `scheduled` (from planning) | `notes`, `hobieTaskId`, internal ids in UI only |
-| Todoist | `listTasks` when `todoistConfigured(cfg)` | `id`, `content`, `priority`, `due.date` / `due.datetime` (for due-day only) | `description`, `url`, tokens |
-| Settings | `SettingsStore` (existing) | Optional future: none in v1 | — |
+| Calendar | `CalendarWorkspace.snapshot({ rangeStart, rangeEnd, limit: 500 })` | Timed `events[]`: `summary`, `start`, `end`, `allDay`, `timezone`, `eventId`. **All-day events:** UI labels only — **excluded from capacity and LLM meetings list**. Board blocks: match snapshot rows to `planning().blocks` by **`eventId`** (same loop as `shutdown-service.ts` ~277–286), then read block `taskId` — **not** `durationMinutes` on block defs (occurrence `start`/`end` from snapshot). | `description`, `location`, feed names/URLs, raw Google/`eventId` strings, attendees, `noteId`, `spaceId` |
+| Board | `BoardStore.list()` + scheduled flag from block join above | `id`, `title`, `column`, `estimatedMinutes`, `dueDate`, `priority`; include in capacity only if **`dueDate <= day`** and column ≠ `Done` | `notes`, `hobieTaskId` |
+| Todoist | `listTasks` + `partitionTodayAndOverdue(open, now, cfg.tz)` | **`overdue` + `today` slices only** for capacity and must-do pool: `id`, `content`, `priority`, due day | `description`, `url`, tokens |
+| Settings | `SettingsStore` (existing) | None in v1 | — |
 | Shutdown | `buildShutdownReview` (shutdown section only) | Same public shapes as `/api/briefing/shutdown` response | Full review already sanitized for reflection POST separately |
 
 **Excluded modules (must not import):** `budget/*`, subscription rollup paths, `home-vault` / vault blobs. `day-plan/excluded.ts` documents policy (mirror `budget/excluded.ts`).
+
+**PR1 note:** Today `buildShutdownReview` / `parseClientShutdownReview` hard-code `SHUTDOWN_TZ = "America/Chicago"` (`shutdown-service.ts` ~20, 87, 171). When extracting `day-duration.ts`, **parameterize shutdown on `cfg.tz`** in the same small follow-up commit within PR1 (day-plan must not import Chicago-only paths).
 
 ---
 
@@ -39,19 +44,21 @@ Non-owners: no nav tab, no widget in catalog, all `/api/day-plan/*` → **403** 
 
 ### When LLM runs
 
-- **Only** on explicit **Generate with AI** or first-time **Refresh plan** when `llmConfigured(cfg)`; otherwise **deterministic planner only**.
+- **Only** on explicit **Generate with AI** when `llmConfigured(cfg)` — not on first load, not on **Refresh plan**.
 - Rate limit: **6 generations / hour / owner** (in-memory, like notes Q&A pattern).
 
 ### Input allowlist (exact JSON keys sent as `user` message)
 
-Built only by `buildDayPlanLlmInput()` in `day-plan/llm-input.ts`, validated with Zod before `chatCompletion`:
+1. `buildDayPlanLlmInput()` maps sources with **per-field literals** (no object spread from board/calendar/todoist rows).
+2. **`DayPlanLlmInputSchema.strict()`** with **`.strict()` on every nested object** (`capacity`, each meeting, each task).
+3. **`generate.ts` call site:** `const payload = DayPlanLlmInputSchema.parse(buildDayPlanLlmInput(...))` then **only** `JSON.stringify(payload)` as the user message — no other keys, no pre-parse object.
 
 ```ts
 {
-  day: string;           // YYYY-MM-DD
-  timezone: string;      // cfg.tz
-  workStart: string;     // HH:mm
-  workEnd: string;       // HH:mm
+  day: string;
+  timezone: string;
+  workStart: string;
+  workEnd: string;
   capacity: {
     availableMinutes: number;
     meetingMinutes: number;
@@ -59,12 +66,17 @@ Built only by `buildDayPlanLlmInput()` in `day-plan/llm-input.ts`, validated wit
     unscheduledTaskMinutes: number;
     overByMinutes: number;
   };
-  meetings: Array<{ id: string; title: string; start: string; end: string; allDay: boolean }>;
+  meetings: Array<{
+    ref: string;           // opaque "m1" | "m2" — server map only; NOT Google eventId (base64 embeds calendar id, often email — google.ts:56-57)
+    title: string;
+    start: string;
+    end: string;
+  }>;
   tasks: Array<{
     id: string;
     source: "board" | "todoist";
     title: string;
-    priority: number;      // Todoist 1–4; board mapped low=1 normal=2 high=3
+    priority: number;
     dueDay: string | null;
     estimateMinutes: number | null;
     scheduled: boolean;
@@ -72,31 +84,35 @@ Built only by `buildDayPlanLlmInput()` in `day-plan/llm-input.ts`, validated wit
 }
 ```
 
-**System prompt:** Return strict JSON only; pick **exactly 3** `mustDo` task refs, ordered; suggest `breaks` as `{ startLocal: "HH:mm", minutes: number }[]` inside working window; optional one-line `theme` (max 120 chars). No markdown.
+Timed meetings only (`allDay` omitted from LLM payload entirely).
+
+**System prompt:** Return strict JSON only; pick **up to 3** `mustDo` task refs (fewer if input has fewer tasks), ordered; suggest `breaks` in free gaps; optional `theme` (max 120 chars). No markdown.
 
 ### Output schema (parsed + clamped)
 
 ```ts
 {
-  mustDo: Array<{ source: "board" | "todoist"; id: string }>;  // length 3
-  breaks: Array<{ startLocal: string; minutes: number }>;        // max 6, minutes 5–30
+  mustDo: Array<{ source: "board" | "todoist"; id: string }>;  // length 1–3
+  breaks: Array<{ startLocal: string; minutes: number }>;
   theme?: string;
-  deferTaskIds?: Array<{ source: "board" | "todoist"; id: string }>; // optional hints only
+  deferTaskIds?: Array<{ source: "board" | "todoist"; id: string }>;
 }
 ```
 
-Post-parse: merge with deterministic schedule (meetings fixed); if LLM returns invalid JSON or wrong must-do count → **fallback** (below). Never trust LLM for capacity numbers.
+**Post-parse validation:** Drop/reject any `mustDo` / `deferTaskIds` entry whose `(source, id)` is **not** in the input `tasks` list; if zero valid must-dos remain or JSON invalid → **deterministic fallback**. Never trust LLM for capacity numbers.
 
 ### Enforcement + leak test
 
 | Layer | Location |
 |-------|----------|
-| Allowlist builder | `day-plan/llm-input.ts` — only mapped fields |
-| Zod parse in | `day-plan/llm-input.ts` `DayPlanLlmInputSchema` |
-| Zod parse out | `day-plan/llm-output.ts` |
-| Call site | `day-plan/generate.ts` — only passes `JSON.stringify(buildDayPlanLlmInput(...))` |
-| CI guard | `day-plan/excluded.ts` + grep test (no `budget/`, `subscriptions`, vault imports) |
-| **Leak test** | `day-plan-llm-allowlist.test.ts`: seed BudgetStore payee, subscription label, vault filename into data dir; build input with planted strings in **disallowed** fields (`card.notes`, `task.description`, etc.); assert `JSON.stringify(input)` and mock `chatCompletion` messages contain **none** of `PLANT_*` constants; assert disallowed top-level keys absent via schema strict mode |
+| Field mapper | `day-plan/llm-input.ts` — explicit picks only |
+| Zod in | `DayPlanLlmInputSchema.strict()` nested strict objects |
+| Zod out | `day-plan/llm-output.ts` |
+| Call site | `day-plan/generate.ts` — **`chatCompletion` receives only `DayPlanLlmInputSchema.parse(...)`** |
+| CI guard | `day-plan/excluded.ts` + grep (no `budget/`, subscriptions, vault) |
+| **Leak test** | `day-plan-llm-allowlist.test.ts`: plant `PLANT_*` in **source objects the gatherer reads** — `card.notes`, `task.description`, event `description`/`location`, fake extra keys on cards — then run generate with **mock `fetch`**. Assert **`JSON.parse` of the POST body `messages` user content** contains no `PLANT_*` and matches strict schema keys only. Also seed budget/subscription/vault strings elsewhere to prove builder never reads those modules. |
+
+**Logging:** Do not log raw LLM error bodies (`provider.ts` ~33 exposes up to 200 chars in thrown `Error` — day-plan catch paths log **status/code only**, same as budget redact discipline).
 
 ---
 
@@ -104,60 +120,58 @@ Post-parse: merge with deterministic schedule (meetings fixed); if LLM returns i
 
 **Deterministic planner** (`day-plan/planner.ts`), no model:
 
-1. Fixed timeline: all-day markers as labels; timed meetings from snapshot; Board blocks from `planning().blocks` occurrences today.
-2. **Must-dos (3):** score = due today/overdue + priority + (scheduled ? 0 : +1) + estimate fit; top 3 distinct tasks.
-3. **Breaks:** insert **15 min** at midpoint of working window if `(available - meeting - blocked) >= 120` min; else **10 min** once after longest meeting gap if gap ≥ 45 min (reuse focus defaults conceptually: 25/5 panel uses client localStorage — server uses fixed template).
-4. **Defer list:** tasks not in must-dos, sorted by lowest score, until `unscheduledTaskMinutes <= available slack`.
-5. Persist `generatedBy: "deterministic" | "llm"` on plan record.
+1. **Timeline:** all-day events as non-capacity labels; timed meetings from snapshot (clipped to work window); board work blocks from snapshot occurrences joined to blocks by `eventId`.
+2. **Must-dos:** up to **3** from scored pool (today/overdue Todoist + board due ≤ day); fewer if pool smaller.
+3. **Breaks:** choose **nearest free gap ≥ 15 min** within the work window that does **not** overlap clipped meetings/blocks; place **15 min** break there. If no gap ≥ 15 min, omit break row (do not place inside a meeting or at blind “midpoint” of window).
+4. **Defer list:** remaining pool tasks by lowest score.
+5. Persist `generatedBy: "deterministic" | "llm"`.
 
 ---
 
 ## Capacity math
 
-All in **`cfg.tz`** using shared helper extracted from shutdown: **`durationMsOnDay`** → `apps/server/src/calendar/day-duration.ts` (move from `shutdown-service.ts`, re-export for shutdown).
+All in **`cfg.tz`** via **`durationMsOnDay`** in `apps/server/src/calendar/day-duration.ts` (extract from `shutdown-service.ts`, re-export for shutdown after **`cfg.tz` parameterization**).
 
-- **Working window:** default **`09:00`–`17:00`** local (same defaults as calendar event preview, `calendar/workspace.ts`). Per-day override stored on plan row (`work_start`, `work_end`).
-- **`availableMinutes`:** minutes between workStart and workEnd on `day`, minus **weekend optional**: v1 treats Sat/Sun as **0 available** unless user overrides window (Kellan question).
-- **`meetingMinutes`:** sum of `durationMsOnDay` for events **without** `taskId` block link.
-- **`blockedTaskMinutes`:** sum for occurrences linked to Board blocks (`planning().blocks`).
-- **`unscheduledTaskMinutes`:** sum of `estimatedMinutes` (or **30** default when null) for open tasks (board not DONE + todoist open) **not** counted in blocked minutes today.
+- **Working window:** default **`09:00`–`17:00`** local (`calendar/workspace.ts` preview defaults). Per-day override on plan row (`work_start`, `work_end`).
+- **`availableMinutes`:** minutes between workStart and workEnd on `day` (weekend default **0** unless override — see open questions).
+- **`meetingMinutes`:** timed, non-block events only: clip each interval to `[workStart, workEnd]`, **merge overlapping** clipped intervals, sum minutes. **Skip all-day.**
+- **`blockedTaskMinutes`:** timed snapshot occurrences with `eventId` matching a `planning().blocks` entry with `taskId`: same clip + merge rules.
+- **`unscheduledTaskMinutes`:** sum estimates for **eligible tasks only**: Todoist **`partitionTodayAndOverdue` → overdue + today**; Board **`dueDate <= day`**, not `Done`, not already counted in blocked minutes. Use `estimatedMinutes` or **30** default when null.
 - **`overByMinutes`:** `max(0, meeting + blocked + unscheduled - available)`.
-- **Warnings:** UI when `overByMinutes > 0` (orange); copy lists top defer suggestions from deterministic rank.
 
-**Tests:** `day-plan-capacity.test.ts` with `TZ=America/Chicago` and `TZ=Asia/Tokyo`; DST spring-forward day (Chicago: no 2:30 AM block); fall-back ambiguous hour handled by using UTC instants from calendar layer.
+**Tests:** `day-plan-capacity.test.ts` — Chicago/Tokyo, DST edges, all-day excluded, overlap merge, overdue-only Todoist, clip-to-window.
 
 ---
 
 ## Storage
 
-**File:** `{dataDir}/day-plan.sqlite` — `DayPlanStore.open` like `wins/store.ts` / `goals` pattern (`DatabaseSync`, migrations).
+**File:** `{dataDir}/day-plan.sqlite` — `DayPlanStore.open` like `wins/store.ts` (`DatabaseSync`, migrations).
 
 | Table | Columns |
 |-------|---------|
-| `plan_days` | `day` PK, `timezone`, `work_start`, `work_end`, `generated_at`, `generated_by`, `theme`, `capacity_json`, `llm_theme` |
+| `plan_days` | `day` PK, `timezone`, `work_start`, `work_end`, `generated_at`, `generated_by`, `theme` (nullable), `capacity_json` |
 | `plan_items` | `id`, `day`, `kind` (`meeting` \| `block` \| `break` \| `task`), `source`, `ref_id`, `title`, `start_iso`, `end_iso`, `sort_order`, `completed_at` |
-| `plan_must_dos` | `day`, `slot` (0–2), `source`, `ref_id`, `user_locked` (bool — user picked alternate) |
+| `plan_must_dos` | `day`, `slot` (0–2), `source`, `ref_id`, `user_locked` |
 
-Migration v1 in `day-plan/db.ts`. No blob storage. JSON in `capacity_json` is derived fields only (no secrets).
+Migration v1 in `day-plan/db.ts`. `capacity_json` holds derived numbers only.
 
-User key: single-owner deployment (Kellan); same as goals — **owner-only module**, no per-email row required in v1; if multi-owner later, add `owner_email` column (open question).
+User key: owner-only v1; optional `owner_email` later if multi-owner.
 
 ---
 
 ## API routes and auth
 
-`isDayPlanOwner(who)` = `who.owner === true && Boolean(who.email)` (same as `isGoalsOwner` in `docs/goals/PLAN.md`).
+`isDayPlanOwner(who)` = `who.owner === true && Boolean(who.email)` — **CF-verified owner** (prod behind Cloudflare Access). **Do not widen** to `admin-token` or `canManageSharedServerState` for day-plan routes.
 
 | Method | Path | Auth | Behavior |
 |--------|------|------|----------|
-| GET | `/api/day-plan?day=YYYY-MM-DD` | `isDayPlanOwner` | Load plan or 404 `{ ready: false }` |
-| POST | `/api/day-plan/generate` | `isDayPlanOwner` | Body `{ day?, useLlm?: boolean }`; gather + plan + persist |
-| PUT | `/api/day-plan` | `isDayPlanOwner` | User edits must-dos, breaks, completions, work window |
-| GET | `/api/day-plan/sources` | `isDayPlanOwner` | Read-only gathered tasks/meetings for UI (no LLM) |
+| GET | `/api/day-plan?day=YYYY-MM-DD` | `isDayPlanOwner` | Plan + **alternates** (ranked tasks not in must-dos) + **`rolledToTomorrow`** computed at read time; `{ ready: false }` if none |
+| POST | `/api/day-plan/generate` | `isDayPlanOwner` | Body `{ day?, useLlm?: boolean }` — `useLlm: true` only from UI **Generate with AI** |
+| PUT | `/api/day-plan` | `isDayPlanOwner` | Edits must-dos, breaks, completions, work window |
 
-Wire in `http.ts` near briefing routes. JSON **`cache-control: no-store`**. CSRF: `csrfOk` + `x-ah`. Responses: no Todoist token, no ICS URLs, no LLM keys, no raw card `notes`.
+Wire in `http.ts` near briefing routes. JSON **`cache-control: no-store`**. CSRF: `csrfOk` + `x-ah`. No secrets in responses.
 
-Shutdown: **reuse** `GET /api/briefing/shutdown` (today `canManageSharedServerState` — day-plan page calls it for owner; optional follow-up to align shutdown GET with owner-only — open question).
+**Shutdown (related):** Day-plan page uses existing shutdown APIs. Recommended: tighten **`GET /api/briefing/shutdown`** to **verified owner email** (match reflection POST, `daily-briefing/routes.ts` ~47) in a **small separate PR** — see open questions.
 
 ---
 
@@ -165,18 +179,16 @@ Shutdown: **reuse** `GET /api/briefing/shutdown` (today `canManageSharedServerSt
 
 | Surface | Size / layout | Why |
 |---------|----------------|-----|
-| **Dashboard widget** `ai-day-plan` | Default **`W`** (6×1); catalog **Agenda**; status dot **blue**; over-capacity → card subtitle **orange** | At-a-glance must-dos + capacity on revamp grid (`dashboard-layout/widgets.ts`, bump `CURRENT_REGISTRY_EPOCH`) |
-| **Page** `/day-plan` | Full `pageHeader`, timeline list, must-do editor, break rows, shutdown section | Editing three must-dos and breaks needs space; drawer alone is too cramped for timeline + defer list |
+| **Dashboard widget** `ai-day-plan` | Default **`W`**; **`ownerOnly: true`**; catalog **Agenda**; over-capacity subtitle **orange** | At-a-glance on revamp grid; hidden from non-owner catalog/layout |
+| **Page** `/day-plan` | Timeline, must-do editor, breaks, shutdown section | Full editing surface |
 
-**Not drawer-only:** Quick-add drawer stays for capture; day plan is not a transient overlay.
+**Registry epoch:** bump `CURRENT_REGISTRY_EPOCH` in `widgets.ts`; extend **`widgetIdsIntroducedAfterEpoch`** to skip **`ownerOnly`** widgets for non-owner sessions **generally** (same gate as `showServiceStatus` — not budget-only).
 
-**Mobile 375px:** Single column; timeline stacks; must-dos as full-width cards; capacity bar full width (same as dashboard grid `375px` tests in `docs/dashboard-revamp/PLAN.md`).
+**Mobile 375px:** Single column; full-width capacity bar (see `docs/dashboard-revamp/PLAN.md`).
 
-**Nav:** Sidebar tab **`day-plan`** (workspace group), **`visibleNavTabs` only when `who.owner`** (budget tab pattern in `http.ts`).
+**Nav:** Tab **`day-plan`**, owner-only visibility (`http.ts` budget pattern).
 
-**Theme:** `page()`, `statCard`, `button()` from `components.ts`; warnings use `--warning`, actions/focus `--primary`.
-
-**Widget body:** server-rendered fragment in `widgets/ai-day-plan.ts` (pattern `today-agenda.ts`); no secrets in HTML.
+**Widget body:** `widgets/ai-day-plan.ts`; no secrets in HTML.
 
 ---
 
@@ -184,11 +196,12 @@ Shutdown: **reuse** `GET /api/briefing/shutdown` (today `canManageSharedServerSt
 
 | Item | Needed? |
 |------|---------|
-| New env vars | **No** — uses existing `TODOIST_API_TOKEN`, `LLM_*`, Google/ICS via existing calendar config |
+| New env vars | **No** |
+| Feature flags | **No** (`DAY_PLAN_ENABLED` not used) |
 | New npm deps | **No** |
-| Auth | `OWNER_EMAILS` + CF Access (existing) |
-| Data migration | Create `day-plan.sqlite` on first open |
-| Server deploy | Normal app deploy; no compose change |
+| Auth | Existing `OWNER_EMAILS` + CF Access |
+| Data migration | `day-plan.sqlite` on first open |
+| Server deploy | Normal app deploy |
 
 ---
 
@@ -196,63 +209,70 @@ Shutdown: **reuse** `GET /api/briefing/shutdown` (today `canManageSharedServerSt
 
 **Unit**
 
-- `day-plan-capacity.test.ts` — Chicago/Tokyo, DST edge, over-capacity math
-- `day-plan-planner.test.ts` — deterministic must-dos, breaks, defer ordering
-- `day-plan-llm-allowlist.test.ts` — allowlist keys only; **PLANT leak failure**
-- `day-plan-store.test.ts` — migrations, must-do slot uniqueness
-- `day-plan-owner.test.ts` — non-owner 403 on all routes
-- `day-plan-excluded.test.ts` — no budget/subscriptions/vault imports (grep + `excluded.ts`)
+- `day-plan-capacity.test.ts` — clip, merge, all-day skip, partitionTodayAndOverdue, board due filter
+- `day-plan-planner.test.ts` — ≤3 must-dos, break in free gap, block join by `eventId`
+- `day-plan-llm-allowlist.test.ts` — **mock fetch body** + planted source fields; strict schema
+- `day-plan-store.test.ts`
+- `day-plan-owner.test.ts` — **403 on every route** for: **admin-token**, **service-token**, **non-owner email**, **`OWNER_EMAILS` empty** (insecure mode visitor); owner email **200**
+- `day-plan-excluded.test.ts`
 
-**Browser** (`test:dashboard-browser`)
+**Browser:** `day-plan.browser.ts`; owner widget add from drawer.
 
-- `day-plan.browser.ts` — owner: generate, edit must-do, over-capacity orange, 375px layout
-- Widget: add **Day plan** from drawer, persists in layout v3
-
-**Revert guards**
-
-- Extend `budget-subscriptions-guards.test.ts` or parallel: `day-plan/*` must not import budget/subscriptions/vault
-- Snapshot: LLM mock records message keys only (no raw task descriptions)
+**Revert guards:** `day-plan/*` no budget/subscriptions/vault imports.
 
 ---
 
 ## Rollout
 
 1. Merge plan PR (docs only).
-2. Ship store + deterministic planner behind flag **`DAY_PLAN_ENABLED=1`** optional — prefer **no flag**: owner-only routes safe to ship dark until nav enabled.
-3. Enable nav + widget registry epoch for owner sessions.
-4. Verify LLM off → deterministic plan still works in prod.
-5. Monitor logs: no `todoist` token substrings (reuse budget redact patterns for errors).
+2. Ship **PR1 core** (deterministic) — owner routes safe without nav until PR4.
+3. Enable nav + widget epoch (**ownerOnly** append rules).
+4. Prod without `LLM_*` → deterministic only.
+5. Error logs: no token/LLM body substrings.
 
 ---
 
 ## Open questions (Kellan)
 
-1. **Weekends:** Should default `availableMinutes` be **zero** on Sat/Sun unless the user sets a custom work window, or always use 09:00–17:00?
-2. **Todoist descriptions:** Confirm **excluded** from LLM (plan assumes yes); any field from Todoist besides title/priority/due needed for ranking?
-3. **Shutdown GET auth:** Keep **`canManageSharedServerState`** for `/api/briefing/shutdown` (admin token OK) or restrict shutdown + day-plan to **verified owner email only**?
-4. **Must-do completion:** Checking a must-do on the plan **UI-only**, or sync completion to Todoist/Board (with confirm)?
-5. **Auto-generate:** Run deterministic plan **once at first dashboard load** each day, or require explicit **Generate** every morning?
-6. **Break defaults:** OK with server template (15 min midpoint / 10 min gap) vs reading Focus panel localStorage (client-only today)?
+Each item keeps the product question; **recommended default (pending Kellan)** is what we implement until answered.
+
+1. **Weekends:** Should default `availableMinutes` be **zero** on Sat/Sun unless the user sets a custom work window, or always use 09:00–17:00?  
+   **Recommended default (pending Kellan):** **0h** on Sat/Sun unless user overrides work window on that day.
+
+2. **Todoist descriptions:** Confirm excluded from LLM; any other Todoist fields for ranking?  
+   **Recommended default (pending Kellan):** **Excluded** — LLM and planner use **title (`content`), priority, due day only**.
+
+3. **Shutdown GET auth:** Keep `canManageSharedServerState` or owner email only?  
+   **Recommended default (pending Kellan):** **`GET /api/briefing/shutdown` requires verified owner email** (like reflection POST) — implement as **small separate PR**, not bundled with day-plan feature PRs.
+
+4. **Must-do completion:** UI-only or sync Todoist/Board?  
+   **Recommended default (pending Kellan):** **UI-only in v1** (plan `completed_at` only).
+
+5. **Auto-generate:** First load vs explicit Generate?  
+   **Recommended default (pending Kellan):** **Deterministic plan on first owner load of the day**; **LLM only on “Generate with AI” click**.
+
+6. **Break defaults:** Server template vs Focus localStorage?  
+   **Recommended default (pending Kellan):** **Server break template** (free gap ≥ 15 min, no Focus localStorage read).
 
 ---
 
 ## PR-sized build sequence
 
-1. **PR1 — Core:** `day-duration` extract, `DayPlanStore`, gather service, deterministic planner, capacity tests, excluded module + grep test.
-2. **PR2 — LLM:** `llm-input` / `llm-output`, `generate.ts`, allowlist leak test, fallback integration tests.
-3. **PR3 — API:** routes, owner auth, HTTP wiring, owner 403 tests.
-4. **PR4 — Page:** `day-plan-page.ts`, nav tab (owner), shutdown section embed, browser test.
-5. **PR5 — Widget:** `widgets/ai-day-plan.ts`, registry epoch + default layout append, dashboard browser smoke.
+1. **PR1 — Core:** `day-duration.ts` extract + **shutdown `cfg.tz` fix**; `DayPlanStore`; `gather.ts` (explicit fields, `eventId` block join); deterministic planner + capacity tests; `excluded.ts` + grep.
+2. **PR2 — API:** routes, `isDayPlanOwner`, read-time `rolledToTomorrow` + alternates on GET, owner matrix tests.
+3. **PR3 — Page:** `day-plan-page.ts`, nav (owner), shutdown embed, browser test.
+4. **PR4 — Widget:** `ai-day-plan` **`ownerOnly: true`**, registry epoch + **general `ownerOnly` epoch skip**, dashboard smoke.
+5. **PR5 — LLM last:** strict allowlist, output validation, mock-fetch leak test, **Generate with AI** only.
 
 ---
 
 ## Reference paths
 
-- Calendar: `apps/server/src/calendar/workspace.ts` (`snapshot`, `planning`)
-- Shutdown: `apps/server/src/briefing/shutdown-service.ts`
-- LLM: `apps/server/src/llm/provider.ts`, `apps/server/src/quick-add/parse.ts` (JSON extract pattern)
-- Todoist: `apps/server/src/todoist/client.ts`
+- Calendar: `apps/server/src/calendar/workspace.ts`, `calendar/google.ts` (opaque ids)
+- Shutdown: `apps/server/src/briefing/shutdown-service.ts` (`eventId` ↔ blocks)
+- LLM: `apps/server/src/llm/provider.ts`, `apps/server/src/quick-add/parse.ts`
+- Todoist: `partitionTodayAndOverdue` in `apps/server/src/todoist/client.ts`
 - Board: `apps/server/src/board/store.ts`, `types.ts`
-- Dashboard: `apps/server/src/dashboard-layout/widgets.ts`, `docs/dashboard-revamp/PLAN.md`
+- Dashboard: `apps/server/src/dashboard-layout/widgets.ts` (`ownerOnly`, epoch append)
 - Theme: `apps/server/src/ui/theme-tokens.ts`
-- Privacy precedent: `apps/server/test/budget-privacy.test.ts`, `budget/excluded.ts`
+- Privacy: `apps/server/test/budget-privacy.test.ts`, `budget/excluded.ts`
