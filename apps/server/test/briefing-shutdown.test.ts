@@ -13,7 +13,7 @@ import { SettingsStore } from "../src/settings";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 import {
   buildShutdownReview,
-  completedOnChicagoDay,
+  completedOnDay,
   dayRangeIso,
   generateShutdownReflection,
   parseClientShutdownReview,
@@ -82,13 +82,20 @@ async function harness(
 
 const authz = { authorization: `Bearer ${TOKEN}`, "x-ah": "1" };
 
-test("shutdown: Chicago completion day boundaries under TZ=UTC", () => {
+test("shutdown: completion day boundaries use explicit timezone", () => {
   const day = "2026-10-14";
-  assert.equal(completedOnChicagoDay("2026-10-15T04:30:00.000Z", day), true);
-  assert.equal(completedOnChicagoDay("2026-10-15T05:30:00.000Z", day), false);
-  const range = dayRangeIso(day, SHUTDOWN_TZ);
+  const tz = "America/Chicago";
+  assert.equal(completedOnDay("2026-10-15T04:30:00.000Z", day, tz), true);
+  assert.equal(completedOnDay("2026-10-15T05:30:00.000Z", day, tz), false);
+  const range = dayRangeIso(day, tz);
   assert.equal(range.since, "2026-10-14T05:00:00.000Z");
   assert.equal(range.until, "2026-10-15T05:00:00.000Z");
+});
+
+test("shutdown: completedOnDay respects cfg.tz not Chicago when tz differs", () => {
+  const day = "2026-10-15";
+  assert.equal(completedOnDay("2026-10-15T04:30:00.000Z", day, "UTC"), true);
+  assert.equal(completedOnDay("2026-10-15T04:30:00.000Z", day, "America/Chicago"), false);
 });
 
 test("todoist: listCompletedTasks uses API v1 by_completion_date with cursor", async () => {
@@ -260,7 +267,7 @@ test("shutdown: Todoist open failure still returns completed tasks", async () =>
 });
 
 test("shutdown: parseClientShutdownReview rejects malformed payloads", () => {
-  assert.equal(parseClientShutdownReview({ review: { done: {}, unfinished: {} } }), null);
+  assert.equal(parseClientShutdownReview({ review: { done: {}, unfinished: {} } }, SHUTDOWN_TZ), null);
   const valid = {
     zone: SHUTDOWN_TZ,
     day: "2026-10-14",
@@ -274,8 +281,8 @@ test("shutdown: parseClientShutdownReview rejects malformed payloads", () => {
     tomorrowPreview: { events: [], tasksDue: [] },
     errors: {},
   };
-  assert.ok(parseClientShutdownReview({ review: valid }));
-  assert.equal(parseClientShutdownReview({ review: { ...valid, time: { calendarHours: "bad", blockedTaskHours: 0 } } }), null);
+  assert.ok(parseClientShutdownReview({ review: valid }, SHUTDOWN_TZ));
+  assert.equal(parseClientShutdownReview({ review: { ...valid, time: { calendarHours: "bad", blockedTaskHours: 0 } } }, SHUTDOWN_TZ), null);
 });
 
 test("shutdown: calendar planning failure is isolated", async () => {
@@ -395,7 +402,7 @@ test("shutdown: reflection only when POST is called", async () => {
   }
 });
 
-test("shutdown API: GET canManage; reflection requires owner not admin token", async () => {
+test("shutdown API: GET and reflection require CF-verified owner", async () => {
   const keys = await createTestCfAccessJwt();
   const locked = await harness(
     { OWNER_EMAILS: "owner@example.com", CF_ACCESS_TEAM_DOMAIN: TEST_CF_TEAM, CF_ACCESS_AUD: TEST_CF_AUD },
@@ -408,16 +415,29 @@ test("shutdown API: GET canManage; reflection requires owner not admin token", a
     const denied = await fetch(`${locked.base}/api/briefing/shutdown`, { headers: visitorHeaders });
     assert.equal(denied.status, 403);
     const adminGet = await fetch(`${locked.base}/api/briefing/shutdown`, { headers: authz });
-    assert.equal(adminGet.status, 200);
+    assert.equal(adminGet.status, 403);
+    const serviceJwt = await keys.signServiceTokenJwt("svc-bot");
+    const serviceGet = await fetch(`${locked.base}/api/briefing/shutdown`, {
+      headers: { "cf-access-jwt-assertion": serviceJwt, "x-ah": "1" },
+    });
+    assert.equal(serviceGet.status, 403);
     const adminReflect = await fetch(`${locked.base}/api/briefing/shutdown/reflection`, {
       method: "POST",
       headers: authz,
-      body: JSON.stringify({ review: (await adminGet.json()).review }),
+      body: JSON.stringify({ review: {} }),
     });
 
     assert.equal(adminReflect.status, 403);
   } finally {
     await locked.close();
+  }
+
+  const emptyOwners = await harness({ OWNER_EMAILS: "", ALLOW_INSECURE_NO_AUTH: "1", ADMIN_TOKEN: "" }, false);
+  try {
+    const visitorGet = await fetch(`${emptyOwners.base}/api/briefing/shutdown`, { headers: { "x-ah": "1" } });
+    assert.equal(visitorGet.status, 403);
+  } finally {
+    await emptyOwners.close();
   }
 
   const ownerHarness = await harness({ OWNER_EMAILS: "owner@example.com" }, true);
