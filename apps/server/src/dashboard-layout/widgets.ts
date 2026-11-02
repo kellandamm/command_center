@@ -54,13 +54,13 @@ const defs: WidgetDefinition[] = [
   { id: "tasks", title: "Tasks", category: "Productivity", statusDot: "blue", defaultSize: "W", panelId: "tasks", kind: "panel", catalog: true },
   { id: "notes", title: "Notes", category: "Productivity", statusDot: "blue", defaultSize: "W", panelId: "notes", kind: "panel", catalog: true },
   { id: "focus", title: "Focus", category: "Productivity", statusDot: "blue", defaultSize: "S", panelId: "focus", kind: "panel", catalog: false, drawerExclude: true },
-  { id: "attention", title: "Attention", category: "Work", statusDot: "orange", defaultSize: "L", panelId: "attention", kind: "panel", catalog: true },
+  { id: "attention", title: "Attention", category: "Work", statusDot: "muted", defaultSize: "L", panelId: "attention", kind: "panel", catalog: true },
   { id: "heatmap", title: "Heatmap", category: "Work", statusDot: "blue", defaultSize: "S", panelId: "heatmap", kind: "panel", catalog: true },
   { id: "launchpad", title: "Bookmarks", category: "Work", statusDot: "blue", defaultSize: "W", panelId: "launchpad", kind: "panel", catalog: true },
   { id: "activity", title: "GitHub activity", category: "Agents", statusDot: "blue", defaultSize: "W", panelId: "activity", kind: "panel", catalog: true },
-  { id: "hobie", title: "Hobie queue", category: "Agents", statusDot: "orange", defaultSize: "W", panelId: "hobie", kind: "panel", catalog: true },
+  { id: "hobie", title: "Hobie queue", category: "Agents", statusDot: "muted", defaultSize: "W", panelId: "hobie", kind: "panel", catalog: true },
   { id: "agents-usage", title: "Agents usage", category: "Agents", statusDot: "blue", defaultSize: "W", panelId: "agents-usage", kind: "panel", catalog: true },
-  { id: "agent-jobs", title: "Agent jobs", category: "Agents", statusDot: "orange", defaultSize: "L", kind: "builtin", catalog: true },
+  { id: "agent-jobs", title: "Agent jobs", category: "Agents", statusDot: "muted", defaultSize: "L", kind: "builtin", catalog: true },
   { id: "host-health", title: "Server health", category: "Monitoring", statusDot: "blue", defaultSize: "W", panelId: "host-health", kind: "panel", catalog: true },
   {
     id: "service-status",
@@ -102,6 +102,7 @@ export function widgetIdsForSession(opts: WidgetSessionOpts): string[] {
 
 export function catalogWidgets(opts: WidgetSessionOpts): WidgetDefinition[] {
   return defs.filter((d) => {
+    if (DRAWER_BLOCKLIST.has(d.id)) return false;
     if (d.drawerExclude) return false;
     if (!d.catalog) return false;
     if (d.id === "budget" && !opts.showBudget) return false;
