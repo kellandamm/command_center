@@ -31,7 +31,7 @@ const usageCss = `
 
 export function agentsUsagePage(nav?: NavLink[]): string {
   return page({
-    title: "Usage — Command Center",
+    title: "Usage — Stremmy",
     active: "/agent/usage",
     nav,
     extraCss: usageCss,

@@ -3,7 +3,7 @@ import { page } from "./layout";
 
 export function activityPage(nav?: NavLink[]): string {
   return page({
-    title: "Activity — Command center",
+    title: "Activity — Stremmy",
     active: "/activity",
     nav,
     body: `<header class="page-header"><h1>Activity</h1><p class="dim">Updates from external agents (MCP / webhooks).</p></header>

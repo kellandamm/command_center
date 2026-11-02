@@ -23,8 +23,8 @@ test("layout shell: brand subtitle uses APP_PUBLIC_URL hostname and escapes HTML
   assert.equal(brandSubtitleHtml("not-a-url"), "");
   assert.equal(esc("<host>"), "&lt;host&gt;");
   const html = page({ title: "Test", body: "<p>x</p>", appPublicUrl: "https://command.example.com" });
-  assert.match(html, /<strong>Command Center<\/strong><span>command\.example\.com<\/span>/);
+  assert.match(html, /<strong>Stremmy<\/strong><span>command\.example\.com<\/span>/);
   const bare = page({ title: "Test", body: "<p>x</p>", appPublicUrl: null });
-  assert.match(bare, /<strong>Command Center<\/strong><\/span>/);
-  assert.doesNotMatch(bare, /<strong>Command Center<\/strong><span>/);
+  assert.match(bare, /<strong>Stremmy<\/strong><\/span>/);
+  assert.doesNotMatch(bare, /<strong>Stremmy<\/strong><span>/);
 });

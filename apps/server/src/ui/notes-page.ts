@@ -46,7 +46,7 @@ $("transfer-import").onclick=function(){busy(this,async function(){
 export function notesPage(nav?: NavLink[]): string {
   const headerActions = `${button({ label: "New note", attrs: { id: "knowledge-new-note", disabled: true } })}${button({ label: "Switch note", variant: "ghost", attrs: { id: "knowledge-switch", disabled: true, title: "Switch note (Ctrl/Cmd + K)" } })}${button({ label: "Focus mode", variant: "ghost", attrs: { id: "knowledge-focus", "aria-pressed": "false", title: "Focus mode (Ctrl/Cmd + Shift + F)" } })}`;
   return page({
-    title: "Notes — Command center",
+    title: "Notes — Stremmy",
     extraCss: quickAddCss + PHASE2_PAGE_CSS,
     active: "/notes",
     nav,

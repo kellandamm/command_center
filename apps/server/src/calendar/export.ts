@@ -29,7 +29,7 @@ function eventLines(event: StoredEvent): string[] {
 export function exportCalendar(store: CalendarStore, id: string): string {
   const calendar = store.get(id);
   if (!calendar || calendar.kind !== "native") throw new Error("Native calendar not found");
-  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Command Center//Calendar//EN", "CALSCALE:GREGORIAN", `X-WR-CALNAME:${escape(calendar.name)}`];
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Stremmy//Calendar//EN", "CALSCALE:GREGORIAN", `X-WR-CALNAME:${escape(calendar.name)}`];
   for (const event of store.events(id)) {
     if (event.recurrence === "none") lines.push(...eventLines(event));
     else {

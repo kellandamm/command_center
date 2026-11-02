@@ -1,4 +1,4 @@
-# Command center dashboard. Copy .env.example to .env, fill it in, then: docker compose up -d
+# Stremmy dashboard. Copy .env.example to .env, fill it in, then: docker compose up -d
 services:
   homepage:
     image: ${IMAGE:-ghcr.io/OWNER/command-center:latest}

@@ -120,7 +120,7 @@ Single PR: `home/` module, `ui/home-vault-page.ts`, `notify/tick.ts` hook, `pwa.
 When the home-vault **build PR** is ready to ship, **Infra Ops via Hobie** (not the docs/feature agent) applies:
 
 1. Ensure **`DATA_DIR` / `homepage-data` volume** has capacity for `home-vault/blobs/` (approved layout—no extra mount if using existing `DATA_DIR`).
-2. Deploy the new server image / restart Command Center so `home.sqlite` and blob dirs are created on first owner open.
+2. Deploy the new server image / restart Stremmy so `home.sqlite` and blob dirs are created on first owner open.
 3. **`compose.yml`:** only if production uses a path outside `DATA_DIR`—otherwise no compose edit required (Kellan approved volume use, not a separate mount).
 
 ---

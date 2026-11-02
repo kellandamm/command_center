@@ -1,6 +1,6 @@
 # Budget section — implementation plan
 
-Native **Budget** in Command Center (`apps/server`, server-rendered TS UI). **CSV-only** import; no bank sync, Actual, or OFX. Money is **integer cents** in a separate **`budget.sqlite`** under `cfg.dataDir` (same `homepage-data` volume as `rss.sqlite`; add a backup bullet in `SELFHOST.md` when shipping). **Implementation PRs A/B/C start only after the UI restyle PR merges** (inset sidebar, `pageHeader`, `statCard`, `skeleton`, `badge`, `emptyState` in `apps/server/src/ui/components.ts`, `apps/server/src/ui/chart-svg.ts`). Do not open PR A until restyle is on `main`.
+Native **Budget** in Stremmy (`apps/server`, server-rendered TS UI). **CSV-only** import; no bank sync, Actual, or OFX. Money is **integer cents** in a separate **`budget.sqlite`** under `cfg.dataDir` (same `homepage-data` volume as `rss.sqlite`; add a backup bullet in `SELFHOST.md` when shipping). **Implementation PRs A/B/C start only after the UI restyle PR merges** (inset sidebar, `pageHeader`, `statCard`, `skeleton`, `badge`, `emptyState` in `apps/server/src/ui/components.ts`, `apps/server/src/ui/chart-svg.ts`). Do not open PR A until restyle is on `main`.
 
 **Views:** `/budget?view=overview|transactions|budget|accounts|import|settings` (same query pattern as `/library?view=` in `apps/server/src/ui/sources-page.ts`).
 

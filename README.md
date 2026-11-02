@@ -161,8 +161,8 @@ MIT
 
 ---
 
-## Self-hosted command center (this fork)
+## Self-hosted Stremmy (this fork)
 
-`apps/server` is a **personal command center** dashboard in one Docker container (port 8080, data on a volume). It includes **Notes, Bookmarks, Calendar, Board, Wins, and Daily Briefing** with calendar, weather, tasks, GitHub, Board activity, and wins. Optional Notes questions and weekly Wins summaries use OpenAI-compatible chat completions (`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`). Cloudflare Access JWT auth and an `ADMIN_TOKEN` fallback protect the app. News, RSS polling, article summaries, and AI Security integrations are no longer included.
+`apps/server` is **Stremmy**, a personal dashboard in one Docker container (port 8080, data on a volume). It includes **Notes, Bookmarks, Calendar, Board, Wins, and Daily Briefing** with calendar, weather, tasks, GitHub, Board activity, and wins. Optional Notes questions and weekly Wins summaries use OpenAI-compatible chat completions (`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`). Cloudflare Access JWT auth and an `ADMIN_TOKEN` fallback protect the app. News, RSS polling, article summaries, and AI Security integrations are no longer included.
 
 **Add a panel:** create `apps/server/src/panels/<name>.ts` exporting a `PanelModule`, register it in `panels/registry.ts`, and wire any dashboard script from `ui/pages.ts`. Details in [SELFHOST.md](SELFHOST.md).

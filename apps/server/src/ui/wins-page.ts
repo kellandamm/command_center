@@ -12,7 +12,7 @@ const winsCss = `
 
 export function winsPage(nav?: NavLink[]): string {
   return page({
-    title: "Wins — Command center",
+    title: "Wins — Stremmy",
     active: "/wins",
     nav,
     extraCss: winsCss,

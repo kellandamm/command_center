@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# Personal command center dashboard — single Node container on :8080.
+# Personal Stremmy dashboard — single Node container on :8080.
 #   docker build -t command-center .
 # See SELFHOST.md for configuration.
 
@@ -31,7 +31,7 @@ RUN groupadd --gid 10001 app && useradd --uid 10001 --gid 10001 --no-create-home
 ARG APP_VERSION=dev
 ENV APP_VERSION=$APP_VERSION
 LABEL org.opencontainers.image.title="command-center" \
-      org.opencontainers.image.description="Self-hosted personal command center dashboard" \
+      org.opencontainers.image.description="Self-hosted Stremmy personal dashboard" \
       org.opencontainers.image.source="https://github.com/OWNER/REPO"
 
 USER app

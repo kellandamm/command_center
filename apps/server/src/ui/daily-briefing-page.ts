@@ -3,7 +3,7 @@ import { page } from "./layout";
 
 export function dailyBriefingPage(nav?: NavLink[]): string {
   return page({
-    title: "Daily Briefing - Command center",
+    title: "Daily Briefing — Stremmy",
     active: "/briefing",
     nav,
     body: `<main class="morning-briefing">

@@ -1,6 +1,6 @@
 BEGIN:VCALENDAR
 VERSION:2.0
-PRODID:-//Command Center//Demo//EN
+PRODID:-//Stremmy//Demo//EN
 BEGIN:VEVENT
 UID:demo-standup-20261015
 SUMMARY:Team standup
