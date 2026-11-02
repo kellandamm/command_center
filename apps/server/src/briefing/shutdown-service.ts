@@ -17,6 +17,7 @@ import {
   type TodoistTask,
 } from "../todoist/client";
 
+/** @deprecated Use cfg.tz; kept for tests that pin America/Chicago boundaries. */
 export const SHUTDOWN_TZ = "America/Chicago";
 const MAX_CLIENT_REVIEW_BYTES = 64 * 1024;
 const MAX_REFLECTION_ARRAY = 100;
@@ -84,8 +85,13 @@ export function dayRangeIso(day: string, tz: string): { since: string; until: st
   return { since: since.toISOString(), until: until.toISOString() };
 }
 
+export function completedOnDay(completedAt: string, day: string, tz: string): boolean {
+  return dayKeyFromIso(completedAt, tz) === day;
+}
+
+/** @deprecated Prefer completedOnDay(completedAt, day, tz). */
 export function completedOnChicagoDay(completedAt: string, day: string): boolean {
-  return dayKeyFromIso(completedAt, SHUTDOWN_TZ) === day;
+  return completedOnDay(completedAt, day, SHUTDOWN_TZ);
 }
 
 function hoursFromMs(ms: number): number {
@@ -168,7 +174,7 @@ function parseTomorrowEventRow(row: unknown): boolean {
 }
 
 /** Validates client POST body; returns counts-only source safe for the LLM prompt. */
-export function parseClientShutdownReview(body: unknown, timezone: string = SHUTDOWN_TZ): ShutdownReflectionSource | null {
+export function parseClientShutdownReview(body: unknown, timezone: string): ShutdownReflectionSource | null {
   if (!body || typeof body !== "object") return null;
   const review = (body as { review?: unknown }).review;
   if (!review || typeof review !== "object") return null;

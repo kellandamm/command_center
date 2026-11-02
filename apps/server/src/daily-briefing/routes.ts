@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { App } from "../http";
 import { llmConfigured } from "../config";
 import { dayKey } from "../store";
-import { canManageSharedServerState, OWNER_ACTION_FORBIDDEN } from "../owner-auth";
+import { OWNER_ACTION_FORBIDDEN } from "../owner-auth";
 import {
   buildShutdownReview,
   generateShutdownReflection,
@@ -30,7 +30,7 @@ export async function handleDailyBriefingRoutes(
   readBody?: (req: IncomingMessage, limit?: number) => Promise<unknown>,
 ): Promise<boolean> {
   if (path === "/api/briefing/shutdown" && req.method === "GET" && principal) {
-    if (!canManageSharedServerState(app.cfg, principal)) {
+    if (!principal.owner) {
       json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
       return true;
     }
