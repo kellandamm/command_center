@@ -45,11 +45,3 @@ export async function generateAndPersistDeterministicPlan(opts: {
   opts.store.save(plan);
   return plan;
 }
-
-export function attachReadMetadata(plan: DayPlanSnapshot, openTasks: DayPlanSnapshot["alternates"]): DayPlanSnapshot {
-  return {
-    ...plan,
-    rolledToTomorrow: computeRolledAtRead(plan.mustDos, openTasks),
-    alternates: plan.alternates,
-  };
-}
