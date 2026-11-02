@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { DAY_PLAN_DB, initDayPlanSchema } from "./db";
+import { DAY_PLAN_DB, initDayPlanSchema, type DayPlanLlmSlot } from "./db";
 import type { DayPlanSnapshot } from "./types";
 
 /** Test hook: throw while inserting plan_items at this zero-based index. */
@@ -21,6 +21,18 @@ export class DayPlanStore {
 
   close(): void {
     this.db.close();
+  }
+
+  /** Atomically claim an LLM attempt slot; survives plan_days delete/reinsert in save(). */
+  claimLlmAttempt(day: string, slot: DayPlanLlmSlot, attemptedAt: string): boolean {
+    const r = this.db
+      .prepare(`INSERT INTO plan_llm_attempts (day, slot, attempted_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING`)
+      .run(day, slot, attemptedAt);
+    return r.changes === 1;
+  }
+
+  hasLlmAttempt(day: string, slot: DayPlanLlmSlot): boolean {
+    return Boolean(this.db.prepare(`SELECT 1 FROM plan_llm_attempts WHERE day = ? AND slot = ?`).get(day, slot));
   }
 
   save(snapshot: DayPlanSnapshot): void {

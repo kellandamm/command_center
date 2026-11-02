@@ -265,6 +265,34 @@ test("day-plan schema user_version", () => {
   assert.equal(version, DAY_PLAN_SCHEMA_VERSION);
 });
 
+test("plan_llm_attempts survives DayPlanStore.save and blocks duplicate claim", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-dp-llm-cap-"));
+  try {
+    const store = DayPlanStore.open(dir);
+    const day = "2026-09-01";
+    assert.equal(store.claimLlmAttempt(day, "auto", "2026-09-01T08:00:00.000Z"), true);
+    assert.equal(store.claimLlmAttempt(day, "auto", "2026-09-01T08:01:00.000Z"), false);
+    const plan = buildDeterministicPlan({
+      context: {
+        day,
+        tz: "UTC",
+        occurrences: [],
+        tasks: [],
+        allDayLabels: [],
+        sources: { calendarUnavailable: false, todoistUnavailable: false },
+      },
+      weekendOverride: true,
+    });
+    store.save(plan);
+    assert.equal(store.hasLlmAttempt(day, "auto"), true);
+    assert.equal(store.claimLlmAttempt(day, "auto", "2026-09-01T09:00:00.000Z"), false);
+    assert.equal(store.claimLlmAttempt(day, "manual", "2026-09-01T10:00:00.000Z"), true);
+    store.close();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("weekend empty plan: no over-capacity and no break", () => {
   const plan = buildDeterministicPlan({
     context: {
