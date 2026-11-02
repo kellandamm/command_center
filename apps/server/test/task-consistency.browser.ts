@@ -21,7 +21,7 @@ test("native capture, Notes/voice links, Focus and Shutdown work on desktop/mobi
   const settings = new SettingsStore(dir); await settings.load();
   const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
   await calendar.create({ kind: "native", name: "Local" });
-  const server = createApp({ cfg, ...integration, notes, calendar, settings, dailyBriefing, auth: async () => ({ ok: true, who: "owner@example.com", owner: true }) });
+  const server = createApp({ cfg, ...integration, notes, calendar, settings, dailyBriefing, auth: async () => ({ ok: true, who: "owner@example.com", owner: true, email: "owner@example.com" }) });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const original = globalThis.fetch;
