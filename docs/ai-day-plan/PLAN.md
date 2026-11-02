@@ -14,40 +14,39 @@
 
 1. **Weekends:** Default **`availableMinutes = 0`** on Sat/Sun unless the user sets a **per-day work window override** on the plan.
 2. **Todoist → LLM:** **`content` (title), `priority`, due day only** — no description, url, or other fields.
-3. **Shutdown review:** **`GET /api/briefing/shutdown`** (and related routes) require **CF-verified owner** (`who.owner === true` + email), same as reflection POST — shipped in **separate auth PR (B)**, not bundled with day-plan feature PRs.
-4. **Must-do completion:** Checking off a must-do **also completes** the linked Todoist task or Board card. **Only the owner’s UI click** may trigger that write — never the LLM, auto-run, or background jobs. Owner-only **`POST /api/day-plan/must-do/complete`** with **`csrfOk` + `x-ah`** (same pattern as board/Todoist writes). **Idempotency:** second POST for same `(day, slot)` with already-completed remote → **200** with unchanged state. On Todoist/Board failure: **409/502** with generic message (no task title in logs or JSON), plan row stays **not** completed locally. **Undo:** **`POST /api/day-plan/must-do/reopen`** moves Board card out of `Done` / reopens Todoist if API supports (v1: Board move only; Todoist reopen documented as manual if API lacks reopen — implement Board undo + clear local `completed_at`; Todoist undo best-effort or “couldn’t reopen” with local revert). UI: success toast, error banner, undo snackbar. Tests: mock fetch for Todoist; board move; idempotent complete; failure leaves DB consistent; no content in logs.
-5. **Auto AI plan:** On **first owner load of the day** (page or widget path that calls generate), if **`autoAiPlan`** setting is **ON** (default) and `llmConfigured` and **no LLM run yet today** in storage → run LLM once, cache result (**at most one LLM run per owner per calendar day** in `day-plan.sqlite`). **No repo-wide morning scheduler** for this feature (briefing scheduler is separate); first load is the trigger because it matches owner presence without new cron. **Deterministic planner** remains instant fallback when LLM off, over cap, or failure. **`autoAiPlan`** stored in **`SettingsStore`** (`viewPreferences` or dedicated `dayPlan: { autoAiPlan: boolean }`), not env. **Manual “Generate with AI”** still allowed; **daily LLM cap: 6 runs/day/owner** (auto + manual combined), tracked in store. Turning **autoAiPlan** off skips auto LLM on first load (deterministic only).
-6. **Breaks:** Keep server template — **nearest free gap ≥ 15 min** to **work-window midpoint**, not overlapping meetings/blocks.
+3. **Shutdown review:** **`GET /api/briefing/shutdown`** requires **CF-verified owner** — shipped (PR #105).
+4. **Must-do completion:** Checking off a must-do **also completes** the linked Todoist task or Board card. **Only the owner’s UI click** may trigger that write — never the LLM, auto-run, or background jobs. Owner-only **`POST /api/day-plan/must-do/complete`** with **`csrfOk` + `x-ah`**. **Idempotency:** second POST for same `(day, slot)` when already completed → **200** unchanged. On failure: generic error (no task title in logs), local plan row stays open. **Undo:** **`POST /api/day-plan/must-do/reopen`** — Board card moved out of `Done`; Todoist **`POST /api/v1/tasks/{id}/reopen`**. On reopen failure: show error and **do not** desync local state (keep completed until reopen succeeds).
+5. **Auto AI plan:** On **first owner load of the day**, if **`autoAiPlan`** is **ON** (default) and `llmConfigured` and **no LLM attempt yet today** → run **exactly one LLM attempt** for that owner/calendar day, cache result. **At most one LLM attempt per owner per calendar day** (not six). **Single-run guard:** claim the day in SQLite **before** calling the model — e.g. `INSERT INTO plan_llm_day (day, llm_attempted_at) VALUES (?, ?) ON CONFLICT(day) DO NOTHING` and proceed only when `changes === 1`; or conditional `UPDATE ... WHERE llm_attempted_at IS NULL`. Count **attempts**, not successes, so a failed LLM does **not** retry on every page/widget load. Concurrent widget + page loads must result in **one** LLM HTTP call. If auto already ran: **Generate with AI** shows the **cached AI plan** plus a **deterministic refresh** action (replan without LLM). If auto is off: the first **Generate with AI** uses the day’s **only** LLM attempt. **Manual re-runs that consume a second LLM call:** *pending Kellan*. **Deterministic planner** remains instant fallback when LLM off, claim lost, or failure.
+6. **Breaks:** **Nearest free gap ≥ 15 min** to **work-window midpoint**, not overlapping meetings/blocks. No break when **weekend 0h** and nothing to schedule (no false over-capacity).
+
+**`autoAiPlan` toggle:** **`PUT /api/day-plan/settings`** gated by **`isDayPlanOwner`** only — **not** the shared **`SettingsStore` / `PUT /api/settings`** path (`canManageSharedServerState` / admin-token). Stored via owner-scoped day-plan storage, not global settings writes.
 
 ---
 
 ## User flow
 
-1. **Morning (owner):** Open **Day plan** widget or **`/day-plan`**. If no plan for `dayKey(now, cfg.tz)`, **generate**: deterministic plan immediately; if **`autoAiPlan`** and LLM allowed and under daily cap, **one** auto LLM run replaces/enhances must-dos/breaks (cached). Widget: capacity bar, 1–3 must-dos, next meeting.
-2. **Edit:** Swap must-dos from **alternates** on `GET /api/day-plan`; adjust breaks/work window via PUT. **Check off must-do** → complete POST (Todoist/Board + local state).
-3. **Manual AI:** **Generate with AI** when under daily cap; counts toward cap.
-4. **Refresh plan:** Deterministic replan only (does not consume LLM cap unless body requests LLM — manual only).
-5. **Shutdown:** `GET /api/briefing/shutdown` (owner only, PR B) + reflection POST. **`rolledToTomorrow`** on `GET /api/day-plan`: open must-dos + unfinished scheduled work for today, computed at read time. **Rolled items add a simple +score boost** when ranking tomorrow’s must-dos (same ref as yesterday’s roll list).
-6. **Settings:** Toggle **Auto AI plan** (default ON) in day-plan page or settings section.
+1. **Morning (owner):** Open **Day plan** widget or **`/day-plan`**. If no plan, **generate** deterministic plan; if **`autoAiPlan`** + LLM configured + **no `llm_attempted_at` today**, claim attempt and run LLM once.
+2. **Edit:** Swap must-dos, PUT edits, **complete** POST (Todoist/Board).
+3. **Generate with AI:** If attempt already used → show cached AI output + deterministic refresh; else use the single daily attempt (*extra manual LLM re-runs pending Kellan*).
+4. **Refresh plan:** Deterministic replan only (no LLM).
+5. **Shutdown:** Owner-only shutdown APIs. **`rolledToTomorrow`** at read time; rolled refs **boost** tomorrow’s must-do score.
+6. **Auto AI toggle:** Day-plan owner settings route only.
 
-Non-owners: no nav, no widget catalog, `/api/day-plan/*` → **403**.
+Non-owners: `/api/day-plan/*` → **403**.
 
 ---
 
 ## Data sources (exact fields read)
 
-Gather in `day-plan/gather.ts` with **explicit field picks** — never spread `planning().cards`.
+Gather in `day-plan/gather.ts` with **explicit field picks**. On calendar/Todoist failure, set **`sources.calendarUnavailable` / `sources.todoistUnavailable`** on the plan (do not silently treat as empty capacity).
 
-| Source | API / module | Fields used in planner (server) | Never sent to LLM |
-|--------|----------------|----------------------------------|-------------------|
-| Calendar | `CalendarWorkspace.snapshot` + `planning().blocks` by **`eventId`** | Timed events: `summary`, `start`, `end`, `allDay`, `timezone`, `eventId`. All-day: UI only, **excluded from capacity/LLM**. Blocks: occurrence times from snapshot. | descriptions, locations, raw `eventId`, Google payloads |
-| Board | `BoardStore.list()` + scheduled via block join | `id`, `title`, `column`, `estimatedMinutes`, `dueDate`, `priority`; capacity if **`dueDate <= day`**, not `Done` | `notes`, `hobieTaskId` |
-| Todoist | `listTasks` + **`partitionTodayAndOverdue`** | overdue + today: **`content`, `priority`, due day** | description, url |
-| Settings | `SettingsStore` | **`dayPlan.autoAiPlan`** (default true) | — |
+| Source | Fields | Never to LLM |
+|--------|--------|--------------|
+| Calendar | timed events + block join by `eventId`; all-day labels only | descriptions, raw `eventId`, … |
+| Board | due ≤ day, not `Done` | `notes` |
+| Todoist | `partitionTodayAndOverdue` only | description, url |
 
-**Excluded modules:** `budget/*`, subscriptions, home-vault — `day-plan/excluded.ts`.
-
-**Shutdown / tz note:** `buildShutdownReview` already uses **`cfg.tz`**. Only **`completedOnChicagoDay`** (rename → **`completedOnDay(..., tz)`**) and **`parseClientShutdownReview`’s default timezone** were Chicago-only; fixed in **auth PR (B)** with TZ tests (`briefing-shutdown.test.ts` ~87 updated). PR1 day-plan imports **`day-duration.ts`** only — no duplicate shutdown tz work.
+**Excluded modules:** `budget/*`, subscriptions, home-vault — policy in `day-plan/excluded.ts` + grep all `day-plan/*` sources.
 
 ---
 
@@ -55,114 +54,67 @@ Gather in `day-plan/gather.ts` with **explicit field picks** — never spread `p
 
 ### When LLM runs
 
-- **Auto:** first owner generate of the day when `autoAiPlan` + `llmConfigured` + under **6/day cap** + no `llm_generated_at` for that day in store.
-- **Manual:** **Generate with AI** (same cap).
-- **Not:** deterministic refresh alone.
+- **Once per owner per calendar day** (attempt recorded in **`llm_attempted_at`** before HTTP call).
+- **Auto:** first owner load when `autoAiPlan` + configured + claim succeeds.
+- **Manual Generate:** uses the single attempt if not yet attempted; otherwise cached plan + deterministic refresh.
 
 ### Input allowlist
 
-1. Explicit field mapping in `buildDayPlanLlmInput()`.
-2. **`z.strictObject({ ... })`** for root and nested **`capacity`**, each meeting, each task (Zod 4 — no extra keys).
-3. Call site: **`DayPlanLlmInputSchema.parse(...)`** then **only** that JSON as user message.
+`z.strictObject({ ... })` nested strict; call site sends **only** `DayPlanLlmInputSchema.parse(...)` JSON.
 
-Meetings use opaque **`ref: "m1" | "m2"`** (server map); never Google `eventId`.
+### Tests (LLM PR)
 
-Todoist tasks in LLM input: **title, priority, dueDay only**.
-
-### Output schema
-
-Up to 3 `mustDo`; reject refs not in input tasks; invalid → deterministic fallback.
-
-### Enforcement + leak test
-
-Mock **`fetch` POST body**; plant extras on source rows; assert no `PLANT_*`. No raw LLM error text in logs.
-
----
-
-## Fallback when LLM fails
-
-Deterministic **`day-plan/planner.ts`**: timeline, ≤3 must-dos (rolled refs boosted tomorrow), breaks in **free gap ≥ 15 min nearest work-window midpoint**, defer list.
-
----
-
-## Capacity math
-
-`durationMsOnDay` in **`calendar/day-duration.ts`**.
-
-- Default window **09:00–17:00**; weekend **0 available** unless override (decision 1).
-- Meetings/blocks: timed only, clip to window, merge overlaps, sum.
-- Unscheduled minutes: Todoist overdue+today + board due ≤ day, estimates or 30 default, minus blocked double-count.
+- **Concurrency:** parallel generate calls → one claim, one mock LLM invocation.
+- **Failure no-retry:** failed LLM leaves `llm_attempted_at` set; second load does not call LLM again.
 
 ---
 
 ## Storage
 
-`{dataDir}/day-plan.sqlite`: `plan_days`, `plan_items`, `plan_must_dos`, **`plan_llm_usage`** (`day`, `run_count`, `last_run_at`) for daily cap + one auto LLM cache flag (`generated_by`, `theme`).
+`{dataDir}/day-plan.sqlite` with **`PRAGMA user_version = 1`** (bump on migrations).
 
-**Settings file:** `dayPlan.autoAiPlan` boolean default **true** in `settings.ts`.
+| Table / column | Purpose |
+|----------------|---------|
+| `plan_days` | … **`llm_attempted_at`**, **`llm_generated_at`** |
+| `plan_items`, `plan_must_dos` | as before |
+| owner prefs | **`auto_ai_plan`** via owner route |
+
+**`DayPlanStore.save`:** single SQLite **transaction**; mid-save failure leaves prior plan intact (test required).
 
 ---
 
 ## API routes and auth
 
-`isDayPlanOwner` = verified owner email only.
+`isDayPlanOwner` for all day-plan routes including **`PUT /api/day-plan/settings`**.
 
-| Method | Path | Behavior |
-|--------|------|----------|
-| GET | `/api/day-plan?day=` | Plan, alternates, **`rolledToTomorrow`**, settings snapshot |
-| POST | `/api/day-plan/generate` | `{ day?, useLlm?, forceDeterministic? }` |
-| PUT | `/api/day-plan` | Edits |
-| POST | `/api/day-plan/must-do/complete` | Owner click → Todoist `completeTask` or Board → `Done` |
-| POST | `/api/day-plan/must-do/reopen` | Undo |
-
-CSRF + `no-store`. No secrets in responses.
-
----
-
-## UI
-
-Widget **`ai-day-plan`**, **`ownerOnly: true`**, default **W**. Page **`/day-plan`**. Registry epoch skips **`ownerOnly`** widgets for non-owners generally.
-
----
-
-## Env and server changes
-
-No new env. Stored **`autoAiPlan`** only.
+| Method | Path |
+|--------|------|
+| GET | `/api/day-plan?day=` |
+| POST | `/api/day-plan/generate` |
+| PUT | `/api/day-plan` |
+| PUT | `/api/day-plan/settings` |
+| POST | `/api/day-plan/must-do/complete` |
+| POST | `/api/day-plan/must-do/reopen` |
 
 ---
 
 ## Test plan
 
-Unit: capacity (Chicago, Tokyo, DST), planner, store, allowlist (LLM PR), owner matrix, must-do complete/reopen (page PR), excluded grep.
-
-Browser: page + widget PRs.
-
----
-
-## Rollout
-
-1. Plan merged. 2. **PR B** shutdown auth. 3. **PR1** core. 4. API. 5. Page + widget + must-do writes. 6. LLM + auto toggle.
+Unit: gather/capacity/planner regression tests; store transaction; TZ tests; excluded glob `day-plan/*`. LLM PR: leak, concurrency, failure no-retry.
 
 ---
 
 ## PR-sized build sequence
 
-1. **PR1 — Core (C):** `day-duration.ts` extract; `DayPlanStore`; `gather.ts`; deterministic planner + capacity; `rolledToTomorrow` + roll boost in scorer; `excluded.ts`; unit tests (TZ Chicago/Tokyo/DST). **No LLM, routes, UI.**
-2. **PR2 — API:** routes, GET generate-on-miss hook for later UI, owner tests, alternates/`rolledToTomorrow` on GET.
-3. **PR3 — Page + must-do writes:** `day-plan-page.ts`, nav, **`POST must-do/complete|reopen`**, undo UX, browser test.
-4. **PR4 — Widget:** `ai-day-plan`, ownerOnly epoch rules, dashboard smoke.
-5. **PR5 — LLM + auto:** strict allowlist, auto on first load, **`autoAiPlan`** setting, daily cap in store, leak test.
-
-**Separate PR B (before or parallel to PR1):** shutdown owner-only GET + `completedOnDay` / `parseClientShutdownReview` **`cfg.tz`** fixes.
+1. **PR1 — Core** (#106 + round 2).
+2. **PR2 — API**
+3. **PR3 — Page + must-do writes**
+4. **PR4 — Widget**
+5. **PR5 — LLM + auto**
 
 ---
 
 ## Reference paths
 
-- Calendar / duration: `calendar/workspace.ts`, `calendar/day-duration.ts`, `calendar/google.ts`
-- Shutdown: `briefing/shutdown-service.ts`, `daily-briefing/routes.ts`
-- LLM: `llm/provider.ts`, `quick-add/parse.ts`
-- Todoist: `partitionTodayAndOverdue`, `completeTask`
-- Board: `board/store.ts` `move(..., DONE)`
-- Dashboard: `dashboard-layout/widgets.ts`
-- Settings: `settings.ts`
+- `apps/server/src/day-plan/*`, `calendar/day-duration.ts`
+- Todoist: `completeTask`, **`POST .../tasks/{id}/reopen`**
