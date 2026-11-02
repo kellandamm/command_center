@@ -67,6 +67,7 @@ import type { XBookmarksService } from "./read-later/x-bookmarks-service";
 import type { XBookmarksStore } from "./read-later/x-bookmarks-store";
 import { captureExtensionFiles } from "./read-later/extension";
 import { zip } from "./read-later/zip";
+import { bindLayoutAppPublicUrl } from "./ui/layout";
 import { dashboardPage, settingsPage } from "./ui/pages";
 import type { AttentionStore } from "./attention/store";
 import type { LaunchpadStore } from "./launchpad/store";
@@ -144,6 +145,7 @@ const icon = (name: string, size: number, maskable = false) => icons.get(name) ?
 
 export function createApp(app: App): Server {
   const deployment = app.deployment ?? app.cfg;
+  bindLayoutAppPublicUrl(deployment.appPublicUrl);
   const commandPaletteTodoistCache = new TodoistOpenTaskCache(app.cfg);
   const integrationDeps = (): IntegrationDeps => ({
     cfg: app.cfg,
