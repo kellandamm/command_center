@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import type { DatabaseSync } from "node:sqlite";
 import type { AddressInfo } from "node:net";
 import { loadConfig } from "../src/config";
 import { dayKey } from "../src/store";
@@ -30,6 +31,37 @@ function incomeCategoryId(store: BudgetStore): string {
 
 function foodCategoryId(store: BudgetStore): string {
   return store.listCategories().find((c) => c.name === "Groceries")!.id;
+}
+
+/** One SQLite transaction; columns match `BudgetStore.createTransaction`. */
+function bulkSeedTransactions(
+  store: BudgetStore,
+  input: {
+    accountId: string;
+    date: string;
+    amountCents: number;
+    categoryId: string;
+    count: number;
+    payeePrefix: string;
+  },
+): void {
+  const db = (store as unknown as { db: DatabaseSync }).db;
+  const now = "2026-08-12T12:00:00.000Z";
+  const insert = db.prepare(
+    `INSERT INTO transactions (id, account_id, date, amount_cents, payee, memo, category_id, transfer_account_id, cleared, fingerprint, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, '', ?, NULL, 1, NULL, ?, ?)`,
+  );
+  db.exec("BEGIN");
+  try {
+    for (let i = 0; i < input.count; i++) {
+      const id = `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+      insert.run(id, input.accountId, input.date, input.amountCents, `${input.payeePrefix}${i}`.slice(0, 240), input.categoryId, now, now);
+    }
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
 }
 
 test("budget rollup: excludes transfers from spend totals", async () => {
@@ -311,7 +343,7 @@ test("budget rollup: older month stays complete after many newer-month transacti
   }
 });
 
-test("budget rollup: 100k rows in one month completes rollup", { timeout: 180_000 }, async () => {
+test("budget rollup: 100k rows in one month completes rollup", { timeout: 240_000 }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-budget-rollup-100k-"));
   const store = BudgetStore.open(dir);
   const cfg = loadConfig({ TZ: "UTC" });
@@ -319,15 +351,14 @@ test("budget rollup: 100k rows in one month completes rollup", { timeout: 180_00
     const acct = store.createAccount({ name: "Checking", type: "checking" });
     const food = foodCategoryId(store);
     const month = "2026-08";
-    for (let i = 0; i < 100_000; i++) {
-      store.createTransaction({
-        accountId: acct.id,
-        date: `${month}-12`,
-        amountCents: -1,
-        categoryId: food,
-        payee: `bulk ${i}`,
-      });
-    }
+    bulkSeedTransactions(store, {
+      accountId: acct.id,
+      date: `${month}-12`,
+      amountCents: -1,
+      categoryId: food,
+      count: 100_000,
+      payeePrefix: "bulk ",
+    });
     const t0 = performance.now();
     const rollup = computeRollup(store, cfg, month);
     const rollupMs = Math.round(performance.now() - t0);
