@@ -1,75 +1,153 @@
-import { ValidationError } from "../settings";
-import { defaultEntryForPanel } from "./defaults";
-import { maxOccupiedRow, packDashboardLayout } from "./pack";
 import type { DashboardLayout, PanelLayoutEntry } from "./types";
-import { GRID_COLS, GRID_ROW_HEIGHT_PX, LAYOUT_VERSION } from "./types";
+import type { DashboardLayoutV3, WidgetLayoutEntry } from "./schema";
+import { LAYOUT_VERSION, dashboardLayoutV3Schema, legacyLayoutSchema, widgetEntrySchema } from "./schema";
+import { inferSizeFromLegacy } from "./sizes";
+import { packWidgetFlow } from "./pack";
+import { CURRENT_REGISTRY_EPOCH, widgetById, widgetIdsIntroducedAfterEpoch } from "./widgets";
 
-function clampInt(n: number, min: number, max: number, field: string): number {
-  if (!Number.isFinite(n) || Math.floor(n) !== n) throw new ValidationError(`${field} must be an integer`);
-  if (n < min || n > max) throw new ValidationError(`${field} must be between ${min} and ${max}`);
-  return n;
+function defaultConfigFor(id: string): Record<string, unknown> | undefined {
+  if (id === "countdown") {
+    return { label: "Demo Day (example)", target: "2026-12-31" };
+  }
+  if (id === "world-clock") {
+    return { zones: ["America/Chicago", "Europe/London", "Asia/Tokyo"] };
+  }
+  return undefined;
 }
 
-function normalizeEntry(raw: PanelLayoutEntry, knownIds: Set<string>): PanelLayoutEntry {
-  if (!knownIds.has(raw.id)) throw new ValidationError(`unknown panel id: ${raw.id}`);
-  const collapsed = Boolean(raw.collapsed);
-  const w = clampInt(raw.w, 2, GRID_COLS, `panel ${raw.id} width`);
-  const h = clampInt(raw.h, 2, 24, `panel ${raw.id} height`);
-  const x = clampInt(raw.x, 0, GRID_COLS - w, `panel ${raw.id} x`);
-  const y = clampInt(raw.y, 0, 200, `panel ${raw.id} y`);
+function defaultWidgetEntry(id: string): WidgetLayoutEntry {
+  const def = widgetById(id);
   return {
-    id: raw.id,
-    x,
-    y,
-    w,
-    h,
-    ...(collapsed ? { collapsed: true } : {}),
+    id,
+    size: def?.defaultSize ?? "W",
+    ...(defaultConfigFor(id) ? { config: defaultConfigFor(id) } : {}),
   };
 }
 
-function mergeSavedPanels(
-  body: { panels?: unknown; rowHeight?: number },
-  panelIds: readonly string[],
-): DashboardLayout {
-  const known = new Set(panelIds);
-  const byId = new Map<string, PanelLayoutEntry>();
+/** Default widget order for fresh layouts (revamp mockup + remaining panels). */
+export function defaultDashboardWidgets(showBudget: boolean, showServiceStatus = true): WidgetLayoutEntry[] {
+  const order = [
+    "today-agenda",
+    "agent-jobs",
+    ...(showServiceStatus ? (["service-status"] as const) : []),
+    "countdown",
+    "world-clock",
+    "tasks",
+    "notes",
+    "attention",
+    "daily-briefing",
+    "weather",
+    "calendar",
+    "heatmap",
+    "launchpad",
+    "activity",
+    "hobie",
+    "host-health",
+    "recallio",
+    "agents-usage",
+    ...(showBudget ? (["budget"] as const) : []),
+  ];
+  return order.map((id) => defaultWidgetEntry(id));
+}
 
-  if (Array.isArray(body.panels)) {
-    for (const entry of body.panels) {
-      if (!entry || typeof entry !== "object" || typeof (entry as PanelLayoutEntry).id !== "string") continue;
-      const id = (entry as PanelLayoutEntry).id;
-      if (!known.has(id)) continue;
-      try {
-        byId.set(id, normalizeEntry(entry as PanelLayoutEntry, known));
-      } catch {
-        byId.set(id, defaultEntryForPanel(id));
-      }
+export function defaultDashboardLayout(opts: { showBudget?: boolean; showServiceStatus?: boolean } = {}): DashboardLayout {
+  const showBudget = opts.showBudget ?? false;
+  const showServiceStatus = opts.showServiceStatus ?? true;
+  const widgets = defaultDashboardWidgets(showBudget, showServiceStatus);
+  const panels = packWidgetFlow(widgets);
+  return { version: LAYOUT_VERSION, registryEpoch: CURRENT_REGISTRY_EPOCH, widgets, panels };
+}
+
+export function defaultEntryForPanel(id: string): PanelLayoutEntry {
+  const widgets = defaultDashboardWidgets(true);
+  const packed = packWidgetFlow(widgets);
+  const hit = packed.find((p) => p.id === id);
+  if (hit) return { ...hit };
+  const entry = defaultWidgetEntry(id);
+  const [panel] = packWidgetFlow([entry]);
+  return panel!;
+}
+
+/** Safe parse for API/load — never throws; returns default on failure. */
+export function parseDashboardLayout(
+  raw: unknown,
+  knownIds: readonly string[],
+  showBudget: boolean,
+  opts?: { appendMissing?: boolean; appendNewRegistryWidgets?: boolean },
+): DashboardLayout {
+  try {
+    return normalizeDashboardLayout(raw, knownIds, showBudget, opts);
+  } catch {
+    return defaultDashboardLayout({ showBudget });
+  }
+}
+
+export function normalizeDashboardLayout(
+  raw: unknown,
+  knownIds: readonly string[],
+  showBudget: boolean,
+  opts?: { appendMissing?: boolean; appendNewRegistryWidgets?: boolean },
+): DashboardLayout {
+  const known = new Set(knownIds);
+  const fallback = () => defaultDashboardLayout({ showBudget });
+
+  if (raw === null || raw === undefined) return fallback();
+
+  let body: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      return fallback();
     }
   }
 
-  for (const id of panelIds) {
-    if (byId.has(id)) continue;
-    const entry = defaultEntryForPanel(id);
-    const y = maxOccupiedRow(Array.from(byId.values()));
-    byId.set(id, { ...entry, x: 0, y });
+  const legacy = legacyLayoutSchema.safeParse(body);
+  if (!legacy.success) throw new Error("invalid layout");
+
+  const data = legacy.data;
+  let widgets: WidgetLayoutEntry[] = [];
+  let savedEpoch = 0;
+
+  if (data.version === LAYOUT_VERSION && Array.isArray(data.widgets)) {
+    const parsed = dashboardLayoutV3Schema.safeParse(data);
+    if (!parsed.success) throw new Error("invalid v3 layout");
+    savedEpoch = parsed.data.registryEpoch ?? 0;
+    widgets = parsed.data.widgets.filter((w) => known.has(w.id));
+  } else if (Array.isArray(data.panels)) {
+    const sorted = [...data.panels].sort((a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0));
+    for (const p of sorted) {
+      if (!p?.id || !known.has(p.id)) continue;
+      const w = p.w ?? 3;
+      const h = p.h ?? 2;
+      widgets.push({
+        id: p.id,
+        size: inferSizeFromLegacy(w, h),
+      });
+    }
+  } else if (Array.isArray(data.widgets)) {
+    for (const w of data.widgets) {
+      const parsed = widgetEntrySchema.safeParse(w);
+      if (parsed.success && known.has(parsed.data.id)) widgets.push(parsed.data);
+    }
   }
 
-  const panels = packDashboardLayout(panelIds.map((id) => byId.get(id)!));
-  return {
-    version: LAYOUT_VERSION,
-    cols: GRID_COLS,
-    rowHeight: GRID_ROW_HEIGHT_PX,
-    panels,
-  };
-}
+  if (!widgets.length) return fallback();
 
-/** Merge saved layout with the current panel registry (add missing, drop stale). */
-export function normalizeDashboardLayout(raw: unknown, panelIds: readonly string[]): DashboardLayout {
-  if (!raw || typeof raw !== "object") throw new ValidationError("layout must be an object");
-  const body = raw as DashboardLayout;
-  if (body.version !== LAYOUT_VERSION) {
-    return mergeSavedPanels(body, panelIds);
+  const appendAll = opts?.appendMissing === true;
+  const appendNew = opts?.appendNewRegistryWidgets !== false;
+  if (appendAll) {
+    for (const id of knownIds) {
+      if (!widgets.some((w) => w.id === id)) widgets.push(defaultWidgetEntry(id));
+    }
+  } else if (appendNew) {
+    for (const id of widgetIdsIntroducedAfterEpoch(savedEpoch, { showBudget })) {
+      if (!known.has(id)) continue;
+      if (!widgets.some((w) => w.id === id)) widgets.push(defaultWidgetEntry(id));
+    }
   }
-  if (!Array.isArray(body.panels)) throw new ValidationError("layout.panels must be an array");
-  return mergeSavedPanels(body, panelIds);
+
+  widgets = widgets.filter((w) => known.has(w.id)).slice(0, 40);
+  const panels = packWidgetFlow(widgets);
+  return { version: LAYOUT_VERSION, registryEpoch: CURRENT_REGISTRY_EPOCH, widgets, panels };
 }

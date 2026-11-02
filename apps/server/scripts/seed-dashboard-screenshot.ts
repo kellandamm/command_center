@@ -177,8 +177,9 @@ async function main() {
   await mkdir(briefingDir, { recursive: true, mode: 0o700 });
   await writeBriefingFile(briefingDayPath(briefingDir, briefing.day), briefing);
 
-  const layout = defaultDashboardLayout(panels.map((p) => p.id));
-  await writeFile(join(dir, "dashboard-layout.json"), JSON.stringify(layout, null, 2));
+  const layout = defaultDashboardLayout({ showBudget: false });
+  await mkdir(join(dir, "dashboard-layouts"), { recursive: true });
+  await writeFile(join(dir, "dashboard-layouts", "anonymous.json"), JSON.stringify(layout, null, 2));
 
   board.close();
   wins.close();
