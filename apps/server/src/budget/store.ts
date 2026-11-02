@@ -4,7 +4,11 @@ import { ValidationError } from "../settings";
 import type { AccountType } from "./constants";
 import { ACCOUNT_TYPES, BUDGET_IMPORT_MAX_ROWS } from "./constants";
 import type { CsvMapping, NormalizedImportRow } from "./csv";
+import { normalizePayee } from "./csv";
 import { openBudgetDatabase } from "./db";
+import type { SubscriptionCadence, SubscriptionDetectionRow, SubscriptionRow, SubscriptionSource } from "./subscriptions/types";
+import { amountInCluster } from "./subscriptions/detect";
+import { annualCostCents, nextDueDate, requireValidIsoDate, safeNextDueDate } from "./subscriptions/due";
 
 const BUDGET_MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -410,6 +414,8 @@ export class BudgetStore {
   deleteAllData(): void {
     this.db.exec("BEGIN");
     try {
+      this.db.exec("DELETE FROM subscription_detections");
+      this.db.exec("DELETE FROM subscriptions");
       this.db.exec("DELETE FROM transactions");
       this.db.exec("DELETE FROM import_batches");
       this.db.exec("DELETE FROM budget_months");
@@ -648,5 +654,360 @@ export class BudgetStore {
 
   static sha256(buffer: Buffer): string {
     return createHash("sha256").update(buffer).digest("hex");
+  }
+
+  listOutflowChargesSince(isoDate: string): Array<{ date: string; amountCents: number; payee: string }> {
+    return (
+      this.db
+        .prepare(
+          `SELECT date, amount_cents, payee FROM transactions
+           WHERE amount_cents < 0 AND (transfer_account_id IS NULL OR transfer_account_id = '')
+           AND date >= ?
+           ORDER BY date ASC`,
+        )
+        .all(isoDate) as Record<string, unknown>[]
+    ).map((r) => ({
+      date: String(r.date),
+      amountCents: Number(r.amount_cents),
+      payee: String(r.payee ?? ""),
+    }));
+  }
+
+  private rowSubscription(r: Record<string, unknown>): SubscriptionRow {
+    return {
+      id: String(r.id),
+      payeeNormalized: String(r.payee_normalized),
+      displayName: String(r.display_name),
+      amountCents: Number(r.amount_cents),
+      currency: String(r.currency ?? "USD"),
+      cadence: String(r.cadence) as SubscriptionCadence,
+      anchorDate: String(r.anchor_date),
+      categoryId: r.category_id == null ? null : String(r.category_id),
+      active: Boolean(r.active),
+      source: String(r.source) as SubscriptionSource,
+      createdAt: String(r.created_at),
+      updatedAt: String(r.updated_at),
+    };
+  }
+
+  private rowDetection(r: Record<string, unknown>): SubscriptionDetectionRow {
+    return {
+      id: String(r.id),
+      payeeNormalized: String(r.payee_normalized),
+      displayName: String(r.display_name),
+      amountCents: Number(r.amount_cents),
+      cadence: String(r.cadence) as SubscriptionCadence,
+      detectionKind: String(r.detection_kind) as SubscriptionDetectionRow["detectionKind"],
+      confidence: Number(r.confidence),
+      sampleDates: JSON.parse(String(r.sample_dates_json)) as string[],
+      status: String(r.status) as SubscriptionDetectionRow["status"],
+      dismissedAt: r.dismissed_at == null ? null : String(r.dismissed_at),
+      createdAt: String(r.created_at),
+      laneKey: String(r.lane_key),
+    };
+  }
+
+  listSubscriptions(includeInactive = false): SubscriptionRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM subscriptions ${includeInactive ? "" : "WHERE active = 1"} ORDER BY display_name COLLATE NOCASE`,
+      )
+      .all() as Record<string, unknown>[];
+    return rows.map((r) => this.rowSubscription(r));
+  }
+
+  listPendingDetections(): SubscriptionDetectionRow[] {
+    return (
+      this.db
+        .prepare("SELECT * FROM subscription_detections WHERE status = 'pending' ORDER BY confidence DESC, created_at DESC")
+        .all() as Record<string, unknown>[]
+    ).map((r) => this.rowDetection(r));
+  }
+
+  getSubscription(id: string): SubscriptionRow | undefined {
+    const r = this.db.prepare("SELECT * FROM subscriptions WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    return r ? this.rowSubscription(r) : undefined;
+  }
+
+  getDetection(id: string): SubscriptionDetectionRow | undefined {
+    const r = this.db.prepare("SELECT * FROM subscription_detections WHERE id = ?").get(id) as
+      | Record<string, unknown>
+      | undefined;
+    return r ? this.rowDetection(r) : undefined;
+  }
+
+  /** Active or deactivated subscriptions suppress detections in the same amount band. */
+  hasSubscriptionSuppressingDetection(
+    payeeNormalized: string,
+    cadence: SubscriptionCadence,
+    amountCents: number,
+  ): boolean {
+    const rows = this.db
+      .prepare("SELECT amount_cents FROM subscriptions WHERE payee_normalized = ? AND cadence = ?")
+      .all(payeeNormalized, cadence) as Record<string, unknown>[];
+    for (const r of rows) {
+      if (this.detectionAmountMatches(Number(r.amount_cents), amountCents)) return true;
+    }
+    return false;
+  }
+
+  private detectionAmountMatches(storedAmountCents: number, candidateAmountCents: number): boolean {
+    return amountInCluster(Math.abs(storedAmountCents), candidateAmountCents);
+  }
+
+  isDetectionPermanentlyDismissed(
+    payeeNormalized: string,
+    cadence: SubscriptionCadence,
+    amountCents: number,
+  ): boolean {
+    const rows = this.db
+      .prepare(
+        `SELECT amount_cents FROM subscription_detections
+         WHERE payee_normalized = ? AND cadence = ? AND dismissed_at IS NOT NULL`,
+      )
+      .all(payeeNormalized, cadence) as Record<string, unknown>[];
+    for (const r of rows) {
+      if (this.detectionAmountMatches(Number(r.amount_cents), amountCents)) return true;
+    }
+    return false;
+  }
+
+  hasPendingDetectionMatch(
+    payeeNormalized: string,
+    cadence: SubscriptionCadence,
+    amountCents: number,
+  ): boolean {
+    const rows = this.db
+      .prepare(
+        `SELECT amount_cents FROM subscription_detections
+         WHERE payee_normalized = ? AND cadence = ? AND status = 'pending'`,
+      )
+      .all(payeeNormalized, cadence) as Record<string, unknown>[];
+    for (const r of rows) {
+      if (this.detectionAmountMatches(Number(r.amount_cents), amountCents)) return true;
+    }
+    return false;
+  }
+
+  insertDetection(input: {
+    id: string;
+    payeeNormalized: string;
+    displayName: string;
+    amountCents: number;
+    cadence: SubscriptionCadence;
+    detectionKind: SubscriptionDetectionRow["detectionKind"];
+    confidence: number;
+    sampleDates: string[];
+    laneKey: string;
+  }): void {
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `INSERT INTO subscription_detections (id, payee_normalized, display_name, amount_cents, cadence, detection_kind, confidence, sample_dates_json, lane_key, status, dismissed_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?)`,
+      )
+      .run(
+        input.id,
+        input.payeeNormalized,
+        input.displayName.slice(0, 240),
+        input.amountCents,
+        input.cadence,
+        input.detectionKind,
+        input.confidence,
+        JSON.stringify(input.sampleDates),
+        input.laneKey,
+        now,
+      );
+  }
+
+  createSubscriptionManual(input: {
+    displayName: string;
+    payee?: string;
+    amountCents: number;
+    cadence: SubscriptionCadence;
+    anchorDate: string;
+    categoryId: string;
+    currency?: string;
+  }): SubscriptionRow {
+    if (!Number.isInteger(input.amountCents) || input.amountCents >= 0) {
+      throw new ValidationError("subscription amount must be negative whole cents");
+    }
+    const name = input.displayName.trim().slice(0, 240);
+    if (!name) throw new ValidationError("display name required");
+    const payeeRaw = (input.payee ?? name).trim().slice(0, 240);
+    const payeeNormalized = normalizePayee(payeeRaw);
+    try {
+      requireValidIsoDate(input.anchorDate);
+    } catch {
+      throw new ValidationError("invalid anchor date");
+    }
+    const cat = this.db.prepare("SELECT id FROM categories WHERE id = ? AND archived = 0").get(input.categoryId);
+    if (!cat) throw new ValidationError("category not found");
+    const now = new Date().toISOString();
+    const id = randomUUID();
+    this.db
+      .prepare(
+        `INSERT INTO subscriptions (id, payee_normalized, display_name, amount_cents, currency, cadence, anchor_date, category_id, active, source, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'manual', ?, ?)`,
+      )
+      .run(
+        id,
+        payeeNormalized,
+        name,
+        input.amountCents,
+        input.currency ?? "USD",
+        input.cadence,
+        input.anchorDate,
+        input.categoryId,
+        now,
+        now,
+      );
+    return this.getSubscription(id)!;
+  }
+
+  updateSubscription(
+    id: string,
+    patch: Partial<{
+      displayName: string;
+      payee: string;
+      amountCents: number;
+      cadence: SubscriptionCadence;
+      anchorDate: string;
+      categoryId: string | null;
+      active: boolean;
+    }>,
+  ): SubscriptionRow | undefined {
+    const cur = this.getSubscription(id);
+    if (!cur) return undefined;
+    if (patch.amountCents != null && (!Number.isInteger(patch.amountCents) || patch.amountCents >= 0)) {
+      throw new ValidationError("subscription amount must be negative whole cents");
+    }
+    const now = new Date().toISOString();
+    const displayName = patch.displayName != null ? patch.displayName.trim().slice(0, 240) : cur.displayName;
+    if (patch.anchorDate != null) {
+      try {
+        requireValidIsoDate(patch.anchorDate);
+      } catch {
+        throw new ValidationError("invalid anchor date");
+      }
+    }
+    const payeeNormalized =
+      patch.payee != null ? normalizePayee(patch.payee.trim().slice(0, 240)) : cur.payeeNormalized;
+    this.db
+      .prepare(
+        `UPDATE subscriptions SET payee_normalized = ?, display_name = ?, amount_cents = ?, cadence = ?, anchor_date = ?, category_id = ?, active = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(
+        payeeNormalized,
+        displayName,
+        patch.amountCents ?? cur.amountCents,
+        patch.cadence ?? cur.cadence,
+        patch.anchorDate ?? cur.anchorDate,
+        patch.categoryId !== undefined ? patch.categoryId : cur.categoryId,
+        patch.active !== undefined ? (patch.active ? 1 : 0) : cur.active ? 1 : 0,
+        now,
+        id,
+      );
+    return this.getSubscription(id);
+  }
+
+  confirmDetection(
+    detectionId: string,
+    input: {
+      categoryId: string;
+      cadence?: SubscriptionCadence;
+      displayName?: string;
+      deactivateConflictingActive?: boolean;
+    },
+  ): SubscriptionRow | undefined {
+    const det = this.getDetection(detectionId);
+    if (!det || det.status !== "pending") return undefined;
+    if (!input.categoryId.trim()) throw new ValidationError("category required");
+    const cat = this.db.prepare("SELECT id FROM categories WHERE id = ? AND archived = 0").get(input.categoryId);
+    if (!cat) throw new ValidationError("category not found");
+    const cadence = input.cadence ?? det.cadence;
+    const displayName = (input.displayName ?? det.displayName).trim().slice(0, 240);
+    const anchorDate = det.sampleDates[det.sampleDates.length - 1] ?? new Date().toISOString().slice(0, 10);
+    const now = new Date().toISOString();
+    const id = randomUUID();
+    this.db.exec("BEGIN");
+    try {
+      if (input.deactivateConflictingActive) {
+        for (const s of this.listSubscriptions(false)) {
+          if (
+            s.payeeNormalized === det.payeeNormalized &&
+            s.cadence === cadence &&
+            !this.detectionAmountMatches(s.amountCents, det.amountCents)
+          ) {
+            this.updateSubscription(s.id, { active: false });
+          }
+        }
+      }
+      this.db
+        .prepare(
+          `INSERT INTO subscriptions (id, payee_normalized, display_name, amount_cents, currency, cadence, anchor_date, category_id, active, source, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'USD', ?, ?, ?, 1, 'detected', ?, ?)`,
+        )
+        .run(id, det.payeeNormalized, displayName, det.amountCents, cadence, anchorDate, input.categoryId, now, now);
+      this.db
+        .prepare("UPDATE subscription_detections SET status = 'confirmed' WHERE id = ?")
+        .run(detectionId);
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+    return this.getSubscription(id);
+  }
+
+  dismissDetection(detectionId: string): SubscriptionDetectionRow | undefined {
+    const det = this.getDetection(detectionId);
+    if (!det || det.status !== "pending") return undefined;
+    const now = new Date().toISOString();
+    this.db
+      .prepare("UPDATE subscription_detections SET status = 'dismissed', dismissed_at = ? WHERE id = ?")
+      .run(now, detectionId);
+    return this.getDetection(detectionId);
+  }
+
+  subscriptionsForApi(cfg: { tz: string }, now = new Date()): {
+    subscriptions: Array<
+      SubscriptionRow & { annualCostCents: number; nextDueDate: string }
+    >;
+    detections: SubscriptionDetectionRow[];
+  } {
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: cfg.tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(now);
+    const subs = this.listSubscriptions(false).map((s) => ({
+      ...s,
+      annualCostCents: annualCostCents(s.amountCents, s.cadence),
+      nextDueDate: safeNextDueDate(s.cadence, s.anchorDate, cfg.tz, today) ?? "—",
+    }));
+    const detections = this.listPendingDetections().map((d) => ({
+      ...d,
+      hasConflictingActiveSubscription: this.detectionHasConflictingActiveSubscription(d),
+    }));
+    return { subscriptions: subs, detections };
+  }
+
+  detectionHasConflictingActiveSubscription(
+    det: SubscriptionDetectionRow,
+    cadence: SubscriptionCadence = det.cadence,
+  ): boolean {
+    for (const s of this.listSubscriptions(false)) {
+      if (
+        s.payeeNormalized === det.payeeNormalized &&
+        s.cadence === cadence &&
+        !this.detectionAmountMatches(s.amountCents, det.amountCents)
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 }

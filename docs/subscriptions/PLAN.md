@@ -8,6 +8,8 @@
 
 **Build order:** One dedicated subscriptions PR after Budget PR A; **Budget PR B** (rollup/panel) ships separately per `docs/budget/PLAN.md` and is **not** blocked on subscriptions.
 
+**Database:** Subscriptions ships as **`budget.sqlite` migration 3** (Budget PR C loans/assets uses migration 4 per `docs/budget/PLAN.md`).
+
 ---
 
 ## Scope

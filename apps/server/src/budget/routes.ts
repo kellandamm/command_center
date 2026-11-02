@@ -24,6 +24,8 @@ import { BudgetStore, type BudgetAccount } from "./store";
 import type { AccountType } from "./constants";
 import { computeRollup, monthKey, parseBudgetMonth } from "./rollup";
 import { budgetExportCsvLines } from "./csv-export";
+import { handleSubscriptionRoutes } from "./subscription-routes";
+import { runSubscriptionDetection } from "./subscriptions/detect";
 
 function json(res: ServerResponse, status: number, data: unknown) {
   res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
@@ -67,6 +69,10 @@ export async function handleBudgetRoutes(
   const ownerEmail = who.email!;
 
   try {
+    if (await handleSubscriptionRoutes(store, cfg, req, res, path, readJson)) {
+      return true;
+    }
+
     if (path === "/api/budget/accounts" && req.method === "GET") {
       json(res, 200, { accounts: store.listAccounts().map((a) => accountForApi(store, a)) });
       return true;
@@ -395,6 +401,7 @@ export async function handleBudgetRoutes(
         rows: commitRows,
       });
       importPreviewCache.delete(ownerEmail, previewId);
+      runSubscriptionDetection(store, cfg);
       json(res, 201, { batch });
       return true;
     }

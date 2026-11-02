@@ -186,6 +186,105 @@ async function seedDemoBudget(base: string, jwt: string) {
   return month;
 }
 
+test("budget subscriptions UI: possible-yearly badge, confirm, dismiss, manual add", { timeout: 120_000 }, async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "cc-budget-sub-ui-"));
+  const app = await openBudgetBrowserServer(dataDir);
+  const browser = await chromium.launch();
+  try {
+    const headers = ownerHeaders(app.ownerJwt);
+    const acctRes = await fetch(`${app.base}/api/budget/accounts`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name: "Checking", type: "checking" }),
+    });
+    const { account } = (await acctRes.json()) as { account: { id: string } };
+    const cats = (await (await fetch(`${app.base}/api/budget/categories`, { headers })).json()) as {
+      categories: Array<{ id: string; name: string }>;
+    };
+    const streaming = cats.categories.find((c) => c.name === "Streaming")!.id;
+    const d1 = new Date();
+    d1.setUTCDate(d1.getUTCDate() - 400);
+    const d2 = new Date();
+    d2.setUTCDate(d2.getUTCDate() - 35);
+    const iso1 = d1.toISOString().slice(0, 10);
+    const iso2 = d2.toISOString().slice(0, 10);
+    await fetch(`${app.base}/api/budget/transactions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ accountId: account.id, date: iso1, amountCents: -9900, payee: "Annual Soft" }),
+    });
+    await fetch(`${app.base}/api/budget/transactions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ accountId: account.id, date: iso2, amountCents: -9900, payee: "Annual Soft" }),
+    });
+    await fetch(`${app.base}/api/budget/subscriptions/scan`, { method: "POST", headers, body: "{}" });
+
+    const context = await browser.newContext();
+    await context.addCookies([
+      { name: "CF_Authorization", value: app.ownerJwt, domain: "127.0.0.1", path: "/" },
+    ]);
+    const page = await context.newPage();
+    await page.goto(`${app.base}/budget?view=subscriptions`);
+    await page.waitForFunction(() => document.body.innerText.includes("Possible yearly — please confirm"));
+    assert.ok((await page.locator(".ui-badge-warning").count()) >= 1);
+
+    const list = (await (await fetch(`${app.base}/api/budget/subscriptions`, { headers })).json()) as {
+      detections: Array<{ id: string }>;
+    };
+    await fetch(`${app.base}/api/budget/subscriptions/detections/${list.detections[0]!.id}/confirm`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ categoryId: streaming, cadence: "yearly" }),
+    });
+
+    const d3 = new Date();
+    d3.setUTCDate(d3.getUTCDate() - 120);
+    for (const offset of [0, 31, 62]) {
+      const d = new Date(d3);
+      d.setUTCDate(d.getUTCDate() + offset);
+      await fetch(`${app.base}/api/budget/transactions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          accountId: account.id,
+          date: d.toISOString().slice(0, 10),
+          amountCents: -500,
+          payee: "Dismiss Me",
+        }),
+      });
+    }
+    await fetch(`${app.base}/api/budget/subscriptions/scan`, { method: "POST", headers, body: "{}" });
+    await page.reload();
+    await page.waitForSelector("#budget-sub-detections button:has-text('Dismiss')");
+    await page.locator("#budget-sub-detections button:has-text('Dismiss')").first().click();
+    await page.waitForFunction(async () => {
+      const r = await fetch("/api/budget/subscriptions", { headers: { "x-ah": "1" } });
+      const j = await r.json();
+      return j.detections.length === 0;
+    });
+
+    await fetch(`${app.base}/api/budget/subscriptions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        displayName: "Manual Sub",
+        amountCents: -1200,
+        cadence: "monthly",
+        categoryId: streaming,
+        anchorDate: "2026-01-01",
+      }),
+    });
+    await page.reload();
+    await page.waitForFunction(() => document.body.innerText.includes("Manual Sub"));
+    await page.waitForFunction(() => document.body.innerText.includes("Annual Soft"));
+  } finally {
+    await browser.close();
+    await app.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("budget UI: overview and panel screenshots with demo seed", { timeout: 120_000 }, async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "cc-budget-shot-"));
   const app = await openBudgetBrowserServer(dataDir);

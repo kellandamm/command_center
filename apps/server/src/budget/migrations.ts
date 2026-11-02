@@ -103,4 +103,40 @@ CREATE TABLE IF NOT EXISTS budget_prefs (
 INSERT OR IGNORE INTO budget_prefs (key, value) VALUES ('over_budget_notify', '0');
 `,
   },
+  {
+    version: 3,
+    description: "subscriptions and recurring detections",
+    sql: `
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id TEXT PRIMARY KEY,
+  payee_normalized TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  cadence TEXT NOT NULL CHECK(cadence IN ('weekly','monthly','yearly')),
+  anchor_date TEXT NOT NULL,
+  category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
+  active INTEGER NOT NULL DEFAULT 1,
+  source TEXT NOT NULL CHECK(source IN ('detected','manual')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS subscription_detections (
+  id TEXT PRIMARY KEY,
+  payee_normalized TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  cadence TEXT NOT NULL CHECK(cadence IN ('weekly','monthly','yearly')),
+  detection_kind TEXT NOT NULL CHECK(detection_kind IN ('standard','possible_yearly')),
+  confidence REAL NOT NULL,
+  sample_dates_json TEXT NOT NULL,
+  lane_key TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','confirmed','dismissed')),
+  dismissed_at TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_detections_lane ON subscription_detections(lane_key);
+CREATE INDEX IF NOT EXISTS idx_subscription_detections_pending ON subscription_detections(status) WHERE status = 'pending';
+`,
+  },
 ];
