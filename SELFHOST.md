@@ -35,7 +35,7 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 | `HOST_PORT` | Compose publish port on loopback. |
 | `DATA_DIR` | Default `/data` (Docker volume). |
 | `DOCKER_SOCKET` | Optional. Unix path to the Docker Engine API socket (e.g. `/var/run/docker.sock`). When set and readable, the **Server health** panel lists containers (read-only). When unset, host CPU/memory/disk still work; the container section explains that Docker is not configured. |
-| `RECALLIO_URL` | Optional. Base URL for the **Recallio search** panel (e.g. `https://recall.gobison.io`). Without it the panel shows a disabled message; the rest of the dashboard is unchanged. |
+| `RECALLIO_URL` | Optional. Base URL for the **Recallio search** panel (e.g. `https://recall.stremmy.com`). Without it the panel shows a disabled message; the rest of the dashboard is unchanged. |
 | `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | Optional **outbound** Cloudflare Access service token. Sent as `CF-Access-Client-Id` / `CF-Access-Client-Secret` when the server calls Recallio behind Access. Set both if Recallio requires them; omit if Recallio is reachable without a service token. |
 | `WEATHER_LAT`, `WEATHER_LON` | Optional. Open-Meteo coordinates for the **Weather** panel (no API key). Default **Chicago** (`41.8781`, `-87.6298`) when unset. |
 | `ICS_URLS` | Optional. Comma-separated **https** iCal subscription URLs for the **Calendar** panel. When unset, the panel explains how to enable it. Requests use server-side SSRF protection. |
