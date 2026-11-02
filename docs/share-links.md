@@ -17,7 +17,7 @@ The app rate-limits using `CF-Connecting-IP` when present. **Only trust that hea
 
 ## Cloudflare Zero Trust (Infra Ops)
 
-Stremmy is normally protected by a Cloudflare Access **self-hosted** application on `command.gobison.io` (apex or path empty / `/*`), with Allow policies for your identity.
+Stremmy is normally protected by a Cloudflare Access **self-hosted** application on the apex hostname (e.g. `stremmy.com`, path empty / `/*`), with Allow policies for your identity.
 
 Share links must work **without** an Access JWT on everything under **`/share/`** only:
 
@@ -39,21 +39,21 @@ Use a **second** self-hosted application for the public share tree so it can use
 2. **Application name:** e.g. `Stremmy — public share links`.
 3. **Session duration:** your choice (Bypass still applies at the edge).
 4. Under **Add public hostname** (or **Application domains**):
-   - **Subdomain:** `command` (or leave blank if the UI uses the full hostname `command.gobison.io`).
-   - **Domain:** `gobison.io` (your zone).
+   - **Subdomain:** leave blank for the apex (e.g. Stremmy at `stremmy.com`).
+   - **Domain:** your zone (e.g. `stremmy.com`).
    - **Path:** `/share/*`  
-     Per Cloudflare’s path rules, `/share/*` matches URLs **under** `/share/` (e.g. `/share/viewer.js`, `/share/<id>/data`). It does **not** match the apex or unrelated paths. Do **not** use an empty path or `/*` on this app.
+     Per Cloudflare’s path rules, `/share/*` matches URLs **under** `/share/` (e.g. `/share/viewer.js`, `/share/<id>/data`). It does **not** match unrelated paths. Do **not** use an empty path or `/*` on this app.
 5. **Policies** → **Add a policy**:
    - **Action:** **Bypass**
    - **Rule:** **Everyone** (or equivalent include-all rule).
-6. Leave your **existing** `command.gobison.io` Access application (broader path) unchanged with its normal Allow policies.
+6. Leave your **existing** main Access application for the same hostname (broader path) unchanged with its normal Allow policies.
 7. Set `SHARE_LINKS_ENABLED=1` on Stremmy and redeploy/restart.
 
 ### Optional: WAF rate limiting
 
 In **Security** → **WAF** → **Rate limiting rules** (or **Custom rules**), add a rule scoped to:
 
-- **Hostname:** `command.gobison.io`
+- **Hostname:** your Stremmy hostname (e.g. `stremmy.com`)
 - **URI path** starts with `/share/`
 
 Example: block or challenge when requests exceed N per minute per IP. This complements the app’s `SHARE_LINKS_RATE_LIMIT_PER_MINUTE` and protects the origin if Access is misconfigured.
@@ -63,13 +63,13 @@ Example: block or challenge when requests exceed N per minute per IP. This compl
 From a network **without** an Access session:
 
 ```bash
-curl -sS -o /dev/null -w "%{http_code}\n" "https://command.gobison.io/share/viewer.js"
+curl -sS -o /dev/null -w "%{http_code}\n" "https://stremmy.com/share/viewer.js"
 # Expect 200 when SHARE_LINKS_ENABLED=1 (not an Access login redirect)
 
-curl -sS -o /dev/null -w "%{http_code}\n" "https://command.gobison.io/api/settings"
+curl -sS -o /dev/null -w "%{http_code}\n" "https://stremmy.com/api/settings"
 # Expect 302/401 — still protected
 
-curl -sS -o /dev/null -w "%{http_code}\n" "https://command.gobison.io/share/INVALIDIDAAAAAAAAAAAAAA"
+curl -sS -o /dev/null -w "%{http_code}\n" "https://stremmy.com/share/INVALIDIDAAAAAAAAAAAAAA"
 # Expect 404 from the app (not Access), when the feature is enabled
 ```
 

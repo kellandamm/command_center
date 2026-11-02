@@ -8,6 +8,26 @@ import { formatThemeVars, THEME_DARK, THEME_LIGHT, THEME_META_COLORS } from "./t
 export const esc = (s: unknown) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
+/** Sidebar subtitle hostname from `APP_PUBLIC_URL` (via config `appPublicUrl`). Empty when unset or invalid. */
+export function brandSubtitleHtml(appPublicUrl: string | null | undefined): string {
+  const raw = appPublicUrl?.trim();
+  if (!raw) return "";
+  try {
+    const host = new URL(raw).hostname;
+    if (!host) return "";
+    return `<span>${esc(host)}</span>`;
+  } catch {
+    return "";
+  }
+}
+
+let layoutAppPublicUrl: string | null = null;
+
+/** Called once per HTTP app from deployment config. */
+export function bindLayoutAppPublicUrl(url: string | null): void {
+  layoutAppPublicUrl = url;
+}
+
 /** Gray neutral + royal blue primary + orange accent (shadcn-style SSR tokens). */
 const CSS = `
 :root{
@@ -542,6 +562,8 @@ export function page(opts: {
   extraHead?: string;
   crumbs?: Array<{ label: string; href?: string }>;
   readWidth?: boolean;
+  /** Overrides bindLayoutAppPublicUrl for this page only. */
+  appPublicUrl?: string | null;
 }): string {
   const agentSectionId = agentSectionIdFromActive(opts.active);
   const agentSectionMeta = agentSectionId ? AGENT_SUB_NAV.find((s) => s.sectionId === agentSectionId) : undefined;
@@ -562,13 +584,15 @@ export function page(opts: {
     pageTitle: opts.title,
   });
   const bodyWrapClass = opts.readWidth ? "page-body-inner page-read-width" : "page-body-inner";
+  const brandSub =
+    opts.appPublicUrl !== undefined ? brandSubtitleHtml(opts.appPublicUrl) : brandSubtitleHtml(layoutAppPublicUrl);
   const shell = `<div class="app-shell" data-sidebar-state="expanded" data-mobile-sidebar="closed">
 <button type="button" class="sidebar-backdrop" id="sidebar-backdrop" aria-label="Close navigation"></button>
 <aside class="sidebar" aria-label="Main navigation">
   <div class="sidebar-header">
     <a class="sidebar-brand" href="/">
       <span class="sidebar-logo" aria-hidden="true">S</span>
-      <span class="sidebar-brand-text"><strong>Stremmy</strong><span>command.gobison.io</span></span>
+      <span class="sidebar-brand-text"><strong>Stremmy</strong>${brandSub}</span>
     </a>
   </div>
   <div class="sidebar-content">${sidebarGroups}</div>

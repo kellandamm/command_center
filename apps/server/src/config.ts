@@ -22,7 +22,7 @@ export interface Config {
   /** GitHub login for the activity panel (open issues/PRs and public events). */
   githubUsername: string;
   todoistApiToken: string | null;
-  /** Base URL for Recallio search (e.g. https://recall.gobison.io). */
+  /** Base URL for Recallio search (e.g. https://recall.stremmy.com). */
   recallioUrl: string | null;
   /** Outbound Cloudflare Access service token (Recallio behind Access). */
   cfAccessClientId: string | null;

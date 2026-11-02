@@ -15,7 +15,7 @@ ALLOW_NOTIFY = re.compile(r"^/api/services/script/notify_kellan$")
 
 def proxy_config() -> dict[str, str]:
     return {
-        "upstream": os.environ.get("HA_UPSTREAM", "https://ha.gobison.io").rstrip("/"),
+        "upstream": os.environ.get("HA_UPSTREAM", "https://ha.stremmy.dev").rstrip("/"),
         "ha_token": os.environ["HA_TOKEN"],
         "cf_id": os.environ["CF_ACCESS_CLIENT_ID"],
         "cf_secret": os.environ["CF_ACCESS_CLIENT_SECRET"],
