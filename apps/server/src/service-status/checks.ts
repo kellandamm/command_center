@@ -99,7 +99,7 @@ async function checkTodoist(cfg: Config): Promise<{ ok: boolean }> {
 async function checkPlaud(cfg: Config): Promise<{ ok: boolean }> {
   if (!cfg.plaudUrl) return { ok: false };
   const { status } = await fetchEnvConfiguredUrl(cfg.plaudUrl, "", { timeoutMs: CHECK_TIMEOUT_MS });
-  return { ok: status >= 200 && status < 500 };
+  return { ok: status >= 200 && status < 400 };
 }
 
 async function checkHomeAssistant(cfg: Config): Promise<{ ok: boolean }> {
@@ -158,7 +158,6 @@ export async function getServiceStatusSnapshot(cfg: Config): Promise<ServiceChec
 }
 
 export function serviceStatusJson(cfg: Config, results: ServiceCheckResult[]): string {
-  const secrets = collectSecrets(cfg);
   const payload = {
     services: results.map((r) => ({
       id: r.id,
@@ -171,7 +170,12 @@ export function serviceStatusJson(cfg: Config, results: ServiceCheckResult[]): s
     })),
     checkedAt: new Date().toISOString(),
   };
-  return redact(JSON.stringify(payload), secrets);
+  return redactServiceStatusString(JSON.stringify(payload), cfg);
+}
+
+/** Guard tests: secret redaction must strip configured tokens from serialized status JSON. */
+export function redactServiceStatusString(text: string, cfg: Config): string {
+  return redact(text, collectSecrets(cfg));
 }
 
 export function aggregateServiceStatusDot(results: ServiceCheckResult[]): "blue" | "orange" | "muted" {

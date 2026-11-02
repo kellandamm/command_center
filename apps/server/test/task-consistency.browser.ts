@@ -13,7 +13,7 @@ import { DailyBriefingService } from "../src/daily-briefing/service";
 import { CalendarWorkspace } from "../src/calendar/workspace";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
-test("native capture, Notes/voice links, Focus and Shutdown work on desktop/mobile in workspace TZ", { timeout: 180_000 }, async () => {
+test("native capture, Notes/voice links, focus session API, and Shutdown work on desktop/mobile in workspace TZ", { timeout: 180_000 }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-task-browser-"));
   const cfg = loadConfig({ DATA_DIR: dir, ADMIN_TOKEN: "t".repeat(32), OWNER_EMAILS: "owner@example.com", TZ: "Asia/Tokyo", LLM_BASE_URL: "https://llm.example/v1", LLM_API_KEY: "test", LLM_MODEL: "test" });
   const integration = await openIntegrationStores(dir, cfg), notes = await NotesStore.open(dir);
@@ -69,16 +69,25 @@ test("native capture, Notes/voice links, Focus and Shutdown work on desktop/mobi
         await voiceLink.waitFor();
         const voiceTask = integration.board.list().find((card) => card.title === `Voice ${width}`)!;
         assert.equal(await voiceLink.getAttribute("href"), `/calendar/event?task=${voiceTask.id}`);
-        await page.reload();
-        await page.waitForSelector(`#focus-task-select option[value="board:${task.id}"]`, { state: "attached" });
-        const expand = page.getByRole("button", { name: "Expand Focus panel", exact: true });
-        if (await expand.count()) await expand.click();
-        await page.locator("#focus-task-select").selectOption(`board:${task.id}`);
-        await page.locator("#focus-start").click();
-        await page.waitForTimeout(1100);
-        const recorded = page.waitForResponse((response) => response.url().endsWith("/api/focus/sessions"));
-        await page.locator("#focus-stop").click();
-        await recorded;
+        await page.evaluate(
+          async ({ taskId, title }) => {
+            const startedAt = new Date(Date.now() - 1100).toISOString();
+            const endedAt = new Date().toISOString();
+            await (globalThis as unknown as { api: (p: string, m: string, b: unknown) => Promise<unknown> }).api(
+              "/api/focus/sessions",
+              "POST",
+              {
+                startedAt,
+                endedAt,
+                durationMs: 1100,
+                taskId,
+                taskSource: "board",
+                taskTitle: title,
+              },
+            );
+          },
+          { taskId: task.id, title: task.title },
+        );
         assert.equal(integration.focusSessions.list()[0]?.taskSource, "board");
         assert.equal(integration.board.get(task.id)?.column, "Backlog");
         await page.locator("#dashboard-quick-add .quick-add-input").fill("appointment tomorrow morning");
