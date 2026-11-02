@@ -1,6 +1,7 @@
 import type { CalendarEvent } from "../calendar/parse-ics";
 import type { Config } from "../config";
 import { panelById, panels } from "../panels/registry";
+import { aggregateServiceStatusDot } from "../service-status/checks";
 import type { ServiceCheckResult } from "../service-status/checks";
 import { esc } from "../ui/layout";
 import { button } from "../ui/components";
@@ -16,6 +17,7 @@ export interface DashboardRenderContext {
   cfg: Config;
   layout: DashboardLayout;
   showBudgetPanel: boolean;
+  showServiceStatusPanel: boolean;
   calendarEvents: CalendarEvent[];
   serviceStatus: ServiceCheckResult[];
   now?: Date;
@@ -23,6 +25,11 @@ export interface DashboardRenderContext {
 
 function statusDotClass(dot: WidgetDefinition["statusDot"]): string {
   return `dashboard-status-dot dashboard-status-dot--${dot}`;
+}
+
+function headerDotForWidget(def: WidgetDefinition, ctx: DashboardRenderContext): WidgetDefinition["statusDot"] {
+  if (def.id !== "service-status") return def.statusDot;
+  return aggregateServiceStatusDot(ctx.serviceStatus);
 }
 
 function widgetBody(ctx: DashboardRenderContext, entry: PanelLayoutEntry): string {
@@ -50,11 +57,12 @@ function widgetBody(ctx: DashboardRenderContext, entry: PanelLayoutEntry): strin
   }
 }
 
-function cardChrome(def: WidgetDefinition, size: string): string {
+function cardChrome(def: WidgetDefinition, size: string, ctx: DashboardRenderContext): string {
   const tag = def.category.toUpperCase();
+  const dot = headerDotForWidget(def, ctx);
   return `<div class="dashboard-widget-chrome">
   <button type="button" class="dashboard-drag-handle dashboard-edit-only" tabindex="0" aria-label="Drag ${esc(def.title)}">⠿</button>
-  <span class="${statusDotClass(def.statusDot)}" aria-hidden="true"></span>
+  <span class="${statusDotClass(dot)}" aria-hidden="true"></span>
   <h2>${esc(def.title)}</h2>
   <span class="dashboard-category-tag">${esc(tag)}</span>
   <div class="dashboard-size-toggle dashboard-edit-only" role="group" aria-label="Card size">
@@ -81,10 +89,11 @@ export function renderDashboardGrid(ctx: DashboardRenderContext): string {
       const def = widgetById(entry.id);
       if (!def) return "";
       if (def.id === "budget" && !ctx.showBudgetPanel) return "";
+      if (def.ownerOnly && !ctx.showServiceStatusPanel) return "";
       return `<div class="dashboard-item" data-widget-id="${esc(entry.id)}" data-panel-id="${esc(def.panelId ?? entry.id)}" data-size="${entry.size}"
   style="--gc-start:${entry.x + 1};--gc-span:${entry.w};--gr-start:${entry.y + 1};--gr-span:${entry.h}">
   <section class="card">
-  ${cardChrome(def, entry.size)}
+  ${cardChrome(def, entry.size, ctx)}
   <div class="dashboard-panel-body">${widgetBody(ctx, entry)}</div>
   </section>
 </div>`;
@@ -96,7 +105,10 @@ export function renderDashboardGrid(ctx: DashboardRenderContext): string {
 
 export function renderWidgetDrawer(ctx: DashboardRenderContext): string {
   const onGrid = new Set(ctx.layout.widgets.map((w) => w.id));
-  const catalog = catalogWidgets({ showBudget: ctx.showBudgetPanel });
+  const catalog = catalogWidgets({
+    showBudget: ctx.showBudgetPanel,
+    showServiceStatus: ctx.showServiceStatusPanel,
+  });
   const items = catalog
     .map(
       (w) => `<button type="button" class="dashboard-drawer-item" data-add-widget="${esc(w.id)}" data-default-size="${w.defaultSize}"${onGrid.has(w.id) ? " hidden" : ""}>

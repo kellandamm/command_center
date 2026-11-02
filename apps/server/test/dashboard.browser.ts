@@ -203,6 +203,7 @@ test("dashboard revamp: edit layout persists widgets", { timeout: 120_000 }, asy
     const drawerText = await page.locator("#dashboard-widget-drawer").innerText();
     assert.doesNotMatch(drawerText, /Pomodoro/i);
     assert.doesNotMatch(drawerText, /Habit tracker/i);
+    assert.doesNotMatch(drawerText, /Focus timer/i);
     await page.setViewportSize({ width: 375, height: 800 });
     const fullWidth = await page.evaluate(() => {
       const grid = document.getElementById("dashboard-grid")!;
@@ -239,6 +240,9 @@ test("dashboard: bootstrap without layout API and breakpoint reflow", { timeout:
     await page.goto(`${base}/`);
     await page.waitForSelector("#dashboard-grid", { timeout: 20_000 });
     await page.waitForSelector("#panel-tasks", { timeout: 20_000 });
+    await page.waitForFunction(() => document.querySelectorAll("#dashboard-grid .dashboard-item").length >= 3, undefined, {
+      timeout: 15_000,
+    });
     await sleep(600);
     let overlaps = await panelOverlaps(page);
     assert.deepEqual(

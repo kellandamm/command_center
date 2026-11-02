@@ -1,19 +1,34 @@
 import { mkdir, readFile, rename } from "node:fs/promises";
 import { join } from "node:path";
+import type { Config } from "../config";
 import { defaultDashboardLayout } from "./defaults";
 import { normalizeDashboardLayout, parseDashboardLayout } from "./normalize";
 import type { DashboardLayout } from "./types";
 import { dashboardLayoutUserKey } from "./user-key";
-import { widgetIdsForSession } from "./widgets";
+import { widgetIdsForSession, type WidgetSessionOpts } from "./widgets";
 import { writeFileAtomic } from "../store";
+import { loadConfig } from "../config";
 import { MAX_LAYOUT_BYTES } from "./schema";
 
 const LEGACY_FILE = "dashboard-layout.json";
 const LAYOUT_DIR = "dashboard-layouts";
 
+export class LayoutPayloadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LayoutPayloadError";
+  }
+}
+
 function layoutPath(dataDir: string, userKey: string): string {
   const safe = userKey.replace(/[^a-z0-9._@-]+/g, "_").slice(0, 120);
   return join(dataDir, LAYOUT_DIR, `${safe}.json`);
+}
+
+function isVerifiedOwner(cfg: Config, principal: { who: string; email?: string; owner?: boolean }): boolean {
+  if (principal.owner === true) return true;
+  if (!cfg.ownerEmails.length) return principal.who === "admin-token";
+  return false;
 }
 
 async function migrateLegacyFile(dataDir: string, userKey: string): Promise<unknown | null> {
@@ -35,25 +50,33 @@ export class DashboardLayoutStore {
 
   private constructor(
     private dataDir: string,
-    private showBudget: boolean,
+    private cfg: Config,
   ) {}
 
-  static async open(dataDir: string, _panelIds?: readonly string[]): Promise<DashboardLayoutStore> {
-    void _panelIds;
-    return new DashboardLayoutStore(dataDir, false);
+  static async open(dataDir: string, cfg?: Config): Promise<DashboardLayoutStore> {
+    return new DashboardLayoutStore(dataDir, cfg ?? loadConfig({ DATA_DIR: dataDir }));
   }
 
-  knownIds(showBudget: boolean): string[] {
-    return widgetIdsForSession({ showBudget });
+  sessionOpts(showBudget: boolean, showServiceStatus: boolean): WidgetSessionOpts {
+    return { showBudget, showServiceStatus };
   }
 
-  private ids(showBudget: boolean): readonly string[] {
-    return this.knownIds(showBudget);
+  knownIds(opts: WidgetSessionOpts): string[] {
+    return widgetIdsForSession(opts);
   }
 
-  async getForUser(principal: { who: string; email?: string }, showBudget: boolean): Promise<DashboardLayout> {
+  private ids(opts: WidgetSessionOpts): readonly string[] {
+    return this.knownIds(opts);
+  }
+
+  async getForUser(
+    principal: { who: string; email?: string; owner?: boolean },
+    showBudget: boolean,
+    showServiceStatus = showBudget,
+  ): Promise<DashboardLayout> {
+    const opts = this.sessionOpts(showBudget, showServiceStatus);
     const userKey = dashboardLayoutUserKey(principal);
-    const cached = this.cache.get(`${userKey}:${showBudget}`);
+    const cached = this.cache.get(`${userKey}:${showBudget}:${showServiceStatus}`);
     if (cached) return cached;
 
     await mkdir(join(this.dataDir, LAYOUT_DIR), { recursive: true });
@@ -65,16 +88,21 @@ export class DashboardLayoutStore {
       raw = JSON.parse(text);
     } catch (error) {
       if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-        raw = await migrateLegacyFile(this.dataDir, userKey);
+        if (isVerifiedOwner(this.cfg, principal)) {
+          raw = await migrateLegacyFile(this.dataDir, userKey);
+        }
       } else {
         raw = null;
       }
     }
 
     const layout = raw
-      ? parseDashboardLayout(raw, this.ids(showBudget), showBudget, { appendMissing: true })
-      : defaultDashboardLayout({ showBudget });
-    this.cache.set(`${userKey}:${showBudget}`, layout);
+      ? parseDashboardLayout(raw, this.ids(opts), showBudget, {
+          appendMissing: false,
+          appendNewRegistryWidgets: true,
+        })
+      : defaultDashboardLayout({ showBudget, showServiceStatus });
+    this.cache.set(`${userKey}:${showBudget}:${showServiceStatus}`, layout);
     return layout;
   }
 
@@ -82,39 +110,53 @@ export class DashboardLayoutStore {
     principal: { who: string; email?: string },
     raw: unknown,
     showBudget: boolean,
+    showServiceStatus = showBudget,
   ): Promise<DashboardLayout> {
+    const opts = this.sessionOpts(showBudget, showServiceStatus);
     const userKey = dashboardLayoutUserKey(principal);
     const text = typeof raw === "string" ? raw : JSON.stringify(raw);
     if (Buffer.byteLength(text) > MAX_LAYOUT_BYTES) {
-      return this.getForUser(principal, showBudget);
+      throw new LayoutPayloadError("Layout payload exceeds size limit");
     }
-    const layout = parseDashboardLayout(raw, this.ids(showBudget), showBudget, { appendMissing: false });
-    await mkdir(join(this.dataDir, LAYOUT_DIR), { recursive: true });
-    await writeFileAtomic(layoutPath(this.dataDir, userKey), JSON.stringify(layout, null, 2));
-    this.cache.set(`${userKey}:${showBudget}`, layout);
-    return layout;
+    try {
+      const layout = normalizeDashboardLayout(raw, this.ids(opts), showBudget, {
+        appendMissing: false,
+        appendNewRegistryWidgets: false,
+      });
+      await mkdir(join(this.dataDir, LAYOUT_DIR), { recursive: true });
+      await writeFileAtomic(layoutPath(this.dataDir, userKey), JSON.stringify(layout, null, 2));
+      this.cache.set(`${userKey}:${showBudget}:${showServiceStatus}`, layout);
+      return layout;
+    } catch (error) {
+      if (error instanceof LayoutPayloadError) throw error;
+      throw new LayoutPayloadError("Invalid dashboard layout");
+    }
   }
 
-  async resetForUser(principal: { who: string; email?: string }, showBudget: boolean): Promise<DashboardLayout> {
-    const layout = defaultDashboardLayout({ showBudget });
+  async resetForUser(
+    principal: { who: string; email?: string },
+    showBudget: boolean,
+    showServiceStatus = showBudget,
+  ): Promise<DashboardLayout> {
+    const layout = defaultDashboardLayout({ showBudget, showServiceStatus });
     const userKey = dashboardLayoutUserKey(principal);
     await mkdir(join(this.dataDir, LAYOUT_DIR), { recursive: true });
     await writeFileAtomic(layoutPath(this.dataDir, userKey), JSON.stringify(layout, null, 2));
-    this.cache.set(`${userKey}:${showBudget}`, layout);
+    this.cache.set(`${userKey}:${showBudget}:${showServiceStatus}`, layout);
     return layout;
   }
 
   /** @deprecated tests — single shared layout file interface */
   get(): DashboardLayout {
-    return defaultDashboardLayout({ showBudget: this.showBudget });
+    return defaultDashboardLayout({ showBudget: false });
   }
 
   async update(raw: unknown): Promise<DashboardLayout> {
-    return this.updateForUser({ who: "anonymous" }, raw, this.showBudget);
+    return this.updateForUser({ who: "anonymous" }, raw, false, false);
   }
 
   async reset(): Promise<DashboardLayout> {
-    return this.resetForUser({ who: "anonymous" }, this.showBudget);
+    return this.resetForUser({ who: "anonymous" }, false, false);
   }
 }
 

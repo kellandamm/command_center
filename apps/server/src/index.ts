@@ -20,7 +20,6 @@ import { DashboardLayoutStore } from "./dashboard-layout/storage";
 import { migrateSavedArticles } from "./read-later/service";
 import { XBookmarksStore } from "./read-later/x-bookmarks-store";
 import { XBookmarksService } from "./read-later/x-bookmarks-service";
-import { panels } from "./panels/registry";
 import { FileKV, ensureDirs } from "./store";
 import { ConnectionsStore } from "./connections";
 import { CalendarWorkspace } from "./calendar/workspace";
@@ -63,7 +62,7 @@ async function main() {
   const wins = WinsStore.open(cfg.dataDir);
   wireHobieBoardSync(hobieQueue, board, wins);
   const winsRollup = new WinsRollupService(cfg, wins);
-  const dashboardLayout = await DashboardLayoutStore.open(cfg.dataDir, panels.map((p) => p.id));
+  const dashboardLayout = await DashboardLayoutStore.open(cfg.dataDir, cfg);
   const attention = await AttentionStore.open(cfg.dataDir);
   const launchpad = await LaunchpadStore.open(cfg.dataDir);
   const focusSessions = await FocusSessionsStore.open(cfg.dataDir);

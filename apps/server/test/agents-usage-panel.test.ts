@@ -9,7 +9,7 @@ import { USAGE_READING_STALE_MS } from "../src/agents-usage/constants";
 import { buildUsageDashboard } from "../src/agents-usage/view";
 import type { UsageSnapshot } from "../src/agents-usage/types";
 
-const WIDGET_IDS = widgetIdsForSession({ showBudget: true });
+const WIDGET_IDS = widgetIdsForSession({ showBudget: true, showServiceStatus: true });
 
 test("dashboard layout: agents-usage appends to saved layout without crashing", () => {
   const savedIds = WIDGET_IDS.filter((id) => id !== "agents-usage");

@@ -1,6 +1,7 @@
 import type { Config } from "../config";
 import { todoistConfigured } from "../config";
 import { safeFetch } from "../ssrf";
+import { fetchEnvConfiguredUrl } from "./env-fetch";
 
 export type ServiceState = "up" | "down" | "unknown" | "not_configured";
 
@@ -10,10 +11,17 @@ export interface ServiceCheckResult {
   state: ServiceState;
   latencyMs?: number;
   downFor?: string;
+  version?: string;
+  uptimeSec?: number;
 }
 
 const CACHE_MS = 60_000;
-let cache: { at: number; results: ServiceCheckResult[]; secrets: string[] } | null = null;
+const CHECK_TIMEOUT_MS = 3000;
+
+let cache: { at: number; results: ServiceCheckResult[] } | null = null;
+let inflight: Promise<ServiceCheckResult[]> | null = null;
+
+export let serverProcessStartedAt = Date.now();
 
 function redact(text: string, secrets: string[]): string {
   let out = text;
@@ -24,45 +32,64 @@ function redact(text: string, secrets: string[]): string {
   return out;
 }
 
-async function timedCheck(fn: () => Promise<{ ok: boolean; detail?: string }>): Promise<{ state: ServiceState; latencyMs?: number; downFor?: string }> {
-  const start = Date.now();
-  try {
-    const result = await Promise.race([
-      fn(),
-      new Promise<{ ok: false; detail: string }>((resolve) => setTimeout(() => resolve({ ok: false, detail: "timeout" }), 5000)),
-    ]);
-    const latencyMs = Date.now() - start;
-    if (result.ok) return { state: "up", latencyMs };
-    return { state: result.detail === "timeout" ? "unknown" : "down", latencyMs, downFor: result.detail === "timeout" ? undefined : "down" };
-  } catch {
-    return { state: "unknown", latencyMs: Date.now() - start };
-  }
-}
-
 function collectSecrets(cfg: Config): string[] {
-  const secrets = [
+  return [
     cfg.adminToken,
     cfg.todoistApiToken,
     cfg.haToken,
     cfg.plaudUrl,
     cfg.cfAccessClientSecret,
   ].filter((s): s is string => !!s && s.length >= 4);
-  return secrets;
 }
 
-async function checkStremmy(cfg: Config): Promise<{ ok: boolean }> {
-  const base = cfg.appPublicUrl ?? `http://127.0.0.1:${cfg.port}`;
-  const url = `${base.replace(/\/+$/, "")}/healthz`;
-  const { status, body } = await safeFetch(url, { timeoutMs: 4000, maxBytes: 4096 });
-  if (status < 200 || status >= 300) return { ok: false };
-  void body;
-  return { ok: true };
+function stremmyLabel(cfg: Config): string {
+  const raw = cfg.appPublicUrl?.trim();
+  if (!raw) return "Stremmy";
+  try {
+    return new URL(raw).hostname || "Stremmy";
+  } catch {
+    return "Stremmy";
+  }
+}
+
+function stremmySelfResult(cfg: Config): ServiceCheckResult {
+  return {
+    id: "stremmy",
+    label: stremmyLabel(cfg),
+    state: "up",
+    latencyMs: 0,
+    version: cfg.version,
+    uptimeSec: Math.max(0, Math.floor((Date.now() - serverProcessStartedAt) / 1000)),
+  };
+}
+
+async function timedCheck(
+  fn: () => Promise<{ ok: boolean; detail?: string }>,
+): Promise<{ state: ServiceState; latencyMs?: number; downFor?: string }> {
+  const start = Date.now();
+  try {
+    const result = await Promise.race([
+      fn(),
+      new Promise<{ ok: false; detail: string }>((resolve) =>
+        setTimeout(() => resolve({ ok: false, detail: "timeout" }), CHECK_TIMEOUT_MS),
+      ),
+    ]);
+    const latencyMs = Date.now() - start;
+    if (result.ok) return { state: "up", latencyMs };
+    return {
+      state: result.detail === "timeout" ? "unknown" : "down",
+      latencyMs,
+      downFor: result.detail === "timeout" ? undefined : "down",
+    };
+  } catch {
+    return { state: "unknown", latencyMs: Date.now() - start };
+  }
 }
 
 async function checkTodoist(cfg: Config): Promise<{ ok: boolean }> {
   if (!todoistConfigured(cfg)) return { ok: false };
   const { status } = await safeFetch("https://api.todoist.com/api/v1/projects", {
-    timeoutMs: 4000,
+    timeoutMs: CHECK_TIMEOUT_MS,
     maxBytes: 4096,
     headers: { authorization: `Bearer ${cfg.todoistApiToken}` },
   });
@@ -71,59 +98,63 @@ async function checkTodoist(cfg: Config): Promise<{ ok: boolean }> {
 
 async function checkPlaud(cfg: Config): Promise<{ ok: boolean }> {
   if (!cfg.plaudUrl) return { ok: false };
-  const { status } = await safeFetch(cfg.plaudUrl, { timeoutMs: 4000, maxBytes: 4096 });
+  const { status } = await fetchEnvConfiguredUrl(cfg.plaudUrl, "", { timeoutMs: CHECK_TIMEOUT_MS });
   return { ok: status >= 200 && status < 500 };
 }
 
 async function checkHomeAssistant(cfg: Config): Promise<{ ok: boolean }> {
   if (!cfg.haUrl || !cfg.haToken) return { ok: false };
-  const url = `${cfg.haUrl.replace(/\/+$/, "")}/api/`;
-  const { status } = await safeFetch(url, {
-    timeoutMs: 4000,
-    maxBytes: 4096,
+  const { status } = await fetchEnvConfiguredUrl(cfg.haUrl, "/api/", {
+    timeoutMs: CHECK_TIMEOUT_MS,
     headers: { authorization: `Bearer ${cfg.haToken}` },
   });
   return { ok: status >= 200 && status < 300 };
 }
 
+async function runChecks(cfg: Config): Promise<ServiceCheckResult[]> {
+  const results: ServiceCheckResult[] = [stremmySelfResult(cfg)];
+
+  const tail = await Promise.all([
+    (async (): Promise<ServiceCheckResult> => {
+      if (!cfg.haUrl || !cfg.haToken) {
+        return { id: "home-assistant", label: "Home Assistant", state: "not_configured" };
+      }
+      const ha = await timedCheck(() => checkHomeAssistant(cfg));
+      return { id: "home-assistant", label: "Home Assistant", ...ha };
+    })(),
+    (async (): Promise<ServiceCheckResult> => {
+      if (!cfg.plaudUrl) return { id: "plaud", label: "Plaud", state: "not_configured" };
+      const plaud = await timedCheck(() => checkPlaud(cfg));
+      return { id: "plaud", label: "Plaud", ...plaud };
+    })(),
+    (async (): Promise<ServiceCheckResult> => {
+      if (!todoistConfigured(cfg)) return { id: "todoist", label: "Todoist", state: "not_configured" };
+      const todoist = await timedCheck(() => checkTodoist(cfg));
+      return { id: "todoist", label: "Todoist", ...todoist };
+    })(),
+  ]);
+
+  results.push(...tail);
+  return results;
+}
+
+export function peekServiceStatusSnapshot(): ServiceCheckResult[] | null {
+  return cache?.results ?? null;
+}
+
 export async function getServiceStatusSnapshot(cfg: Config): Promise<ServiceCheckResult[]> {
-  const secrets = collectSecrets(cfg);
   const now = Date.now();
   if (cache && now - cache.at < CACHE_MS) return cache.results;
-
-  const results: ServiceCheckResult[] = [];
-
-  if (!cfg.appPublicUrl && cfg.host === "127.0.0.1") {
-    const stremmy = await timedCheck(() => checkStremmy(cfg));
-    results.push({ id: "stremmy", label: "stremmy.com", ...stremmy });
-  } else {
-    const stremmy = await timedCheck(() => checkStremmy(cfg));
-    results.push({ id: "stremmy", label: "stremmy.com", ...stremmy });
-  }
-
-  if (!cfg.haUrl || !cfg.haToken) {
-    results.push({ id: "home-assistant", label: "Home Assistant", state: "not_configured" });
-  } else {
-    const ha = await timedCheck(() => checkHomeAssistant(cfg));
-    results.push({ id: "home-assistant", label: "Home Assistant", ...ha });
-  }
-
-  if (!cfg.plaudUrl) {
-    results.push({ id: "plaud", label: "Plaud", state: "not_configured" });
-  } else {
-    const plaud = await timedCheck(() => checkPlaud(cfg));
-    results.push({ id: "plaud", label: "Plaud", ...plaud });
-  }
-
-  if (!todoistConfigured(cfg)) {
-    results.push({ id: "todoist", label: "Todoist", state: "not_configured" });
-  } else {
-    const todoist = await timedCheck(() => checkTodoist(cfg));
-    results.push({ id: "todoist", label: "Todoist", ...todoist });
-  }
-
-  cache = { at: now, results, secrets };
-  return results;
+  if (inflight) return inflight;
+  inflight = runChecks(cfg)
+    .then((results) => {
+      cache = { at: Date.now(), results };
+      return results;
+    })
+    .finally(() => {
+      inflight = null;
+    });
+  return inflight;
 }
 
 export function serviceStatusJson(cfg: Config, results: ServiceCheckResult[]): string {
@@ -135,12 +166,22 @@ export function serviceStatusJson(cfg: Config, results: ServiceCheckResult[]): s
       state: r.state,
       latencyMs: r.latencyMs,
       downFor: r.downFor,
+      version: r.version,
+      uptimeSec: r.uptimeSec,
     })),
     checkedAt: new Date().toISOString(),
   };
   return redact(JSON.stringify(payload), secrets);
 }
 
+export function aggregateServiceStatusDot(results: ServiceCheckResult[]): "blue" | "orange" | "muted" {
+  if (!results.length) return "muted";
+  if (results.some((r) => r.state === "down")) return "orange";
+  if (results.some((r) => r.state === "unknown")) return "muted";
+  return "blue";
+}
+
 export function resetServiceStatusCacheForTests(): void {
   cache = null;
+  inflight = null;
 }

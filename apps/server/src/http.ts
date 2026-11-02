@@ -32,7 +32,7 @@ import type { SettingsStore } from "./settings";
 import { ValidationError } from "./settings";
 import { MANIFEST, SERVICE_WORKER, iconPng } from "./pwa";
 import { dailyBriefingPage } from "./ui/daily-briefing-page";
-import type { DashboardLayoutStore } from "./dashboard-layout/storage";
+import { DashboardLayoutStore, LayoutPayloadError } from "./dashboard-layout/storage";
 import { buildDashboardRenderContext } from "./dashboard-layout/dashboard-context";
 import { getServiceStatusSnapshot, serviceStatusJson } from "./service-status/checks";
 import { activityPage } from "./ui/activity-page";
@@ -352,11 +352,14 @@ export function createApp(app: App): Server {
 
       if (get && path === "/") {
         const showBudget = budgetPanelVisible(app.cfg, who.owner === true);
+        const showServiceStatus = who.owner === true;
         const layout = await app.dashboardLayout.getForUser(
-          { who: who.who, email: who.email },
+          { who: who.who, email: who.email, owner: who.owner === true },
           showBudget,
+          showServiceStatus,
         );
         const renderCtx = await buildDashboardRenderContext({ cfg: app.cfg, calendar: app.calendar }, layout, showBudget);
+        renderCtx.showServiceStatusPanel = showServiceStatus;
         return send(
           res,
           200,
@@ -473,6 +476,7 @@ export function createApp(app: App): Server {
       }
       if (get && path === "/api/widgets/service-status") {
         if (!who.ok) return json(res, 401, { error: "Authentication required" });
+        if (!who.owner) return json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
         const results = await getServiceStatusSnapshot(app.cfg);
         res.writeHead(200, { "content-type": "application/json", "cache-control": "private, max-age=30", ...extra });
         res.end(serviceStatusJson(app.cfg, results));
@@ -481,13 +485,23 @@ export function createApp(app: App): Server {
       if (get && path === "/api/dashboard-layout") {
         if (!who.ok) return json(res, 401, { error: "Authentication required" });
         const showBudget = budgetPanelVisible(app.cfg, who.owner === true);
-        const layout = await app.dashboardLayout.getForUser({ who: who.who, email: who.email }, showBudget);
+        const showServiceStatus = who.owner === true;
+        const layout = await app.dashboardLayout.getForUser(
+          { who: who.who, email: who.email, owner: who.owner === true },
+          showBudget,
+          showServiceStatus,
+        );
         return json(res, 200, { layout });
       }
       if (get && path === "/api/dashboard-layout/export.json") {
         if (!who.ok) return json(res, 401, { error: "Authentication required" });
         const showBudget = budgetPanelVisible(app.cfg, who.owner === true);
-        const layout = await app.dashboardLayout.getForUser({ who: who.who, email: who.email }, showBudget);
+        const showServiceStatus = who.owner === true;
+        const layout = await app.dashboardLayout.getForUser(
+          { who: who.who, email: who.email, owner: who.owner === true },
+          showBudget,
+          showServiceStatus,
+        );
         return send(res, 200, JSON.stringify(layout, null, 2), "application/json", {
           ...extra,
           "content-disposition": 'attachment; filename="dashboard-layout.json"',
@@ -496,27 +510,52 @@ export function createApp(app: App): Server {
       if (req.method === "PUT" && path === "/api/dashboard-layout") {
         if (!who.ok) return json(res, 401, { error: "Authentication required" });
         const showBudget = budgetPanelVisible(app.cfg, who.owner === true);
-        const layout = await app.dashboardLayout.updateForUser(
-          { who: who.who, email: who.email },
-          await readBody(req),
-          showBudget,
-        );
-        return json(res, 200, { layout });
+        const showServiceStatus = who.owner === true;
+        try {
+          const layout = await app.dashboardLayout.updateForUser(
+            { who: who.who, email: who.email },
+            await readBody(req),
+            showBudget,
+            showServiceStatus,
+          );
+          return json(res, 200, { layout });
+        } catch (error) {
+          if (error instanceof LayoutPayloadError) {
+            const code = error.message.includes("size limit") ? 413 : 400;
+            return json(res, code, { error: error.message });
+          }
+          throw error;
+        }
       }
       if (req.method === "POST" && path === "/api/dashboard-layout/import") {
         if (!who.ok) return json(res, 401, { error: "Authentication required" });
         const showBudget = budgetPanelVisible(app.cfg, who.owner === true);
-        const layout = await app.dashboardLayout.updateForUser(
-          { who: who.who, email: who.email },
-          await readBody(req, 64_000),
-          showBudget,
-        );
-        return json(res, 200, { layout });
+        const showServiceStatus = who.owner === true;
+        try {
+          const layout = await app.dashboardLayout.updateForUser(
+            { who: who.who, email: who.email },
+            await readBody(req, 64_000),
+            showBudget,
+            showServiceStatus,
+          );
+          return json(res, 200, { layout });
+        } catch (error) {
+          if (error instanceof LayoutPayloadError) {
+            const code = error.message.includes("size limit") ? 413 : 400;
+            return json(res, code, { error: error.message });
+          }
+          throw error;
+        }
       }
       if (req.method === "POST" && path === "/api/dashboard-layout/reset") {
         if (!who.ok) return json(res, 401, { error: "Authentication required" });
         const showBudget = budgetPanelVisible(app.cfg, who.owner === true);
-        const layout = await app.dashboardLayout.resetForUser({ who: who.who, email: who.email }, showBudget);
+        const showServiceStatus = who.owner === true;
+        const layout = await app.dashboardLayout.resetForUser(
+          { who: who.who, email: who.email },
+          showBudget,
+          showServiceStatus,
+        );
         return json(res, 200, { layout });
       }
 

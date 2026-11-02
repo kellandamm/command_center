@@ -10,7 +10,7 @@ export type WidgetCategory =
   | "Time"
   | "Finance";
 
-export type StatusDot = "green" | "blue" | "orange" | "red";
+export type StatusDot = "blue" | "orange" | "muted";
 
 export interface WidgetDefinition {
   id: string;
@@ -21,32 +21,61 @@ export interface WidgetDefinition {
   /** Existing panel module id when kind is panel. */
   panelId?: string;
   kind: "panel" | "builtin";
-  /** Shown in + Add widget drawer. */
+  /** Shown in + Add widget drawer when removable. */
   catalog: boolean;
   drawerExclude?: boolean;
+  /** Only shown to verified owners (e.g. service status). */
+  ownerOnly?: boolean;
+}
+
+/** Bump when new widgets are added to the registry; load appends only ids introduced after saved epoch. */
+export const CURRENT_REGISTRY_EPOCH = 1;
+
+const INTRODUCED_AT_EPOCH: Record<number, readonly string[]> = {
+  1: ["today-agenda", "agent-jobs", "service-status", "countdown", "world-clock"],
+};
+
+export function widgetIdsIntroducedAfterEpoch(afterEpoch: number, opts: { showBudget: boolean }): string[] {
+  const ids: string[] = [];
+  for (let e = afterEpoch + 1; e <= CURRENT_REGISTRY_EPOCH; e++) {
+    for (const id of INTRODUCED_AT_EPOCH[e] ?? []) {
+      if (id === "budget" && !opts.showBudget) continue;
+      ids.push(id);
+    }
+  }
+  return ids;
 }
 
 const defs: WidgetDefinition[] = [
   { id: "today-agenda", title: "Today", category: "Agenda", statusDot: "blue", defaultSize: "XL", kind: "builtin", catalog: true },
-  { id: "daily-briefing", title: "Daily briefing", category: "Agenda", statusDot: "green", defaultSize: "W", panelId: "daily-briefing", kind: "panel", catalog: true },
-  { id: "calendar", title: "Calendar", category: "Agenda", statusDot: "green", defaultSize: "W", panelId: "calendar", kind: "panel", catalog: true },
-  { id: "weather", title: "Weather", category: "Agenda", statusDot: "green", defaultSize: "S", panelId: "weather", kind: "panel", catalog: true },
-  { id: "tasks", title: "Tasks", category: "Productivity", statusDot: "green", defaultSize: "W", panelId: "tasks", kind: "panel", catalog: true },
-  { id: "notes", title: "Notes", category: "Productivity", statusDot: "green", defaultSize: "W", panelId: "notes", kind: "panel", catalog: true },
-  { id: "focus", title: "Focus", category: "Productivity", statusDot: "green", defaultSize: "S", panelId: "focus", kind: "panel", catalog: false, drawerExclude: true },
-  { id: "attention", title: "Attention", category: "Work", statusDot: "orange", defaultSize: "L", panelId: "attention", kind: "panel", catalog: false },
-  { id: "heatmap", title: "Heatmap", category: "Work", statusDot: "green", defaultSize: "S", panelId: "heatmap", kind: "panel", catalog: false },
-  { id: "launchpad", title: "Bookmarks", category: "Work", statusDot: "green", defaultSize: "W", panelId: "launchpad", kind: "panel", catalog: true },
+  { id: "daily-briefing", title: "Daily briefing", category: "Agenda", statusDot: "blue", defaultSize: "W", panelId: "daily-briefing", kind: "panel", catalog: true },
+  { id: "calendar", title: "Calendar", category: "Agenda", statusDot: "blue", defaultSize: "W", panelId: "calendar", kind: "panel", catalog: true },
+  { id: "weather", title: "Weather", category: "Agenda", statusDot: "blue", defaultSize: "S", panelId: "weather", kind: "panel", catalog: true },
+  { id: "tasks", title: "Tasks", category: "Productivity", statusDot: "blue", defaultSize: "W", panelId: "tasks", kind: "panel", catalog: true },
+  { id: "notes", title: "Notes", category: "Productivity", statusDot: "blue", defaultSize: "W", panelId: "notes", kind: "panel", catalog: true },
+  { id: "focus", title: "Focus", category: "Productivity", statusDot: "blue", defaultSize: "S", panelId: "focus", kind: "panel", catalog: false, drawerExclude: true },
+  { id: "attention", title: "Attention", category: "Work", statusDot: "orange", defaultSize: "L", panelId: "attention", kind: "panel", catalog: true },
+  { id: "heatmap", title: "Heatmap", category: "Work", statusDot: "blue", defaultSize: "S", panelId: "heatmap", kind: "panel", catalog: true },
+  { id: "launchpad", title: "Bookmarks", category: "Work", statusDot: "blue", defaultSize: "W", panelId: "launchpad", kind: "panel", catalog: true },
   { id: "activity", title: "GitHub activity", category: "Agents", statusDot: "blue", defaultSize: "W", panelId: "activity", kind: "panel", catalog: true },
-  { id: "hobie", title: "Hobie queue", category: "Agents", statusDot: "orange", defaultSize: "W", panelId: "hobie", kind: "panel", catalog: false },
-  { id: "agents-usage", title: "Agents usage", category: "Agents", statusDot: "blue", defaultSize: "W", panelId: "agents-usage", kind: "panel", catalog: false },
+  { id: "hobie", title: "Hobie queue", category: "Agents", statusDot: "orange", defaultSize: "W", panelId: "hobie", kind: "panel", catalog: true },
+  { id: "agents-usage", title: "Agents usage", category: "Agents", statusDot: "blue", defaultSize: "W", panelId: "agents-usage", kind: "panel", catalog: true },
   { id: "agent-jobs", title: "Agent jobs", category: "Agents", statusDot: "orange", defaultSize: "L", kind: "builtin", catalog: true },
-  { id: "host-health", title: "Server health", category: "Monitoring", statusDot: "green", defaultSize: "W", panelId: "host-health", kind: "panel", catalog: false },
-  { id: "service-status", title: "Service status", category: "Monitoring", statusDot: "red", defaultSize: "W", kind: "builtin", catalog: true },
-  { id: "recallio", title: "Recallio", category: "Info", statusDot: "green", defaultSize: "W", panelId: "recallio", kind: "panel", catalog: false },
-  { id: "countdown", title: "Countdown", category: "Time", statusDot: "green", defaultSize: "S", kind: "builtin", catalog: true },
-  { id: "world-clock", title: "World clock", category: "Time", statusDot: "green", defaultSize: "S", kind: "builtin", catalog: true },
-  { id: "budget", title: "Budget", category: "Finance", statusDot: "green", defaultSize: "W", panelId: "budget", kind: "panel", catalog: false, drawerExclude: true },
+  { id: "host-health", title: "Server health", category: "Monitoring", statusDot: "blue", defaultSize: "W", panelId: "host-health", kind: "panel", catalog: true },
+  {
+    id: "service-status",
+    title: "Service status",
+    category: "Monitoring",
+    statusDot: "muted",
+    defaultSize: "W",
+    kind: "builtin",
+    catalog: true,
+    ownerOnly: true,
+  },
+  { id: "recallio", title: "Recallio", category: "Info", statusDot: "blue", defaultSize: "W", panelId: "recallio", kind: "panel", catalog: true },
+  { id: "countdown", title: "Countdown", category: "Time", statusDot: "blue", defaultSize: "S", kind: "builtin", catalog: true },
+  { id: "world-clock", title: "World clock", category: "Time", statusDot: "blue", defaultSize: "S", kind: "builtin", catalog: true },
+  { id: "budget", title: "Budget", category: "Finance", statusDot: "blue", defaultSize: "W", panelId: "budget", kind: "panel", catalog: false, drawerExclude: true },
 ];
 
 const byId = new Map(defs.map((d) => [d.id, d]));
@@ -59,18 +88,27 @@ export function allWidgetDefinitions(): WidgetDefinition[] {
   return defs.slice();
 }
 
-export function widgetIdsForSession(opts: { showBudget: boolean }): string[] {
-  return defs.filter((d) => opts.showBudget || d.id !== "budget").map((d) => d.id);
+export type WidgetSessionOpts = { showBudget: boolean; showServiceStatus: boolean };
+
+export function widgetIdsForSession(opts: WidgetSessionOpts): string[] {
+  return defs
+    .filter((d) => {
+      if (d.id === "budget" && !opts.showBudget) return false;
+      if (d.ownerOnly && !opts.showServiceStatus) return false;
+      return true;
+    })
+    .map((d) => d.id);
 }
 
-export function catalogWidgets(opts: { showBudget: boolean }): WidgetDefinition[] {
+export function catalogWidgets(opts: WidgetSessionOpts): WidgetDefinition[] {
   return defs.filter((d) => {
     if (d.drawerExclude) return false;
     if (!d.catalog) return false;
     if (d.id === "budget" && !opts.showBudget) return false;
+    if (d.ownerOnly && !opts.showServiceStatus) return false;
     return true;
   });
 }
 
-/** Drawer ids that must never appear (Pomodoro / habit tracker aliases). */
-export const DRAWER_BLOCKLIST = new Set(["pomodoro", "habit-tracker", "focus-timer"]);
+/** Drawer ids that must never appear (Pomodoro / habit tracker / focus timer). */
+export const DRAWER_BLOCKLIST = new Set(["pomodoro", "habit-tracker", "focus-timer", "focus"]);

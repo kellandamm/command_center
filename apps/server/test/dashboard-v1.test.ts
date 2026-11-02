@@ -290,7 +290,7 @@ test("dashboard v1 write routes require owner", async () => {
 });
 
 test("dashboard layout import validates through safe parse", () => {
-  const ids = widgetIdsForSession({ showBudget: true });
+  const ids = widgetIdsForSession({ showBudget: true, showServiceStatus: true });
   const fallback = parseDashboardLayout(null, ids, true);
   assert.equal(fallback.version, 3);
   const bad = parseDashboardLayout({ version: 3, widgets: "bad" }, ids, true);

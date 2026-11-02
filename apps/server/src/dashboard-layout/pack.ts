@@ -63,7 +63,21 @@ export function overlappingPanelPairs(panels: PanelLayoutEntry[]): string[] {
 }
 
 export function packAfterMove(panels: PanelLayoutEntry[], _anchorId: string): PanelLayoutEntry[] {
-  return panels;
+  const sorted = [...panels].sort((a, b) => a.y - b.y || a.x - b.x);
+  const out: PanelLayoutEntry[] = [];
+  for (const p of sorted) {
+    let y = p.y;
+    for (;;) {
+      const candidate = { ...p, y };
+      const hit = out.find((placed) => rectanglesOverlap(candidate, placed));
+      if (!hit) {
+        out.push(candidate);
+        break;
+      }
+      y = hit.y + hit.h;
+    }
+  }
+  return out;
 }
 
 export function packDashboardLayout(panels: PanelLayoutEntry[]): PanelLayoutEntry[] {

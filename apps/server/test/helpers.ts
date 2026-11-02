@@ -58,7 +58,7 @@ export async function openIntegrationStores(dataDir: string, cfg?: Config) {
     board,
     wins,
     winsRollup,
-    dashboardLayout: await DashboardLayoutStore.open(dataDir, panels.map((p) => p.id)),
+    dashboardLayout: await DashboardLayoutStore.open(dataDir, cfg),
     attention: await AttentionStore.open(dataDir),
     launchpad: await LaunchpadStore.open(dataDir),
     focusSessions: await FocusSessionsStore.open(dataDir),

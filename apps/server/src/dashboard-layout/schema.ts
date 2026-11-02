@@ -17,6 +17,7 @@ export type WidgetLayoutEntry = z.infer<typeof widgetEntrySchema>;
 
 export const dashboardLayoutV3Schema = z.object({
   version: z.literal(LAYOUT_VERSION),
+  registryEpoch: z.number().int().min(0).max(100).optional(),
   widgets: z.array(widgetEntrySchema).max(MAX_WIDGETS),
 });
 

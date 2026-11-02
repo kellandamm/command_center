@@ -1,6 +1,7 @@
 import { defaultDashboardLayout } from "../dashboard-layout/defaults";
 import type { DashboardLayout } from "../dashboard-layout/types";
 import { renderDashboardGrid, renderWidgetDrawer, type DashboardRenderContext } from "../dashboard-layout/render-page";
+import { serviceStatusClientScript } from "../widgets/service-status";
 import { widgetById } from "../dashboard-layout/widgets";
 import { panels } from "../panels/registry";
 import { activityDashboardScript } from "../panels/activity";
@@ -62,15 +63,17 @@ export const dashboardPanelCss = `
 .world-clock-row{display:flex;justify-content:space-between;font-size:.8125rem;padding:.15rem 0}
 .world-clock-row b{font-variant-numeric:tabular-nums}
 .service-grid{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
-.service-cell{display:flex;align-items:center;gap:.35rem;padding:.45rem .55rem;border:1px solid var(--border);border-radius:calc(var(--radius) - 2px);font-size:.8125rem}
-.service-cell-down{border-color:color-mix(in srgb,var(--destructive) 45%,var(--border))}
+@media(max-width:640px){.service-grid{grid-template-columns:1fr}}
+.service-cell{display:flex;align-items:center;gap:.35rem;padding:.45rem .55rem;border:1px solid var(--border);border-radius:calc(var(--radius) - 2px);font-size:.8125rem;min-width:0}
+.service-cell>span:nth-child(2){min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.service-cell-down{border-color:color-mix(in srgb,var(--warning) 45%,var(--border))}
 .service-cell-meta{margin-left:auto}
 .agenda-summary{margin:0 0 .35rem}
 .agenda-timeline{position:relative;height:6.5rem;margin-top:.35rem;border-top:1px solid var(--border)}
 .agenda-hour{position:absolute;top:-1px;height:100%;border-left:1px dashed color-mix(in srgb,var(--border) 80%,transparent);font-size:.65rem;color:var(--muted-foreground);padding-left:.2rem;pointer-events:none}
 .agenda-event{position:absolute;height:1.75rem;border-radius:calc(var(--radius) - 4px);padding:.2rem .35rem;font-size:.6875rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:color-mix(in srgb,var(--primary) 18%,var(--muted));top:1.5rem}
-.agenda-now{position:absolute;top:-.35rem;bottom:0;border-left:2px solid var(--warning);pointer-events:none;z-index:2}
-.agenda-now span{position:absolute;top:-1.1rem;left:-1.1rem;background:var(--warning);color:var(--warning-foreground, #111);font-size:.625rem;font-weight:700;padding:.05rem .3rem;border-radius:calc(var(--radius) - 4px)}
+.agenda-now{position:absolute;top:-.35rem;bottom:0;border-left:2px solid var(--primary);pointer-events:none;z-index:2}
+.agenda-now span{position:absolute;top:-1.1rem;left:-1.1rem;background:var(--primary);color:var(--primary-foreground);font-size:.625rem;font-weight:700;padding:.05rem .3rem;border-radius:calc(var(--radius) - 4px)}
 `;
 
 const PANEL_SCRIPT_BY_ID: Record<string, () => string> = {
@@ -103,6 +106,7 @@ export function dashboardPage(
       cfg: { tz: "UTC" } as DashboardRenderContext["cfg"],
       layout,
       showBudgetPanel,
+      showServiceStatusPanel: showBudgetPanel,
       calendarEvents: [],
       serviceStatus: [],
     } satisfies DashboardRenderContext);
@@ -170,8 +174,9 @@ ${renderWidgetDrawer(renderCtx)}
 var PANEL_PAGE_LINKS=${JSON.stringify(pageLinks)};
 var PANEL_TITLES=${JSON.stringify(panelTitles)};
 var WIDGET_TITLES=${JSON.stringify(widgetTitles)};
-var DASHBOARD_LAYOUT=${JSON.stringify({ version: layout.version, widgets: layout.widgets })};
+var DASHBOARD_LAYOUT=${JSON.stringify({ version: layout.version, registryEpoch: layout.registryEpoch, widgets: layout.widgets })};
 ${dashboardGridScript()}
+${serviceStatusClientScript()}
 document.getElementById("dashboard-import-layout-btn")?.addEventListener("click",function(){
   document.getElementById("dashboard-import-layout")?.click();
 });

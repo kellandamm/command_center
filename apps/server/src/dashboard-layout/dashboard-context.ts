@@ -1,7 +1,7 @@
 import { fetchCalendarEvents } from "../calendar/service";
 import type { CalendarWorkspace } from "../calendar/workspace";
 import type { Config } from "../config";
-import { getServiceStatusSnapshot } from "../service-status/checks";
+import { peekServiceStatusSnapshot } from "../service-status/checks";
 import type { DashboardLayout } from "./types";
 import type { DashboardRenderContext } from "./render-page";
 
@@ -25,12 +25,12 @@ export async function buildDashboardRenderContext(
   } catch {
     calendarEvents = [];
   }
-  const serviceStatus = await getServiceStatusSnapshot(deps.cfg);
   return {
     cfg: deps.cfg,
     layout,
     showBudgetPanel,
+    showServiceStatusPanel: layout.widgets.some((w) => w.id === "service-status"),
     calendarEvents,
-    serviceStatus,
+    serviceStatus: peekServiceStatusSnapshot() ?? [],
   };
 }
