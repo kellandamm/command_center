@@ -1,8 +1,12 @@
 import type { DatabaseSync } from "node:sqlite";
 
 export const DAY_PLAN_DB = "day-plan.sqlite";
+export const DAY_PLAN_SCHEMA_VERSION = 1;
+
+export type DayPlanLlmSlot = "auto" | "manual";
 
 export function initDayPlanSchema(db: DatabaseSync): void {
+  db.exec(`PRAGMA user_version = ${DAY_PLAN_SCHEMA_VERSION}`);
   db.exec(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
@@ -14,7 +18,15 @@ export function initDayPlanSchema(db: DatabaseSync): void {
       generated_at TEXT NOT NULL,
       generated_by TEXT NOT NULL CHECK(generated_by IN ('deterministic', 'llm')),
       theme TEXT,
-      capacity_json TEXT NOT NULL
+      capacity_json TEXT NOT NULL,
+      sources_json TEXT NOT NULL DEFAULT '{}',
+      llm_generated_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS plan_llm_attempts (
+      day TEXT NOT NULL,
+      slot TEXT NOT NULL CHECK(slot IN ('auto', 'manual')),
+      attempted_at TEXT NOT NULL,
+      PRIMARY KEY (day, slot)
     );
     CREATE TABLE IF NOT EXISTS plan_items (
       id TEXT PRIMARY KEY,
@@ -37,6 +49,17 @@ export function initDayPlanSchema(db: DatabaseSync): void {
       title TEXT NOT NULL,
       user_locked INTEGER NOT NULL DEFAULT 0,
       completed_at TEXT,
+      PRIMARY KEY (day, slot)
+    );
+  `);
+  const cols = new Set((db.prepare("PRAGMA table_info(plan_days)").all() as { name: string }[]).map((r) => r.name));
+  if (!cols.has("sources_json")) db.exec(`ALTER TABLE plan_days ADD COLUMN sources_json TEXT NOT NULL DEFAULT '{}'`);
+  if (!cols.has("llm_generated_at")) db.exec(`ALTER TABLE plan_days ADD COLUMN llm_generated_at TEXT`);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS plan_llm_attempts (
+      day TEXT NOT NULL,
+      slot TEXT NOT NULL CHECK(slot IN ('auto', 'manual')),
+      attempted_at TEXT NOT NULL,
       PRIMARY KEY (day, slot)
     );
   `);

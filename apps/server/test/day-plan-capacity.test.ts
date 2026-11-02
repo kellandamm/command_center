@@ -8,9 +8,10 @@ import {
   mergeIntervalMinutes,
   workWindowBoundsMs,
 } from "../src/day-plan/capacity";
+import { durationMsOnDay } from "../src/calendar/day-duration";
 
 test("day-plan capacity: weekend defaults to 0 available", () => {
-  const sat = "2026-11-07"; // Saturday in Chicago
+  const sat = "2026-11-07";
   assert.equal(isWeekendDay(sat, "America/Chicago"), true);
   assert.equal(availableMinutesForDay(sat, "America/Chicago", "09:00", "17:00", false), 0);
   assert.equal(availableMinutesForDay(sat, "America/Chicago", "09:00", "17:00", true), 480);
@@ -41,9 +42,15 @@ test("day-plan capacity: clips and merges overlapping meetings", () => {
   assert.equal(cap.availableMinutes, 480);
 });
 
-test("day-plan capacity: all-day occurrences excluded from timed totals", () => {
+test("day-plan capacity: all-day duration does not add to timed capacity totals", () => {
   const day = "2026-06-03";
   const tz = "Asia/Tokyo";
+  const allDayMs = durationMsOnDay(
+    { start: "2026-06-03", end: "2026-06-04", allDay: true, timezone: tz },
+    day,
+    tz,
+  );
+  assert.ok(allDayMs > 0);
   const cap = capacityFromOccurrences({
     day,
     tz,
@@ -54,12 +61,13 @@ test("day-plan capacity: all-day occurrences excluded from timed totals", () => 
     unscheduledEstimateMinutes: 60,
   });
   assert.equal(cap.meetingMinutes, 0);
+  assert.equal(cap.blockedTaskMinutes, 0);
   assert.equal(cap.unscheduledTaskMinutes, 60);
+  assert.equal(cap.overByMinutes, 0);
 });
 
-test("day-plan capacity: DST spring-forward weekday in Chicago", () => {
-  const day = "2026-03-09"; // Monday after US spring forward
+test("day-plan capacity: DST spring-forward weekday has full 8h window", () => {
+  const day = "2026-03-09";
   const tz = "America/Chicago";
-  const available = availableMinutesForDay(day, tz, "09:00", "17:00", false);
-  assert.ok(available > 0 && available <= 480);
+  assert.equal(availableMinutesForDay(day, tz, "09:00", "17:00", false), 480);
 });

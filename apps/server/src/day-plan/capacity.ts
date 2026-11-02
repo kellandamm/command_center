@@ -84,25 +84,29 @@ export function capacityFromOccurrences(opts: {
   const availableMinutes = availableMinutesForDay(opts.day, opts.tz, opts.workStart, opts.workEnd, opts.weekendOverride);
   const win = workWindowBoundsMs(opts.day, opts.tz, opts.workStart, opts.workEnd);
   if (!win || availableMinutes === 0) {
+    const unscheduled = opts.unscheduledEstimateMinutes;
     return {
       availableMinutes,
       meetingMinutes: 0,
       blockedTaskMinutes: 0,
-      unscheduledTaskMinutes: opts.unscheduledEstimateMinutes,
-      overByMinutes: Math.max(0, opts.unscheduledEstimateMinutes - availableMinutes),
+      unscheduledTaskMinutes: unscheduled,
+      overByMinutes: availableMinutes === 0 && unscheduled === 0 ? 0 : Math.max(0, unscheduled - availableMinutes),
     };
   }
   const meetingClips: Array<[number, number]> = [];
   const blockClips: Array<[number, number]> = [];
+  const allClips: Array<[number, number]> = [];
   for (const occ of opts.occurrences) {
     const clip = clipIntervalToWindow(occ.startMs, occ.endMs, win);
     if (!clip) continue;
+    allClips.push(clip);
     if (occ.isBlock) blockClips.push(clip);
     else meetingClips.push(clip);
   }
   const meetingMinutes = mergeIntervalMinutes(meetingClips);
   const blockedTaskMinutes = mergeIntervalMinutes(blockClips);
-  const planned = meetingMinutes + blockedTaskMinutes + opts.unscheduledEstimateMinutes;
+  const occupiedMinutes = mergeIntervalMinutes(allClips);
+  const planned = occupiedMinutes + opts.unscheduledEstimateMinutes;
   return {
     availableMinutes,
     meetingMinutes,

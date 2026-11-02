@@ -39,6 +39,11 @@ export interface DayPlanItem {
   completedAt: string | null;
 }
 
+export interface DayPlanSourceFlags {
+  calendarUnavailable: boolean;
+  todoistUnavailable: boolean;
+}
+
 export interface DayPlanSnapshot {
   day: string;
   timezone: string;
@@ -48,6 +53,7 @@ export interface DayPlanSnapshot {
   generatedBy: "deterministic" | "llm";
   theme: string | null;
   capacity: DayPlanCapacity;
+  sources: DayPlanSourceFlags;
   mustDos: DayPlanMustDo[];
   items: DayPlanItem[];
   alternates: DayPlanTaskRef[];

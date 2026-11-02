@@ -3,34 +3,6 @@ import { clipIntervalToWindow, mergeIntervalMinutes, workWindowBoundsMs } from "
 import type { TimedOccurrence } from "./capacity";
 import type { DayPlanMustDo, DayPlanTaskRef } from "./types";
 
-export function computeRolledToTomorrow(opts: {
-  day: string;
-  tz: string;
-  mustDos: Array<{ source: DayPlanTaskRef["source"]; refId: string; title: string; completedAt: string | null }>;
-  openTasks: DayPlanTaskRef[];
-}): DayPlanTaskRef[] {
-  const openKeys = new Set(opts.openTasks.map((t) => `${t.source}:${t.id}`));
-  const rolled: DayPlanTaskRef[] = [];
-  for (const m of opts.mustDos) {
-    if (m.completedAt) continue;
-    const key = `${m.source}:${m.refId}`;
-    const task = opts.openTasks.find((t) => `${t.source}:${t.id}` === key);
-    if (task) rolled.push(task);
-    else {
-      rolled.push({
-        source: m.source,
-        id: m.refId,
-        title: m.title,
-        priority: 2,
-        dueDay: opts.day,
-        estimateMinutes: null,
-        scheduled: false,
-      });
-    }
-  }
-  return rolled.filter((t) => openKeys.has(`${t.source}:${t.id}`) || !opts.openTasks.some((x) => x.id === t.id && x.source === t.source));
-}
-
 export function rollBoostKeysFromRolled(rolled: DayPlanTaskRef[]): Set<string> {
   return new Set(rolled.map((t) => `${t.source}:${t.id}`));
 }

@@ -12,7 +12,7 @@ import {
 } from "../todoist/client";
 import type { FetchLike } from "../llm/provider";
 import { dayRangeForPlan, type TimedOccurrence } from "./capacity";
-import type { DayPlanTaskRef } from "./types";
+import type { DayPlanSourceFlags, DayPlanTaskRef } from "./types";
 
 const DEFAULT_ESTIMATE = 30;
 
@@ -28,6 +28,7 @@ export interface GatheredDayContext {
   occurrences: TimedOccurrence[];
   tasks: DayPlanTaskRef[];
   allDayLabels: Array<{ title: string }>;
+  sources: DayPlanSourceFlags;
 }
 
 export async function gatherDayPlanContext(opts: {
@@ -44,33 +45,38 @@ export async function gatherDayPlanContext(opts: {
   const occurrences: TimedOccurrence[] = [];
   const allDayLabels: Array<{ title: string }> = [];
   const scheduledBoardIds = new Set<string>();
+  const sources: DayPlanSourceFlags = { calendarUnavailable: false, todoistUnavailable: false };
 
   if (opts.calendar) {
-    const snap = await opts.calendar.snapshot({
-      rangeStart: new Date(since),
-      rangeEnd: new Date(until),
-      limit: 500,
-    });
-    const blocksById = new Map(opts.calendar.planning().blocks.map((block) => [block.id, block]));
-    for (const ev of snap.events) {
-      const block = ev.eventId ? blocksById.get(ev.eventId) : undefined;
-      if (ev.allDay) {
-        if (durationMsOnDay({ start: ev.start, end: ev.end, allDay: true, timezone: ev.timezone ?? tz }, day, tz) > 0) {
-          allDayLabels.push({ title: ev.summary });
+    try {
+      const snap = await opts.calendar.snapshot({
+        rangeStart: new Date(since),
+        rangeEnd: new Date(until),
+        limit: 500,
+      });
+      const blocksById = new Map(opts.calendar.planning().blocks.map((block) => [block.id, block]));
+      for (const ev of snap.events) {
+        const block = ev.eventId ? blocksById.get(ev.eventId) : undefined;
+        if (ev.allDay) {
+          if (durationMsOnDay({ start: ev.start, end: ev.end, allDay: true, timezone: ev.timezone ?? tz }, day, tz) > 0) {
+            allDayLabels.push({ title: ev.summary });
+          }
+          continue;
         }
-        continue;
+        const ms = durationMsOnDay(
+          { start: ev.start, end: ev.end, allDay: false, timezone: ev.timezone ?? block?.timezone ?? tz },
+          day,
+          tz,
+        );
+        if (ms <= 0) continue;
+        const startMs = ev.start.getTime();
+        const endMs = (ev.end ?? ev.start).getTime();
+        const isBlock = Boolean(block?.taskId);
+        if (isBlock && block?.taskId) scheduledBoardIds.add(block.taskId);
+        occurrences.push({ startMs, endMs, isBlock });
       }
-      const ms = durationMsOnDay(
-        { start: ev.start, end: ev.end, allDay: false, timezone: ev.timezone ?? block?.timezone ?? tz },
-        day,
-        tz,
-      );
-      if (ms <= 0) continue;
-      const startMs = ev.start.getTime();
-      const endMs = (ev.end ?? ev.start).getTime();
-      const isBlock = Boolean(block?.taskId);
-      if (isBlock && block?.taskId) scheduledBoardIds.add(block.taskId);
-      occurrences.push({ startMs, endMs, isBlock });
+    } catch {
+      sources.calendarUnavailable = true;
     }
   }
 
@@ -105,11 +111,11 @@ export async function gatherDayPlanContext(opts: {
         });
       }
     } catch {
-      // Todoist unavailable — board-only plan
+      sources.todoistUnavailable = true;
     }
   }
 
-  return { day, tz, occurrences, tasks, allDayLabels };
+  return { day, tz, occurrences, tasks, allDayLabels, sources };
 }
 
 export function unscheduledEstimateMinutes(tasks: DayPlanTaskRef[]): number {
