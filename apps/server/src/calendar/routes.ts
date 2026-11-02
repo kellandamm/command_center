@@ -92,7 +92,7 @@ export async function handleCalendarRoutes(
     if (entry?.kind !== "native") return json(404, { error: "Native calendar not found" });
     res.writeHead(200, {
       "content-type": "text/calendar; charset=utf-8", "cache-control": "no-store",
-      "content-disposition": 'attachment; filename="command-center-calendar.ics"',
+      "content-disposition": 'attachment; filename="stremmy-calendar.ics"',
     });
     res.end(exportCalendar(calendar.store, entry.id));
     return true;
