@@ -7,128 +7,60 @@ import type { AddressInfo } from "node:net";
 import { DailyBriefingService } from "../src/daily-briefing/service";
 import { defaultDashboardLayout } from "../src/dashboard-layout/defaults";
 import { normalizeDashboardLayout } from "../src/dashboard-layout/normalize";
-import {
-  overlappingPanelPairs,
-  packAfterMove,
-  packDashboardLayout,
-  rectanglesOverlap,
-} from "../src/dashboard-layout/pack";
+import { overlappingPanelPairs, packWidgetFlow } from "../src/dashboard-layout/pack";
 import { DashboardLayoutStore } from "../src/dashboard-layout/storage";
+import { inferSizeFromLegacy } from "../src/dashboard-layout/sizes";
+import { widgetIdsForSession } from "../src/dashboard-layout/widgets";
 import { loadConfig } from "../src/config";
 import { makeAuthenticator } from "../src/auth";
 import { createApp } from "../src/http";
 import { NotesStore } from "../src/notes/store";
-import { panels } from "../src/panels/registry";
 import { SettingsStore } from "../src/settings";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 
 const TOKEN = "d".repeat(32);
-const PANEL_IDS = panels.map((p) => p.id);
 
-test("dashboard layout: default includes every registered panel", () => {
-  const layout = defaultDashboardLayout(PANEL_IDS);
-  assert.deepEqual(layout.panels.map((p) => p.id), PANEL_IDS);
-});
-
-test("dashboard layout: default and packed tall attention have no overlapping cells", () => {
-  const layout = defaultDashboardLayout(PANEL_IDS);
+test("dashboard layout: default includes core widgets", () => {
+  const layout = defaultDashboardLayout({ showBudget: true });
+  assert.ok(layout.widgets.some((w) => w.id === "today-agenda"));
+  assert.ok(layout.widgets.some((w) => w.id === "tasks"));
   assert.deepEqual(overlappingPanelPairs(layout.panels), []);
-
-  const tall = layout.panels.map((p) => ({ ...p }));
-  const attention = tall.find((p) => p.id === "attention")!;
-  Object.assign(attention, { x: 4, y: 0, w: 8, h: 8 });
-  const heatmap = tall.find((p) => p.id === "heatmap")!;
-  Object.assign(heatmap, { x: 0, y: 4, w: 4, h: 3 });
-  assert.ok(overlappingPanelPairs(tall).length > 0, "raw tall layout should overlap before pack");
-
-  const imported = normalizeDashboardLayout(
-    { version: 2, cols: 12, rowHeight: 32, panels: tall },
-    PANEL_IDS,
-  );
-  assert.deepEqual(overlappingPanelPairs(imported.panels), []);
-  assert.deepEqual(overlappingPanelPairs(packDashboardLayout(tall)), []);
 });
 
-test("dashboard layout: pack pushes overlapping panels down", () => {
-  const panels = [
-    { id: "activity", x: 0, y: 0, w: 6, h: 4 },
-    { id: "hobie", x: 0, y: 2, w: 3, h: 3 },
+test("dashboard layout: flow pack avoids overlaps", () => {
+  const widgets = [
+    { id: "today-agenda", size: "XL" as const },
+    { id: "tasks", size: "W" as const },
+    { id: "weather", size: "S" as const },
   ];
-  const packed = packAfterMove(panels, "activity");
-  const a = packed.find((p) => p.id === "activity")!;
-  const b = packed.find((p) => p.id === "hobie")!;
-  assert.equal(!rectanglesOverlap(a, b), true);
-  assert.ok(b.y >= a.y + a.h);
+  const panels = packWidgetFlow(widgets);
+  assert.deepEqual(overlappingPanelPairs(panels), []);
 });
 
-test("dashboard layout: missing panels append below saved layout", () => {
+test("dashboard layout: v2 panels migrate to v3 sizes", () => {
+  const ids = widgetIdsForSession({ showBudget: true });
   const raw = {
     version: 2,
     cols: 12,
-    rowHeight: 32,
-    panels: [{ id: "weather", x: 0, y: 0, w: 3, h: 3 }],
-  };
-  const next = normalizeDashboardLayout(raw, PANEL_IDS);
-  assert.ok(next.panels.find((p) => p.id === "daily-briefing"));
-  const weatherBottom = 3;
-  for (const id of ["calendar", "daily-briefing", "notes"]) {
-    const p = next.panels.find((x) => x.id === id)!;
-    assert.ok(p.y >= weatherBottom, `${id} should append below saved panels`);
-  }
-});
-
-test("dashboard layout: v1 saved file maps positions into v2 grid", () => {
-  const raw = {
-    version: 1,
-    cols: 12,
-    rowHeight: 36,
     panels: [
-      { id: "daily-briefing", x: 0, y: 0, w: 12, h: 12 },
-      { id: "feeds", x: 0, y: 5, w: 8, h: 5 },
-      { id: "tagged-news", x: 8, y: 5, w: 4, h: 2 },
-      { id: "briefing", x: 8, y: 7, w: 4, h: 2 },
-      { id: "ai-security", x: 8, y: 9, w: 4, h: 2 },
-      { id: "weather", x: 0, y: 0, w: 3, h: 3, collapsed: true },
-      { id: "removed-panel", x: 1, y: 1, w: 3, h: 3 },
+      { id: "daily-briefing", x: 0, y: 0, w: 12, h: 2 },
+      { id: "weather", x: 0, y: 2, w: 3, h: 1 },
     ],
   };
-  const next = normalizeDashboardLayout(raw, PANEL_IDS);
-  assert.equal(next.version, 2);
-  assert.equal(next.panels.length, PANEL_IDS.length);
-  assert.equal(next.panels.find((p) => p.id === "weather")?.collapsed, true);
-  const briefing = next.panels.find((p) => p.id === "daily-briefing")!;
-  assert.equal(briefing.w, 12);
-  assert.equal(briefing.h, 12);
-  for (const id of ["feeds", "tagged-news", "briefing", "ai-security"]) {
-    assert.ok(!next.panels.some((p) => p.id === id), id);
-  }
-  assert.ok(!next.panels.some((p) => p.id === "removed-panel"));
+  const next = normalizeDashboardLayout(raw, ids, true);
+  assert.equal(next.version, 3);
+  assert.equal(next.widgets.find((w) => w.id === "daily-briefing")?.size, inferSizeFromLegacy(12, 2));
 });
 
-test("dashboard layout: default collapses low-priority panels without retired tiles", () => {
-  const layout = defaultDashboardLayout(PANEL_IDS);
-  assert.ok(layout.panels.find((p) => p.id === "daily-briefing"));
-  assert.ok(!layout.panels.find((p) => p.id === "feeds"));
-  assert.equal(layout.panels.find((p) => p.id === "calendar")?.collapsed, true);
-  assert.equal(layout.panels.find((p) => p.id === "notes")?.collapsed, true);
-  const maxEnd = layout.panels.reduce((m, p) => Math.max(m, p.y + (p.collapsed ? 1 : p.h)), 0);
-  assert.ok(maxEnd <= 11, "default layout should stay compact");
+test("dashboard layout: normalize adds new registry widgets on load", () => {
+  const ids = widgetIdsForSession({ showBudget: false });
+  const raw = { version: 3, widgets: [{ id: "tasks", size: "W" as const }] };
+  const next = normalizeDashboardLayout(raw, ids, false, { appendMissing: true });
+  assert.ok(next.widgets.find((w) => w.id === "today-agenda"));
+  assert.ok(next.widgets.length > 1);
 });
 
-test("dashboard layout: normalize adds missing panels and drops unknown ids", () => {
-  const raw = {
-    version: 2,
-    cols: 12,
-    rowHeight: 32,
-    panels: [{ id: "weather", x: 1, y: 2, w: 3, h: 4, collapsed: true }],
-  };
-  const next = normalizeDashboardLayout(raw, PANEL_IDS);
-  assert.equal(next.panels.find((p) => p.id === "weather")?.collapsed, true);
-  assert.ok(next.panels.find((p) => p.id === "daily-briefing"));
-  assert.equal(next.panels.length, PANEL_IDS.length);
-});
-
-test("dashboard layout API persists under data dir", async () => {
+test("dashboard layout API persists per user file", async () => {
   const dir = await mkdtemp(join(tmpdir(), "cc-dash-"));
   const cfg = loadConfig({ DATA_DIR: dir, ADMIN_TOKEN: TOKEN, ALLOW_INSECURE_NO_AUTH: "1" });
   const settings = new SettingsStore(dir);
@@ -148,22 +80,18 @@ test("dashboard layout API persists under data dir", async () => {
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const authz = { authorization: `Bearer ${TOKEN}`, "content-type": "application/json", "x-ah": "1" };
   try {
-    const patch = defaultDashboardLayout(PANEL_IDS);
-    patch.panels[0] = { ...patch.panels[0], x: 2, y: 1, w: 4, h: 5 };
+    const patch = { version: 3, widgets: [{ id: "tasks", size: "L" as const }] };
     const put = await fetch(`${base}/api/dashboard-layout`, {
       method: "PUT",
       headers: authz,
       body: JSON.stringify(patch),
     });
     assert.equal(put.status, 200);
-    const stored = await DashboardLayoutStore.open(dir, PANEL_IDS);
-    assert.equal(stored.get().panels[0].x, 2);
-    const onDisk = JSON.parse(await readFile(join(dir, "dashboard-layout.json"), "utf8"));
-    assert.equal(onDisk.panels[0].x, 2);
-    const reset = await fetch(`${base}/api/dashboard-layout/reset`, { method: "POST", headers: authz, body: "{}" });
-    assert.equal(reset.status, 200);
-    const body: any = await reset.json();
-    assert.deepEqual(body.layout.panels.map((p: { id: string }) => p.id), PANEL_IDS);
+    const stored = await DashboardLayoutStore.open(dir);
+    const layout = await stored.getForUser({ who: "admin-token" }, false);
+    assert.equal(layout.widgets.find((w) => w.id === "tasks")?.size, "L");
+    const files = await readFile(join(dir, "dashboard-layouts", "admin-token.json"), "utf8");
+    assert.match(files, /"size": "L"/);
   } finally {
     await closeIntegrationServer(server, integration);
     await rm(dir, { recursive: true, force: true });

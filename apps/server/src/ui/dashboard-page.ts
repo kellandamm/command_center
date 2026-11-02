@@ -1,4 +1,7 @@
-import { defaultEntryForPanel } from "../dashboard-layout/defaults";
+import { defaultDashboardLayout } from "../dashboard-layout/defaults";
+import type { DashboardLayout } from "../dashboard-layout/types";
+import { renderDashboardGrid, renderWidgetDrawer, type DashboardRenderContext } from "../dashboard-layout/render-page";
+import { widgetById } from "../dashboard-layout/widgets";
 import { panels } from "../panels/registry";
 import { activityDashboardScript } from "../panels/activity";
 import { attentionDashboardScript } from "../panels/attention";
@@ -54,51 +57,74 @@ export const dashboardPanelCss = `
   background:var(--card);border-radius:calc(var(--radius) - 2px);
   box-shadow:0 0 0 1px color-mix(in srgb,var(--foreground) 8%,transparent),0 8px 24px rgba(0,0,0,.12);z-index:30}
 .page-header-menu-panel .btn,.page-header-menu-panel .dashboard-import-btn{justify-content:flex-start;width:100%}
-#panel-daily-briefing .dashboard-panel-body{padding-bottom:1rem}
 #panel-daily-briefing .ui-empty{padding:1rem .5rem 1.25rem}
+.widget-countdown .countdown-big{font-size:1.75rem;font-weight:700;letter-spacing:-.02em}
+.world-clock-row{display:flex;justify-content:space-between;font-size:.8125rem;padding:.15rem 0}
+.world-clock-row b{font-variant-numeric:tabular-nums}
+.service-grid{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
+.service-cell{display:flex;align-items:center;gap:.35rem;padding:.45rem .55rem;border:1px solid var(--border);border-radius:calc(var(--radius) - 2px);font-size:.8125rem}
+.service-cell-down{border-color:color-mix(in srgb,var(--destructive) 45%,var(--border))}
+.service-cell-meta{margin-left:auto}
+.agenda-summary{margin:0 0 .35rem}
+.agenda-timeline{position:relative;height:6.5rem;margin-top:.35rem;border-top:1px solid var(--border)}
+.agenda-hour{position:absolute;top:-1px;height:100%;border-left:1px dashed color-mix(in srgb,var(--border) 80%,transparent);font-size:.65rem;color:var(--muted-foreground);padding-left:.2rem;pointer-events:none}
+.agenda-event{position:absolute;height:1.75rem;border-radius:calc(var(--radius) - 4px);padding:.2rem .35rem;font-size:.6875rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:color-mix(in srgb,var(--primary) 18%,var(--muted));top:1.5rem}
+.agenda-now{position:absolute;top:-.35rem;bottom:0;border-left:2px solid var(--warning);pointer-events:none;z-index:2}
+.agenda-now span{position:absolute;top:-1.1rem;left:-1.1rem;background:var(--warning);color:var(--warning-foreground, #111);font-size:.625rem;font-weight:700;padding:.05rem .3rem;border-radius:calc(var(--radius) - 4px)}
 `;
 
-const PANEL_SCRIPTS = [
-  activityDashboardScript,
-  focusDashboardScript,
-  hobieDashboardScript,
-  dailyBriefingDashboardScript,
-  weatherDashboardScript,
-  calendarDashboardScript,
-  notesDashboardScript,
-  hostHealthDashboardScript,
-  recallioDashboardScript,
-  tasksDashboardScript,
-  attentionDashboardScript,
-  heatmapDashboardScript,
-  launchpadDashboardScript,
-  agentsUsagePanelDashboardScript,
-  budgetDashboardScript,
-];
+const PANEL_SCRIPT_BY_ID: Record<string, () => string> = {
+  activity: activityDashboardScript,
+  focus: focusDashboardScript,
+  hobie: hobieDashboardScript,
+  "daily-briefing": dailyBriefingDashboardScript,
+  weather: weatherDashboardScript,
+  calendar: calendarDashboardScript,
+  notes: notesDashboardScript,
+  "host-health": hostHealthDashboardScript,
+  recallio: recallioDashboardScript,
+  tasks: tasksDashboardScript,
+  attention: attentionDashboardScript,
+  heatmap: heatmapDashboardScript,
+  launchpad: launchpadDashboardScript,
+  "agents-usage": agentsUsagePanelDashboardScript,
+  budget: budgetDashboardScript,
+};
 
-function dashboardItemsHtml(showBudgetPanel: boolean): string {
-  return panels
-    .filter((panel) => showBudgetPanel || panel.id !== BUDGET_PANEL_ID)
-    .map((panel) => {
-      const entry = defaultEntryForPanel(panel.id);
-      const collapsed = entry.collapsed ? " is-collapsed" : "";
-      const span = entry.collapsed ? 1 : entry.h;
-      return `<div class="dashboard-item${collapsed}" data-panel-id="${panel.id}" data-full-h="${entry.h}"
-  style="--gc-start:${entry.x + 1};--gc-span:${entry.w};--gr-start:${entry.y + 1};--gr-span:${span}">
-  ${panel.dashboardHtml}
-</div>`;
-    })
-    .join("\n");
-}
-
-export function dashboardPage(nav?: NavLink[], opts?: { showBudgetPanel?: boolean }): string {
+export function dashboardPage(
+  nav?: NavLink[],
+  opts?: { showBudgetPanel?: boolean; renderCtx?: DashboardRenderContext; layout?: DashboardLayout },
+): string {
   const showBudgetPanel = opts?.showBudgetPanel ?? false;
-  const visiblePanels = panels.filter((p) => showBudgetPanel || p.id !== BUDGET_PANEL_ID);
+  const layout = opts?.layout ?? opts?.renderCtx?.layout ?? defaultDashboardLayout({ showBudget: showBudgetPanel });
+  const renderCtx: DashboardRenderContext =
+    opts?.renderCtx ??
+    ({
+      cfg: { tz: "UTC" } as DashboardRenderContext["cfg"],
+      layout,
+      showBudgetPanel,
+      calendarEvents: [],
+      serviceStatus: [],
+    } satisfies DashboardRenderContext);
+
+  const panelIdsOnPage = new Set<string>();
+  for (const w of layout.widgets) {
+    const def = widgetById(w.id);
+    if (def?.panelId) panelIdsOnPage.add(def.panelId);
+  }
   const pageLinks = Object.fromEntries(
-    visiblePanels.filter((p) => p.pageHref).map((p) => [p.id, p.pageHref!]),
+    panels.filter((p) => panelIdsOnPage.has(p.id) && p.pageHref).map((p) => [p.id, p.pageHref!]),
   );
-  const panelTitles = Object.fromEntries(visiblePanels.map((p) => [p.id, p.title]));
-  const layoutActions = `<details class="page-header-menu">
+  const panelTitles = Object.fromEntries(panels.filter((p) => panelIdsOnPage.has(p.id)).map((p) => [p.id, p.title]));
+  const widgetTitles = Object.fromEntries(layout.widgets.map((w) => [w.id, widgetById(w.id)?.title ?? w.id]));
+
+  const layoutActions = `${button({
+    label: "Edit layout",
+    variant: "outline",
+    size: "sm",
+    className: "dashboard-edit-toggle",
+    attrs: { type: "button", id: "dashboard-edit-toggle", "aria-pressed": "false" },
+  })}<details class="page-header-menu">
   <summary class="btn btn-outline btn-sm">Layout</summary>
   <div class="page-header-menu-panel">
     ${button({ label: "Reset layout", variant: "outline", size: "sm", attrs: { id: "dashboard-reset-layout" } })}
@@ -107,13 +133,21 @@ export function dashboardPage(nav?: NavLink[], opts?: { showBudgetPanel?: boolea
     ${button({ label: "Import layout", variant: "outline", size: "sm", className: "dashboard-import-btn", attrs: { id: "dashboard-import-layout-btn" } })}
   </div>
 </details>`;
+
+  const panelScripts = [...panelIdsOnPage]
+    .filter((id) => showBudgetPanel || id !== BUDGET_PANEL_ID)
+    .map((id) => PANEL_SCRIPT_BY_ID[id]?.())
+    .filter(Boolean)
+    .join("\n");
+
   return page({
     title: "Command center",
     active: "/",
     nav,
     extraCss: dashboardGridCss + dashboardPanelCss + quickAddCss + agentsUsagePanelCss + budgetPanelDashboardCss(),
     body: `<div class="dashboard-page">
-${pageHeader({ title: "Dashboard", description: "Drag panels, pin what matters, and jump in quickly.", actionsHtml: layoutActions })}
+${pageHeader({ title: "Dashboard", description: "Your Stremmy home — widgets, jobs, and quick capture.", actionsHtml: layoutActions })}
+<p class="dim dashboard-edit-banner" hidden>Editing layout: drag ⠿ to reorder, pick a size, or add widgets from the drawer.</p>
 <div class="dashboard-quick-add-bar quick-add-bar">
 <div id="dashboard-quick-add" class="quick-add-wrap" aria-label="Quick add">
   <div class="quick-add-row"><input class="quick-add-input" type="text" placeholder="Quick add — e.g. call mom tomorrow 3pm" autocomplete="off" />${button({ label: "Preview", variant: "outline", size: "sm", className: "quick-add-parse" })}</div>
@@ -127,11 +161,16 @@ ${pageHeader({ title: "Dashboard", description: "Drag panels, pin what matters, 
   <ul class="voice-inbox-list"></ul>
 </section>
 <p class="dim dashboard-layout-hint" style="margin:0;font-size:.8125rem">Layout saves automatically.</p>
-<div id="dashboard-grid" class="dashboard-grid">${dashboardItemsHtml(showBudgetPanel)}</div>
+<div class="dashboard-main-row">
+<div id="dashboard-grid" class="dashboard-grid">${renderDashboardGrid(renderCtx)}</div>
+${renderWidgetDrawer(renderCtx)}
+</div>
 </div>`,
     script: `
 var PANEL_PAGE_LINKS=${JSON.stringify(pageLinks)};
 var PANEL_TITLES=${JSON.stringify(panelTitles)};
+var WIDGET_TITLES=${JSON.stringify(widgetTitles)};
+var DASHBOARD_LAYOUT=${JSON.stringify({ version: layout.version, widgets: layout.widgets })};
 ${dashboardGridScript()}
 document.getElementById("dashboard-import-layout-btn")?.addEventListener("click",function(){
   document.getElementById("dashboard-import-layout")?.click();
@@ -144,7 +183,7 @@ document.getElementById("dashboard-import-layout")?.addEventListener("change",fu
   .catch(function(err){alert(err.message||"Import failed");})
   .finally(function(){input.value="";document.querySelector(".page-header-menu[open]")?.removeAttribute("open");});
 });
-${PANEL_SCRIPTS.filter((fn) => fn !== budgetDashboardScript || showBudgetPanel).map((fn) => fn()).join("\n")}
+${panelScripts}
 ${quickAddScript}
 var dashboardQuickAdd=mountQuickAdd("dashboard-quick-add",{onVoiceCommitted:function(){if(window.__voiceInboxRefresh)window.__voiceInboxRefresh();}});
 ${voiceInboxScript}

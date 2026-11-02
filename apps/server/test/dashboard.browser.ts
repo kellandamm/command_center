@@ -160,8 +160,8 @@ async function panelOverlaps(page: import("playwright").Page): Promise<string[]>
   });
 }
 
-test("dashboard packed desktop: drag, keyboard, resize, and viewport reflow", { timeout: 120_000 }, async () => {
-  const dataDir = await mkdtemp(join(tmpdir(), "cc-dash-packed-edit-"));
+test("dashboard revamp: edit layout persists widgets", { timeout: 120_000 }, async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "cc-dash-revamp-browser-"));
   const port = 4600 + Math.floor(Math.random() * 500);
   const base = `http://127.0.0.1:${port}`;
   await new Promise<void>((resolve, reject) => {
@@ -178,56 +178,39 @@ test("dashboard packed desktop: drag, keyboard, resize, and viewport reflow", { 
     await waitForServer(base);
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     await page.goto(`${base}/`);
-    await page.waitForSelector("#dashboard-grid.is-packed", { timeout: 20_000 });
-    await page.waitForSelector("#panel-tasks", { timeout: 20_000 });
-
-    const tasksHandle = page.locator('[data-panel-id="tasks"] .dashboard-drag-handle');
-    const tasksY0 = Number(await page.locator('[data-panel-id="tasks"]').getAttribute("data-logical-y"));
-    const tBox = await tasksHandle.boundingBox();
-    assert.ok(tBox);
-    await page.mouse.move(tBox.x + tBox.width / 2, tBox.y + tBox.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(tBox.x + tBox.width / 2, tBox.y + 220, { steps: 15 });
-    await page.mouse.up();
-    await page.waitForFunction(
-      (start) => Number(document.querySelector('[data-panel-id="tasks"]')?.getAttribute("data-logical-y")) > start,
-      tasksY0,
-      { timeout: 3000 },
-    );
-    const tasksYDrag = Number(await page.locator('[data-panel-id="tasks"]').getAttribute("data-logical-y"));
-    assert.ok(tasksYDrag > tasksY0, `drag should increase logical y (${tasksY0} -> ${tasksYDrag})`);
-
-    await tasksHandle.focus();
-    const tasksYKey0 = Number(await page.locator('[data-panel-id="tasks"]').getAttribute("data-logical-y"));
+    await page.waitForSelector("#dashboard-grid", { timeout: 20_000 });
+    await page.locator("#dashboard-edit-toggle").click();
+    await page.waitForSelector(".dashboard-page.is-editing");
+    const tasks = page.locator('[data-widget-id="tasks"]');
+    await tasks.locator('.dashboard-size-btn[data-size="XL"]').click();
+    await page.waitForTimeout(500);
+    const handle = tasks.locator(".dashboard-drag-handle");
+    await handle.focus();
     await page.keyboard.press("ArrowDown");
-    await page.waitForFunction(
-      (start) => Number(document.querySelector('[data-panel-id="tasks"]')?.getAttribute("data-logical-y")) > start,
-      tasksYKey0,
-      { timeout: 3000 },
-    );
-    const tasksY1 = Number(await page.locator('[data-panel-id="tasks"]').getAttribute("data-logical-y"));
-    assert.ok(tasksY1 > tasksYKey0, `ArrowDown should increase logical y (${tasksYKey0} -> ${tasksY1})`);
-
-    const tasksH0 = Number(
-      await page.locator('[data-panel-id="tasks"]').getAttribute("data-logical-h"),
-    );
-    const resize = page.locator('[data-panel-id="tasks"] .dashboard-resize');
-    const rBox = await resize.boundingBox();
-    assert.ok(rBox);
-    await page.mouse.move(rBox.x + rBox.width / 2, rBox.y + rBox.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(rBox.x + rBox.width / 2, rBox.y + 80, { steps: 8 });
-    await page.mouse.up();
-    await sleep(450);
-    const tasksH1 = Number(
-      await page.locator('[data-panel-id="tasks"]').getAttribute("data-logical-h"),
-    );
-    assert.ok(tasksH1 > tasksH0, `resize should increase logical h (${tasksH0} -> ${tasksH1})`);
-
-    await page.setViewportSize({ width: 1100, height: 800 });
-    await sleep(300);
-    const overlaps = await panelOverlaps(page);
-    assert.deepEqual(overlaps, [], `viewport resize should not overlap panels: ${overlaps.join(", ")}`);
+    await page.waitForTimeout(500);
+    await page.locator('[data-widget-id="heatmap"] .dashboard-remove').click();
+    await page.waitForTimeout(400);
+    await page.locator('[data-widget-id="world-clock"] .dashboard-remove').click();
+    await page.waitForTimeout(400);
+    await page.locator('[data-add-widget="world-clock"]').click();
+    await page.waitForNavigation({ waitUntil: "networkidle" });
+    await page.waitForSelector('[data-widget-id="world-clock"]', { timeout: 20_000 });
+    assert.equal(await tasks.getAttribute("data-size"), "XL");
+    await page.reload({ waitUntil: "networkidle" });
+    await page.waitForSelector('[data-widget-id="world-clock"]', { timeout: 20_000 });
+    assert.equal(await page.locator('[data-widget-id="tasks"]').getAttribute("data-size"), "XL");
+    await page.locator("#dashboard-edit-toggle").click();
+    const drawerText = await page.locator("#dashboard-widget-drawer").innerText();
+    assert.doesNotMatch(drawerText, /Pomodoro/i);
+    assert.doesNotMatch(drawerText, /Habit tracker/i);
+    await page.setViewportSize({ width: 375, height: 800 });
+    const fullWidth = await page.evaluate(() => {
+      const grid = document.getElementById("dashboard-grid")!;
+      const item = document.querySelector(".dashboard-item") as HTMLElement | null;
+      if (!item) return false;
+      return Math.abs(item.getBoundingClientRect().width - grid.getBoundingClientRect().width) < 4;
+    });
+    assert.ok(fullWidth, "cards should span full width at 375px");
   } finally {
     await browser.close();
     app.kill("SIGTERM");
@@ -254,7 +237,7 @@ test("dashboard: bootstrap without layout API and breakpoint reflow", { timeout:
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     await page.route("**/api/dashboard-layout", (route) => route.abort());
     await page.goto(`${base}/`);
-    await page.waitForSelector("#dashboard-grid.is-packed", { timeout: 20_000 });
+    await page.waitForSelector("#dashboard-grid", { timeout: 20_000 });
     await page.waitForSelector("#panel-tasks", { timeout: 20_000 });
     await sleep(600);
     let overlaps = await panelOverlaps(page);
@@ -265,24 +248,16 @@ test("dashboard: bootstrap without layout API and breakpoint reflow", { timeout:
     );
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.waitForSelector("#dashboard-grid.is-stacked", { timeout: 10_000 });
     await sleep(200);
-    const stackedInline = await page.evaluate(() => {
-      const bad: string[] = [];
-      document.querySelectorAll("#dashboard-grid .dashboard-item").forEach((el) => {
-        const id = el.getAttribute("data-panel-id") || "";
-        const style = (el as HTMLElement).style;
-        ["left", "top", "width", "height"].forEach((prop) => {
-          const v = style[prop as "left"];
-          if (v && v.endsWith("px")) bad.push(`${id}:${prop}=${v}`);
-        });
-      });
-      return bad;
+    const fullWidth = await page.evaluate(() => {
+      const grid = document.getElementById("dashboard-grid");
+      const item = document.querySelector(".dashboard-item") as HTMLElement | null;
+      if (!grid || !item) return false;
+      return Math.abs(item.getBoundingClientRect().width - grid.getBoundingClientRect().width) < 4;
     });
-    assert.deepEqual(stackedInline, [], `stacked mode should clear packed inline px: ${stackedInline.join(", ")}`);
+    assert.ok(fullWidth, "mobile cards should be full width");
 
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.waitForSelector("#dashboard-grid.is-packed", { timeout: 10_000 });
     await sleep(200);
     overlaps = await panelOverlaps(page);
     assert.deepEqual(overlaps, [], `packed mode after reflow should not overlap: ${overlaps.join(", ")}`);

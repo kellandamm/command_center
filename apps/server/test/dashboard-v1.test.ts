@@ -17,6 +17,8 @@ import { compareDashboardTasks, sortDashboardTasks } from "../src/tasks/sort";
 import type { BoardCard } from "../src/board/types";
 import { DailyBriefingService } from "../src/daily-briefing/service";
 import { normalizeDashboardLayout } from "../src/dashboard-layout/normalize";
+import { parseDashboardLayout } from "../src/dashboard-layout/normalize";
+import { widgetIdsForSession } from "../src/dashboard-layout/widgets";
 import { loadConfig } from "../src/config";
 import { makeAuthenticator } from "../src/auth";
 import { createApp } from "../src/http";
@@ -275,29 +277,24 @@ test("dashboard v1 write routes require owner", async () => {
         durationMs: 1_500_000,
         taskId: "t1",
       }],
-      ["/api/dashboard-layout/import", { version: 2, cols: 12, rowHeight: 32, panels: [] }],
     ] as const) {
       const res = await fetch(`${base}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
       assert.equal(res.status, 403);
       const json = await res.json();
       assert.equal(json.error, OWNER_ACTION_FORBIDDEN);
     }
-    const layoutRes = await fetch(`${base}/api/dashboard-layout/import`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ version: 99 }),
-    });
-    assert.equal(layoutRes.status, 403);
   } finally {
     await closeIntegrationServer(server, integration);
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("dashboard layout import validates through normalize", () => {
-  const ids = panels.map((p) => p.id);
-  assert.throws(() => normalizeDashboardLayout(null, ids), /layout must be an object/);
-  assert.throws(() => normalizeDashboardLayout({ version: 2, panels: "bad" }, ids), /panels must be an array/);
+test("dashboard layout import validates through safe parse", () => {
+  const ids = widgetIdsForSession({ showBudget: true });
+  const fallback = parseDashboardLayout(null, ids, true);
+  assert.equal(fallback.version, 3);
+  const bad = parseDashboardLayout({ version: 3, widgets: "bad" }, ids, true);
+  assert.equal(bad.version, 3);
 });
 
 test("launchpad store persists links", async () => {

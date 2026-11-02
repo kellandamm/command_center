@@ -87,6 +87,11 @@ export interface Config {
   ntfyCoach: boolean;
   /** Public site origin for notification click links (e.g. https://home.example.com). */
   appPublicUrl: string | null;
+  /** Home Assistant base URL for read-only `/api/` health (optional). */
+  haUrl: string | null;
+  haToken: string | null;
+  /** Optional Plaud HTTP health URL for service-status widget. */
+  plaudUrl: string | null;
 }
 
 export interface LlmConfig {
@@ -257,6 +262,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ntfyQuietHours: blank(env.NTFY_QUIET_HOURS),
     ntfyCoach: truthy(env.NTFY_COACH),
     appPublicUrl: blank(env.APP_PUBLIC_URL)?.replace(/\/+$/, "") ?? null,
+    haUrl: blank(env.HA_URL)?.replace(/\/+$/, "") ?? null,
+    haToken: blank(env.HA_TOKEN),
+    plaudUrl: blank(env.PLAUD_URL)?.replace(/\/+$/, "") ?? null,
   };
 }
 

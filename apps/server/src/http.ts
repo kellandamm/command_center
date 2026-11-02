@@ -33,6 +33,8 @@ import { ValidationError } from "./settings";
 import { MANIFEST, SERVICE_WORKER, iconPng } from "./pwa";
 import { dailyBriefingPage } from "./ui/daily-briefing-page";
 import type { DashboardLayoutStore } from "./dashboard-layout/storage";
+import { buildDashboardRenderContext } from "./dashboard-layout/dashboard-context";
+import { getServiceStatusSnapshot, serviceStatusJson } from "./service-status/checks";
 import { activityPage } from "./ui/activity-page";
 import { calendarPage } from "./ui/calendar-page";
 import type { BoardStore } from "./board/store";
@@ -349,10 +351,16 @@ export function createApp(app: App): Server {
         });
 
       if (get && path === "/") {
+        const showBudget = budgetPanelVisible(app.cfg, who.owner === true);
+        const layout = await app.dashboardLayout.getForUser(
+          { who: who.who, email: who.email },
+          showBudget,
+        );
+        const renderCtx = await buildDashboardRenderContext({ cfg: app.cfg, calendar: app.calendar }, layout, showBudget);
         return send(
           res,
           200,
-          dashboardPage(nav(), { showBudgetPanel: budgetPanelVisible(app.cfg, who.owner === true) }),
+          dashboardPage(nav(), { showBudgetPanel: showBudget, layout, renderCtx }),
           undefined,
           extra,
         );
@@ -463,30 +471,52 @@ export function createApp(app: App): Server {
           owner: who.owner === true,
         });
       }
-      if (get && path === "/api/dashboard-layout") return json(res, 200, { layout: app.dashboardLayout.get() });
+      if (get && path === "/api/widgets/service-status") {
+        if (!who.ok) return json(res, 401, { error: "Authentication required" });
+        const results = await getServiceStatusSnapshot(app.cfg);
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "private, max-age=30", ...extra });
+        res.end(serviceStatusJson(app.cfg, results));
+        return;
+      }
+      if (get && path === "/api/dashboard-layout") {
+        if (!who.ok) return json(res, 401, { error: "Authentication required" });
+        const showBudget = budgetPanelVisible(app.cfg, who.owner === true);
+        const layout = await app.dashboardLayout.getForUser({ who: who.who, email: who.email }, showBudget);
+        return json(res, 200, { layout });
+      }
       if (get && path === "/api/dashboard-layout/export.json") {
-        return send(res, 200, JSON.stringify(app.dashboardLayout.get(), null, 2), "application/json", {
+        if (!who.ok) return json(res, 401, { error: "Authentication required" });
+        const showBudget = budgetPanelVisible(app.cfg, who.owner === true);
+        const layout = await app.dashboardLayout.getForUser({ who: who.who, email: who.email }, showBudget);
+        return send(res, 200, JSON.stringify(layout, null, 2), "application/json", {
           ...extra,
           "content-disposition": 'attachment; filename="dashboard-layout.json"',
         });
       }
       if (req.method === "PUT" && path === "/api/dashboard-layout") {
-        if (!canManageSharedServerState(app.cfg, { owner: who.owner === true, who: who.who })) {
-          return json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
-        }
-        const layout = await app.dashboardLayout.update(await readBody(req));
+        if (!who.ok) return json(res, 401, { error: "Authentication required" });
+        const showBudget = budgetPanelVisible(app.cfg, who.owner === true);
+        const layout = await app.dashboardLayout.updateForUser(
+          { who: who.who, email: who.email },
+          await readBody(req),
+          showBudget,
+        );
         return json(res, 200, { layout });
       }
       if (req.method === "POST" && path === "/api/dashboard-layout/import") {
-        if (!who.owner) return json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
-        const layout = await app.dashboardLayout.update(await readBody(req, 64_000));
+        if (!who.ok) return json(res, 401, { error: "Authentication required" });
+        const showBudget = budgetPanelVisible(app.cfg, who.owner === true);
+        const layout = await app.dashboardLayout.updateForUser(
+          { who: who.who, email: who.email },
+          await readBody(req, 64_000),
+          showBudget,
+        );
         return json(res, 200, { layout });
       }
       if (req.method === "POST" && path === "/api/dashboard-layout/reset") {
-        if (!canManageSharedServerState(app.cfg, { owner: who.owner === true, who: who.who })) {
-          return json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
-        }
-        const layout = await app.dashboardLayout.reset();
+        if (!who.ok) return json(res, 401, { error: "Authentication required" });
+        const showBudget = budgetPanelVisible(app.cfg, who.owner === true);
+        const layout = await app.dashboardLayout.resetForUser({ who: who.who, email: who.email }, showBudget);
         return json(res, 200, { layout });
       }
 

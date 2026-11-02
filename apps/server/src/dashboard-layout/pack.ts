@@ -1,60 +1,75 @@
 import type { PanelLayoutEntry } from "./types";
-import { GRID_COLS } from "./types";
+import type { WidgetLayoutEntry, WidgetSize } from "./schema";
+import { SIZE_DIMS } from "./sizes";
 
-export function effectiveHeight(p: PanelLayoutEntry): number {
-  return p.collapsed ? 1 : p.h;
+export function sizeDims(size: WidgetSize): { w: number; h: number } {
+  return SIZE_DIMS[size];
 }
 
-export function rectanglesOverlap(a: PanelLayoutEntry, b: PanelLayoutEntry): boolean {
-  const ah = effectiveHeight(a);
-  const bh = effectiveHeight(b);
-  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + bh && a.y + ah > b.y;
-}
+/** Flow-pack widgets into a 12-column grid (array order). */
+export function packWidgetFlow(widgets: WidgetLayoutEntry[]): PanelLayoutEntry[] {
+  const cols = 12;
+  const colHeights = new Array<number>(cols).fill(0);
+  const out: PanelLayoutEntry[] = [];
 
-/** Push panels that overlap `anchorId` downward (cascade). */
-export function packAfterMove(panels: PanelLayoutEntry[], anchorId: string): PanelLayoutEntry[] {
-  const out = panels.map((p) => ({ ...p }));
-  const anchor = out.find((p) => p.id === anchorId);
-  if (!anchor) return out;
-
-  const queue: PanelLayoutEntry[] = [anchor];
-  const queued = new Set<string>([anchorId]);
-
-  while (queue.length) {
-    const current = queue.shift()!;
-    for (const other of out) {
-      if (other.id === current.id) continue;
-      if (!rectanglesOverlap(current, other)) continue;
-      const needY = current.y + effectiveHeight(current);
-      if (other.y < needY) {
-        other.y = needY;
-        if (other.x + other.w > GRID_COLS) other.x = Math.max(0, GRID_COLS - other.w);
-        if (!queued.has(other.id)) {
-          queued.add(other.id);
-          queue.push(other);
-        }
+  for (const widget of widgets) {
+    const { w, h } = sizeDims(widget.size);
+    let bestX = 0;
+    let bestY = Number.POSITIVE_INFINITY;
+    for (let x = 0; x <= cols - w; x++) {
+      const y = Math.max(...colHeights.slice(x, x + w));
+      if (y < bestY) {
+        bestY = y;
+        bestX = x;
       }
     }
+    out.push({
+      id: widget.id,
+      x: bestX,
+      y: bestY,
+      w,
+      h,
+      size: widget.size,
+      ...(widget.config ? { config: widget.config } : {}),
+    });
+    for (let c = bestX; c < bestX + w; c++) colHeights[c] = bestY + h;
   }
   return out;
 }
 
 export function maxOccupiedRow(panels: PanelLayoutEntry[]): number {
-  return panels.reduce((max, p) => Math.max(max, p.y + effectiveHeight(p)), 0);
+  let max = 0;
+  for (const p of panels) {
+    max = Math.max(max, p.y + p.h);
+  }
+  return max;
+}
+
+export function rectanglesOverlap(
+  a: { x: number; y: number; w: number; h: number },
+  b: { x: number; y: number; w: number; h: number },
+): boolean {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+export function overlappingPanelPairs(panels: PanelLayoutEntry[]): string[] {
+  const hits: string[] = [];
+  for (let i = 0; i < panels.length; i++) {
+    for (let j = i + 1; j < panels.length; j++) {
+      if (rectanglesOverlap(panels[i]!, panels[j]!)) hits.push(`${panels[i]!.id}×${panels[j]!.id}`);
+    }
+  }
+  return hits;
+}
+
+export function packAfterMove(panels: PanelLayoutEntry[], _anchorId: string): PanelLayoutEntry[] {
+  return panels;
 }
 
 export function packDashboardLayout(panels: PanelLayoutEntry[]): PanelLayoutEntry[] {
-  let out = panels.map((p) => ({ ...p }));
-  for (const p of out) out = packAfterMove(out, p.id);
-  return out;
+  return panels;
 }
 
-export function overlappingPanelPairs(panels: PanelLayoutEntry[]): Array<[string, string]> {
-  const pairs: Array<[string, string]> = [];
-  for (let i = 0; i < panels.length; i++) {
-    for (let j = i + 1; j < panels.length; j++) {
-      if (rectanglesOverlap(panels[i], panels[j])) pairs.push([panels[i].id, panels[j].id]);
-    }
-  }
-  return pairs;
+export function effH(p: { h: number; collapsed?: boolean }): number {
+  return p.collapsed ? 1 : p.h;
 }

@@ -4,27 +4,21 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { normalizeDashboardLayout } from "../src/dashboard-layout/normalize";
-import { panels } from "../src/panels/registry";
+import { widgetIdsForSession } from "../src/dashboard-layout/widgets";
 import { USAGE_READING_STALE_MS } from "../src/agents-usage/constants";
 import { buildUsageDashboard } from "../src/agents-usage/view";
 import type { UsageSnapshot } from "../src/agents-usage/types";
 
-const PANEL_IDS = panels.map((p) => p.id);
+const WIDGET_IDS = widgetIdsForSession({ showBudget: true });
 
 test("dashboard layout: agents-usage appends to saved layout without crashing", () => {
-  const savedIds = PANEL_IDS.filter((id) => id !== "agents-usage");
+  const savedIds = WIDGET_IDS.filter((id) => id !== "agents-usage");
   const raw = {
-    version: 2,
-    cols: 12,
-    rowHeight: 32,
-    panels: savedIds.map((id, i) => ({ id, x: 0, y: i * 2, w: 3, h: 2 })),
+    version: 3,
+    widgets: savedIds.slice(0, 8).map((id) => ({ id, size: "W" as const })),
   };
-  const next = normalizeDashboardLayout(raw, PANEL_IDS);
-  assert.equal(next.panels.length, PANEL_IDS.length);
-  assert.ok(next.panels.find((p) => p.id === "agents-usage"));
-  const weather = next.panels.find((p) => p.id === "weather")!;
-  const usage = next.panels.find((p) => p.id === "agents-usage")!;
-  assert.ok(usage.y >= weather.y, "new panel appends below saved entries");
+  const next = normalizeDashboardLayout(raw, WIDGET_IDS, true, { appendMissing: true });
+  assert.ok(next.widgets.find((w) => w.id === "agents-usage"));
 });
 
 test("dashboard layout: unknown panel ids in saved file are dropped safely", () => {
@@ -37,9 +31,9 @@ test("dashboard layout: unknown panel ids in saved file are dropped safely", () 
       { id: "retired-panel", x: 3, y: 0, w: 3, h: 3 },
     ],
   };
-  const next = normalizeDashboardLayout(raw, PANEL_IDS);
-  assert.ok(!next.panels.some((p) => p.id === "retired-panel"));
-  assert.equal(next.panels.length, PANEL_IDS.length);
+  const next = normalizeDashboardLayout(raw, WIDGET_IDS, true, { appendMissing: true });
+  assert.ok(!next.widgets.some((w) => w.id === "retired-panel"));
+  assert.ok(next.widgets.find((w) => w.id === "weather"));
 });
 
 test("agents usage panel view: null weekly percent is unavailable not zero", () => {

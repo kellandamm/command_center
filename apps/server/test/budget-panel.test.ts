@@ -43,7 +43,7 @@ test("budget panel: hidden when gate off or non-owner", () => {
   assert.ok(!htmlOwnerOff.includes('data-panel-id="budget"'));
   assert.ok(!htmlOwnerOff.includes("loadBudgetPanel"));
 
-  const layoutOff = defaultDashboardLayout(panels.map((p) => p.id).filter((id) => id !== "budget"));
+  const layoutOff = defaultDashboardLayout({ showBudget: false });
   assert.ok(!layoutOff.panels.some((p) => p.id === "budget"));
 });
 
