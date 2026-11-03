@@ -100,6 +100,32 @@ test("connections API denies admin tokens, validates CSRF, and returns metadata 
   } finally { await owner.close(); }
 });
 
+test("settings exposes a secret-free deployment summary with the effective timezone and access mode", async () => {
+  const h = await harness({
+    TZ: "America/Chicago", WEATHER_LAT: "35", WEATHER_LON: "-100",
+    GITHUB_USERNAME: "configured-author", ICS_URLS: "https://calendar.example/private?key=private-feed-key",
+    MCP_APP_TOKENS: JSON.stringify({ agent: "private-agent-token".repeat(2) }),
+    CONNECTIONS_MASTER_KEY: "a".repeat(64),
+  });
+  try {
+    const response = await fetch(`${h.base}/api/settings`, { headers: authz });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    const data = await response.json();
+    assert.equal(data.runtime.timezone, "America/Chicago");
+    assert.deepEqual(data.runtime.weather, { provider: "Open-Meteo", latitude: 35, longitude: -100 });
+    assert.equal(data.runtime.githubUsername, "configured-author");
+    assert.equal(data.runtime.calendar.environmentFeeds, 1);
+    assert.equal(data.runtime.agents.mcpClients, 1);
+    assert.equal(data.runtime.access.canManageConnections, false);
+    assert.equal(data.runtime.access.encryptedStorage, true);
+    const json = JSON.stringify(data);
+    for (const secret of ["private-feed-key", "calendar.example", "private-agent-token", "sk-test", TOKEN, "a".repeat(64)]) {
+      assert.ok(!json.includes(secret));
+    }
+  } finally { await h.close(); }
+});
+
 test("Notes API returns conflicts and restores only the selected saved revision", async () => {
   const h = await harness();
   const headers = { ...authz, "x-ah": "1", "content-type": "application/json" };

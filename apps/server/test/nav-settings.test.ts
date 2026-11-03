@@ -116,3 +116,29 @@ test("settings: view preferences customize page defaults and retain other defaul
     /viewPreferences\.calendar\.weekStartsOn is invalid/,
   );
 });
+
+test("settings: concurrent section updates survive reload and invalid writes do not block later saves", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-settings-concurrent-"));
+  try {
+    const store = new SettingsStore(dir);
+    await store.load();
+    await Promise.all([
+      store.update({ briefingTime: "10:30" }),
+      store.update({ viewPreferences: { density: "compact" } }),
+      store.update({ briefingTopics: ["Saved topic"] }),
+    ]);
+    const loaded = await new SettingsStore(dir).load();
+    assert.equal(loaded.briefingTime, "10:30");
+    assert.equal(loaded.viewPreferences.density, "compact");
+    assert.deepEqual(loaded.briefingTopics, ["Saved topic"]);
+    await assert.rejects(store.update({ briefingTime: "invalid" }));
+    await store.update({ briefingTime: "11:00" });
+    assert.equal((await new SettingsStore(dir).load()).briefingTime, "11:00");
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("settings: malformed preference sections are rejected instead of reporting a successful no-op", () => {
+  assert.throws(() => applySettings(DEFAULT_SETTINGS, { viewPreferences: null }), /viewPreferences must be an object/);
+  assert.throws(() => applySettings(DEFAULT_SETTINGS, { viewPreferences: { calendar: [] } }), /viewPreferences.calendar must be an object/);
+  assert.throws(() => applySettings(DEFAULT_SETTINGS, { sidebarTabs: "invalid" }), /sidebarTabs must be an array/);
+});

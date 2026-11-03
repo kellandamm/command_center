@@ -112,3 +112,82 @@ test("deployment validation and admin/anonymous authentication never implicitly 
   const forged = await makeAuthenticator(cfg, async () => { throw new Error("invalid signature"); })(req, url);
   assert.equal(forged.ok, false);
 });
+
+test("connection metadata shows effective non-secret values, missing fields and real usage", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "connections-status-"));
+  try {
+    const store = await ConnectionsStore.open(loadConfig({
+      DATA_DIR: dir, CONNECTIONS_MASTER_KEY: "a".repeat(64),
+      LLM_BASE_URL: "https://models.example/v1", LLM_MODEL: "deployed-model", LLM_API_KEY: "hidden-api-key",
+      RECALLIO_URL: "https://recall.example/search?key=private-url-key", CF_ACCESS_CLIENT_ID: "hidden-client-id",
+    }));
+    const llm = () => store.status().connections.find((item) => item.id === "llm")!;
+    assert.equal(llm().fields.find((field) => field.name === "llmBaseUrl")!.value, "https://models.example/v1");
+    assert.equal(llm().fields.find((field) => field.name === "llmModel")!.value, "deployed-model");
+    assert.equal(llm().fields.find((field) => field.name === "llmApiKey")!.value, null);
+    assert.match(llm().usage, /Read Later.*Notes.*Wins/);
+    await store.update("llm", { values: { llmModel: "saved-model" } });
+    assert.equal(llm().fields.find((field) => field.name === "llmModel")!.value, "saved-model");
+    assert.equal(llm().fields.find((field) => field.name === "llmModel")!.source, "saved");
+    const recallio = store.status().connections.find((item) => item.id === "recallio")!;
+    assert.equal(recallio.configured, false);
+    assert.deepEqual(recallio.missingFields, ["cfAccessClientSecret"]);
+    const json = JSON.stringify(store.status());
+    for (const secret of ["hidden-api-key", "hidden-client-id", "private-url-key"]) assert.ok(!json.includes(secret));
+    let called = false;
+    assert.equal((await store.test("recallio", async () => { called = true; throw new Error(); })).ok, false);
+    assert.equal(called, false);
+    await store.update("llm", { disabled: true });
+    assert.equal(llm().configured, false);
+    assert.ok(llm().fields.every((field) => field.value === null && field.source === "disabled"));
+    await store.remove("llm");
+    assert.equal(llm().fields.find((field) => field.name === "llmModel")!.value, "deployed-model");
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("access checks are timestamped, invalidated by changes and never certify changed credentials", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "connections-check-"));
+  try {
+    const store = await ConnectionsStore.open(loadConfig({
+      DATA_DIR: dir, CONNECTIONS_MASTER_KEY: "a".repeat(64), BRAVE_SEARCH_API_KEY: "before",
+    }));
+    const status = () => store.status().connections.find((item) => item.id === "brave")!;
+    assert.equal(status().lastCheck, null);
+    const result = await store.test("brave", async (url) => ({
+      finalUrl: url, status: 200, contentType: "application/json", headers: {}, body: "{}",
+    }));
+    assert.ok(Number.isFinite(Date.parse(result.checkedAt)));
+    assert.deepEqual(status().lastCheck, result);
+    assert.equal((await ConnectionsStore.open(store.config)).status().connections.find((item) => item.id === "brave")!.lastCheck, null);
+    await store.update("brave", { values: { braveSearchApiKey: "after" } });
+    assert.equal(status().lastCheck, null);
+    const stale = await store.test("brave", async (url) => {
+      await store.update("brave", { disabled: true });
+      return { finalUrl: url, status: 200, contentType: "application/json", headers: {}, body: "{}" };
+    });
+
+    assert.equal(stale.ok, false);
+    assert.match(stale.message, /Settings changed/);
+    assert.equal(status().lastCheck, null);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("ntfy metadata matches deployment precedence, default URL and optional token", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "connections-ntfy-"));
+  try {
+    const env = loadConfig({
+      DATA_DIR: dir, CONNECTIONS_MASTER_KEY: "a".repeat(64), NTFY_TOPIC: "private-env-topic",
+    });
+    const store = await ConnectionsStore.open(env);
+    const status = () => store.status().connections.find((item) => item.id === "ntfy")!;
+    assert.equal(status().configured, true);
+    assert.deepEqual(status().missingFields, []);
+    assert.equal(status().fields.find((field) => field.name === "ntfyUrl")!.value, "https://ntfy.sh");
+    assert.equal(status().fields.find((field) => field.name === "ntfyUrl")!.source, "default");
+    await store.update("ntfy", { values: { ntfyTopic: "private-saved-topic" }, disabled: true });
+    assert.equal(status().disabled, false);
+    assert.equal(status().configured, true);
+    assert.equal(status().fields.find((field) => field.name === "ntfyTopic")!.source, "environment");
+    for (const secret of ["private-env-topic", "private-saved-topic"]) assert.ok(!JSON.stringify(status()).includes(secret));
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

@@ -36,6 +36,7 @@ test("personal dashboard, settings and briefing work without retired integration
       },
     };
     let failTopicsSave = false;
+    let failSettingsLoad = true;
     let failRefresh = false;
     let refreshPolls = 0;
     await page.route("**/*", async (route) => {
@@ -47,9 +48,21 @@ test("personal dashboard, settings and briefing work without retired integration
       const pages: Record<string, () => string> = { "/": dashboardPage, "/settings": settingsPage, "/briefing": dailyBriefingPage };
       if (pages[path]) return route.fulfill({ contentType: "text/html", body: pages[path]() });
       if (path === "/api/settings") {
+        if (request.method() === "GET" && failSettingsLoad) return route.fulfill({ status: 503, json: { error: "Settings temporarily unavailable" } });
         if (request.method() === "PUT" && failTopicsSave) return route.fulfill({ status: 400, json: { error: "Could not save topics" } });
         if (request.method() === "PUT") Object.assign(settings, request.postDataJSON());
-        return route.fulfill({ json: { settings, briefingProviders: { search: false, summarizer: false } } });
+        return route.fulfill({ json: {
+          settings, briefingProviders: { search: false, summarizer: false },
+          runtime: {
+            timezone: "America/Chicago", version: "test-build",
+            weather: { provider: "Open-Meteo", latitude: 41.8781, longitude: -87.6298 },
+            githubUsername: "configured-author",
+            integrations: { github: true, todoist: false, recallio: false, docker: false },
+            calendar: { available: true, native: 1, subscriptions: 2, environmentFeeds: 3 },
+            access: { cloudflare: true, adminToken: false, insecureNoAuth: false, canManageConnections: true, encryptedStorage: true },
+            agents: { mcpClients: 1, cloudflareClients: 1, hobiePoll: true, webhook: false, maxPendingTasks: 20 },
+          },
+        } });
       }
       if (path === "/api/daily-briefing/days") return route.fulfill({ json: { days: [briefing.day] } });
       if (path === "/api/daily-briefing/refresh") {
@@ -86,13 +99,27 @@ test("personal dashboard, settings and briefing work without retired integration
       unexpectedRequests.push(`${request.method()} ${path}`);
       return route.fulfill({ status: 404, json: { error: `Unexpected route: ${path}` } });
     });
+    failSettingsLoad = false;
     await page.goto("http://personal.test/");
     t.diagnostic("Dashboard opened");
     await page.waitForSelector("#panel-tasks", { timeout: 15_000 });
     assert.equal(await page.locator(".sidebar-nav").getByRole("link", { name: /News|Summaries|AI Security/ }).count(), 0);
-    await page.goto("http://personal.test/settings#schedule");
+    failSettingsLoad = true;
+    await page.goto("http://personal.test/settings");
     t.diagnostic("Settings opened");
+    await page.locator("#settings-load-status").getByText("Settings temporarily unavailable", { exact: true }).waitFor();
+    assert.equal(await page.locator("#views-save").isDisabled(), true);
+    assert.equal(await page.locator("#f-schedule button").isDisabled(), true);
+    failSettingsLoad = false;
+    await page.locator("#settings-retry").click();
     await page.waitForFunction(() => (document.querySelector("#briefingTime") as HTMLInputElement)?.value === "06:00");
+    assert.match(await page.locator("#settings-overview").innerText(), /06:00 in America\/Chicago/);
+    assert.match(await page.locator("#settings-overview").innerText(), /Open-Meteo at 41.8781, -87.6298/);
+    assert.match(await page.locator("#settings-overview").innerText(), /1 enabled native \/ 2 enabled subscriptions \/ 3 deployment feeds/);
+    assert.equal(await page.locator("#views-save").isEnabled(), true);
+    await page.locator('[data-section="views"]').click();
+    await page.locator('[data-subtab="schedule"]').click();
+    assert.match(await page.locator("#schedule-timezone").innerText(), /America\/Chicago/);
     await page.locator("#briefingTime").fill("08:30");
     await Promise.all([
       page.waitForEvent("domcontentloaded"),
@@ -110,6 +137,7 @@ test("personal dashboard, settings and briefing work without retired integration
     await page.locator("#topics-save").click();
     await page.getByText("Topics saved.", { exact: true }).waitFor();
     assert.deepEqual(settings.briefingTopics, ["Microsoft Fabric", "AI security"]);
+    assert.match(await page.locator("#settings-overview").innerText(), /Microsoft Fabric, AI security/);
     await page.reload();
     await page.waitForFunction(() => (document.querySelector("#briefingTopics") as HTMLTextAreaElement)?.value === "Microsoft Fabric\nAI security");
     failTopicsSave = true;

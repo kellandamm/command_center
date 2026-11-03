@@ -8,17 +8,30 @@ import { assertPublicUrl, safeFetch } from "./ssrf";
 import { notify, resolveNtfyConfig } from "./notify/ntfy";
 
 const providers = {
-  llm: { label: "AI summarizer", fields: ["llmBaseUrl", "llmApiKey", "llmModel"] },
-  brave: { label: "Brave Search", fields: ["braveSearchApiKey"] },
-  github: { label: "GitHub", fields: ["githubToken"] },
-  todoist: { label: "Todoist", fields: ["todoistApiToken"] },
-  recallio: { label: "Recallio", fields: ["recallioUrl", "cfAccessClientId", "cfAccessClientSecret"] },
-  ntfy: { label: "Phone notifications (ntfy)", fields: ["ntfyUrl", "ntfyTopic", "ntfyToken"] },
+  llm: { label: "AI summarizer", fields: ["llmBaseUrl", "llmApiKey", "llmModel"],
+    usage: "Read Later summaries, answers grounded in Notes and Spaces, daily keyword digests, and weekly Wins summaries.",
+    fallback: "Without all three fields, AI features are unavailable. Notes, saved links, calendar, and manual Wins remain usable." },
+  brave: { label: "Brave Search", fields: ["braveSearchApiKey"],
+    usage: "Web searches for Daily Briefing topics. Keyword digests also require the AI summarizer.",
+    fallback: "Without this key, keyword digests are unavailable. Calendar and weather do not use Brave Search." },
+  github: { label: "GitHub", fields: ["githubToken"],
+    usage: "Hourly polling for merged pull requests to add to Agent Wins.",
+    fallback: "Without a token, merged pull requests are not imported. Manual Wins and the local task board still work." },
+  todoist: { label: "Todoist", fields: ["todoistApiToken"],
+    usage: "The agent/MCP and webhook todoist_add_task action. This does not sync the local Hobie task board with Todoist.",
+    fallback: "Without this token, agents cannot create Todoist tasks. The local task board is independent." },
+  recallio: { label: "Recallio", fields: ["recallioUrl", "cfAccessClientId", "cfAccessClientSecret"],
+    usage: "Memory search through the Recallio panel/API. Notes and Read Later are stored locally, not in Recallio.",
+    fallback: "Without a URL, Recallio search is unavailable. Access client ID and secret are only needed together for a server behind Cloudflare Access." },
+  ntfy: { label: "Phone notifications (ntfy)", fields: ["ntfyUrl", "ntfyTopic", "ntfyToken"],
+    usage: "Phone notifications for briefing digests, reminders, and other alerts.",
+    fallback: "A topic is required. URL defaults to https://ntfy.sh; a token is optional. Deployment ntfy values take precedence over saved settings, even when this connection is disconnected." },
 } as const;
 
 type Provider = keyof typeof providers;
 type Field = (typeof providers)[Provider]["fields"][number];
 interface Connection { disabled: boolean; values: Partial<Record<Field, string>>; updatedAt: string }
+interface AccessCheck { ok: boolean; message: string; checkedAt: string }
 type Data = Partial<Record<Provider, Connection>> & { secrets?: Record<string, string> };
 const urls: Field[] = ["llmBaseUrl", "recallioUrl", "ntfyUrl"];
 const aad = Buffer.from("command-center:connections:v1");
@@ -34,6 +47,7 @@ export function connectionProvider(value: string): Provider {
 export class ConnectionsStore {
   private data: Data = {};
   private queue: Promise<void> = Promise.resolve();
+  private checks: Partial<Record<Provider, AccessCheck>> = {};
   readonly config: Config;
   private constructor(private env: Config, private path: string) {
     // Existing long-lived consumers keep this reference, so replacements and
@@ -103,19 +117,56 @@ export class ConnectionsStore {
   status() {
     return {
       writable: !!this.env.connectionsMasterKey,
+      githubUsername: this.config.githubUsername,
       connections: Object.entries(providers).map(([id, descriptor]) => {
-        const saved = this.data[id as Provider];
+        const provider = id as Provider;
+        const saved = this.data[provider];
+        const missingFields = this.requiredFields(provider).filter((field) => !this.effectiveValue(field));
         return {
-          id, label: descriptor.label, disabled: saved?.disabled ?? false, updatedAt: saved?.updatedAt ?? null,
-          configured: (id === "recallio" ? ["recallioUrl"] as const : descriptor.fields).every((field) => !!this.config[field]),
+          id, label: descriptor.label, disabled: provider === "ntfy" ? !resolveNtfyConfig(this.env, this.config).enabled && (saved?.disabled ?? false) : saved?.disabled ?? false, updatedAt: saved?.updatedAt ?? null,
+          usage: descriptor.usage, fallback: descriptor.fallback,
+          configured: missingFields.length === 0, missingFields,
+          hasSavedSettings: !!saved,
+          lastCheck: this.checks[provider] ?? null,
           fields: descriptor.fields.map((field) => ({
             name: field, secret: !urls.includes(field) && field !== "llmModel",
-            configured: !!this.config[field],
-            source: saved?.disabled ? "disabled" : saved?.values[field] !== undefined ? "saved" : this.env[field] ? "environment" : "unset",
+            configured: !!this.effectiveValue(field),
+            source: provider === "ntfy" && this.env[field] ? "environment"
+              : saved?.disabled ? "disabled" : saved?.values[field] !== undefined ? "saved"
+              : this.env[field] ? "environment" : field === "ntfyUrl" ? "default" : "unset",
+            value: this.displayValue(field),
           })),
         };
       }),
     };
+  }
+
+  private requiredFields(id: Provider): readonly Field[] {
+    if (id === "ntfy") return ["ntfyTopic"];
+    if (id !== "recallio") return providers[id].fields;
+    return this.config.cfAccessClientId || this.config.cfAccessClientSecret
+      ? providers.recallio.fields : ["recallioUrl"];
+  }
+
+  private effectiveValue(field: Field): string | null {
+    if (field === "ntfyUrl" || field === "ntfyTopic" || field === "ntfyToken") {
+      const ntfy = resolveNtfyConfig(this.env, this.config);
+      return field === "ntfyUrl" ? ntfy.publishBase : field === "ntfyTopic" ? ntfy.topic : ntfy.token;
+    }
+    return this.config[field];
+  }
+
+  private displayValue(field: Field): string | null {
+    const value = this.effectiveValue(field);
+    if (!value) return null;
+    if (field === "llmModel") return value;
+    if (!urls.includes(field)) return null;
+    try {
+      const url = new URL(value);
+      // Deployment URLs have not passed the vault's URL validation.
+      if (!["https:", "http:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) return null;
+      return url.href.replace(/\/+$/, "");
+    } catch { return null; }
   }
 
   async update(id: Provider, input: unknown): Promise<void> {
@@ -147,10 +198,12 @@ export class ConnectionsStore {
         values: { ...next[id]?.values, ...values }, updatedAt: new Date().toISOString(),
       };
     });
+    delete this.checks[id];
   }
 
   async remove(id: Provider): Promise<void> {
     await this.commit((next) => { delete next[id]; });
+    delete this.checks[id];
   }
 
   /** Server-only credential references; never included in status/API exports. */
@@ -189,47 +242,40 @@ export class ConnectionsStore {
     await run;
   }
 
-  async test(id: Provider, request = safeFetch): Promise<{ ok: boolean; message: string }> {
+  async test(id: Provider, request = safeFetch): Promise<AccessCheck> {
+    const cfg = this.config;
+    const snapshot = providers[id].fields.map((field) => this.effectiveValue(field));
+    const finish = (result: { ok: boolean; message: string }) => {
+      const checkedAt = new Date().toISOString();
+      if (!providers[id].fields.every((field, index) => this.effectiveValue(field) === snapshot[index])) {
+        return { ok: false, message: "Settings changed during this check. Test the current settings again.", checkedAt };
+      }
+      const check = { ...result, checkedAt };
+      this.checks[id] = check;
+      return check;
+    };
+    if (this.requiredFields(id).some((field) => !this.effectiveValue(field))) return finish({ ok: false, message: "Connection is disabled or required fields are missing." });
+    let url: string, headers: Record<string, string>;
     if (id === "ntfy") {
       const resolved = resolveNtfyConfig(this.env, this.config);
-      if (!resolved.enabled) return { ok: false, message: "Connection is disabled or required fields are missing." };
-      const ok = await notify(resolved, {
-        title: "Connection test",
-        body: "Connection test",
-        priority: "low",
-      });
-      return {
-        ok,
-        message: ok
-          ? "Notification accepted by the ntfy server."
-          : "Provider did not pass the access check. Check credentials and endpoint.",
-      };
+      if (!resolved.enabled) return finish({ ok: false, message: "Connection is disabled or required fields are missing." });
+      const ok = await notify(resolved, { title: "Connection test", body: "Connection test", priority: "low" });
+      return finish({ ok, message: ok ? "Notification accepted by the ntfy server." : "Provider did not pass the access check. Check credentials and endpoint." });
     }
-    const cfg = this.config;
-    const required: Field[] = id === "recallio" ? ["recallioUrl"] : [...providers[id].fields];
-    if (required.some((field) => !cfg[field])) return { ok: false, message: "Connection is disabled or required fields are missing." };
-    let url: string;
-    let headers: Record<string, string>;
     switch (id) {
-      case "llm": url = `${cfg.llmBaseUrl}/models`; headers = { authorization: `Bearer ${cfg.llmApiKey}` }; break;
+      case "llm": url = `${cfg.llmBaseUrl!.replace(/\/+$/, "")}/models`; headers = { authorization: `Bearer ${cfg.llmApiKey}` }; break;
       case "brave": url = "https://api.search.brave.com/res/v1/web/search?q=connection%20test&count=1"; headers = { "X-Subscription-Token": cfg.braveSearchApiKey! }; break;
       case "github": url = "https://api.github.com/user"; headers = { authorization: `Bearer ${cfg.githubToken}` }; break;
       case "todoist": url = "https://api.todoist.com/api/v1/projects"; headers = { authorization: `Bearer ${cfg.todoistApiToken}` }; break;
       case "recallio": url = `${cfg.recallioUrl}/api/search?q=connection%20test`; headers = cfg.cfAccessClientId && cfg.cfAccessClientSecret ? { "cf-access-client-id": cfg.cfAccessClientId, "cf-access-client-secret": cfg.cfAccessClientSecret } : {}; break;
-      default: return { ok: false, message: "Unknown connection." };
     }
     try {
       const response = await request(url, { headers, maxRedirects: 0, maxBytes: 64_000, timeoutMs: 10_000 });
       const ok = response.status >= 200 && response.status < 300 && response.contentType.includes("json");
-      return {
-        ok,
-        message: ok
-          ? "Provider responded with JSON. This checks access, not every provider operation."
-          : `Provider did not pass the access check (HTTP ${response.status}). Check credentials and endpoint.`,
-      };
+      return finish({ ok, message: ok ? "Provider responded with JSON. This checks access, not every provider operation or model support." : `Provider did not pass the access check (HTTP ${response.status}). Check credentials and endpoint.` });
     } catch {
       // Provider bodies/errors can echo credentials; never expose them.
-      return { ok: false, message: "Provider could not be reached safely. Check its public HTTPS endpoint and network access." };
+      return finish({ ok: false, message: "Provider could not be reached safely. Check its public HTTPS endpoint and network access." });
     }
   }
 }

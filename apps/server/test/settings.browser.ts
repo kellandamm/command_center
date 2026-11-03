@@ -5,7 +5,7 @@ import { settingsPage } from "../src/ui/pages";
 import { DEFAULT_SETTINGS } from "../src/settings";
 
 test("settings: legacy hashes select Views section and matching sub-panel", { timeout: 60_000 }, async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
   try {
     const page = await browser.newPage();
     await page.route("**/*", async (route) => {
@@ -54,7 +54,7 @@ test("settings: legacy hashes select Views section and matching sub-panel", { ti
 });
 
 test("settings: main tablist keyboard navigation activates tabs and Tab enters panel", { timeout: 60_000 }, async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
   try {
     const page = await browser.newPage();
     await page.route("**/*", async (route) => {
@@ -102,7 +102,7 @@ test("settings: main tablist keyboard navigation activates tabs and Tab enters p
 });
 
 test("settings: Views sub-tablist responds to arrow keys", { timeout: 60_000 }, async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
   try {
     const page = await browser.newPage();
     await page.route("**/*", async (route) => {
@@ -122,6 +122,7 @@ test("settings: Views sub-tablist responds to arrow keys", { timeout: 60_000 }, 
       return route.continue();
     });
     await page.goto("http://settings.test/settings#views");
+    await page.waitForFunction(() => !(document.getElementById("settings-editor") as HTMLFieldSetElement).disabled);
     await page.locator("#settings-subtab-views").focus();
     await page.keyboard.press("ArrowRight");
     assert.equal(await page.locator("#settings-subtab-topics").getAttribute("aria-selected"), "true");
@@ -131,4 +132,27 @@ test("settings: Views sub-tablist responds to arrow keys", { timeout: 60_000 }, 
   } finally {
     await browser.close();
   }
+});
+
+test("settings: loaded view-only preferences remain disabled", { timeout: 60_000 }, async () => {
+  const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
+  try {
+    const page = await browser.newPage();
+    await page.route("**/*", async (route) => {
+      const url = new URL(route.request().url());
+      if (url.hostname !== "settings.test") return route.abort();
+      if (url.pathname === "/settings") return route.fulfill({ contentType: "text/html", body: settingsPage() });
+      if (url.pathname === "/api/settings") return route.fulfill({ json: {
+        settings: DEFAULT_SETTINGS, meta: { canManage: false, ownerReason: "email-not-in-owner-emails" },
+        briefingProviders: { search: true, summarizer: true }, ntfy: { enabled: false },
+      } });
+      return route.fulfill({ status: 404 });
+    });
+    await page.goto("http://settings.test/settings#views");
+    await page.waitForFunction(() => !(document.getElementById("settings-editor") as HTMLFieldSetElement).disabled);
+    for (const selector of ["#views-save", "#tabs-save", "#f-schedule button", "#topics-save", "#pref-density"]) {
+      assert.equal(await page.locator(selector).isDisabled(), true, selector);
+    }
+    assert.match(await page.locator("#settings-overview").innerText(), /06:00/);
+  } finally { await browser.close(); }
 });
