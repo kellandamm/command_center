@@ -2,14 +2,6 @@ import { calendarLocalInstant } from "../calendar/store";
 import { dayRangeIso } from "../calendar/day-duration";
 import type { DayPlanCapacity } from "./types";
 
-const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
-
-export function parseWorkTime(value: string): number {
-  if (!TIME.test(value)) throw new Error("Invalid work time");
-  const [h, m] = value.split(":").map(Number);
-  return h * 60 + m;
-}
-
 export function isWeekendDay(day: string, tz: string): boolean {
   const noon = calendarLocalInstant(day, "12:00", tz);
   if (!noon) return false;
@@ -83,14 +75,14 @@ export function capacityFromOccurrences(opts: {
 }): DayPlanCapacity {
   const availableMinutes = availableMinutesForDay(opts.day, opts.tz, opts.workStart, opts.workEnd, opts.weekendOverride);
   const win = workWindowBoundsMs(opts.day, opts.tz, opts.workStart, opts.workEnd);
-  if (!win || availableMinutes === 0) {
+  if (!win) {
     const unscheduled = opts.unscheduledEstimateMinutes;
     return {
-      availableMinutes,
+      availableMinutes: 0,
       meetingMinutes: 0,
       blockedTaskMinutes: 0,
       unscheduledTaskMinutes: unscheduled,
-      overByMinutes: availableMinutes === 0 && unscheduled === 0 ? 0 : Math.max(0, unscheduled - availableMinutes),
+      overByMinutes: Math.max(0, unscheduled),
     };
   }
   const meetingClips: Array<[number, number]> = [];
@@ -114,25 +106,6 @@ export function capacityFromOccurrences(opts: {
     unscheduledTaskMinutes: opts.unscheduledEstimateMinutes,
     overByMinutes: Math.max(0, planned - availableMinutes),
   };
-}
-
-/** Minutes blocked on `day` for tasks already scheduled (for unscheduled estimate deduction). */
-export function blockedMinutesForTasks(
-  occurrences: TimedOccurrence[],
-  day: string,
-  tz: string,
-  workStart: string,
-  workEnd: string,
-): number {
-  const win = workWindowBoundsMs(day, tz, workStart, workEnd);
-  if (!win) return 0;
-  const clips: Array<[number, number]> = [];
-  for (const occ of occurrences) {
-    if (!occ.isBlock) continue;
-    const clip = clipIntervalToWindow(occ.startMs, occ.endMs, win);
-    if (clip) clips.push(clip);
-  }
-  return mergeIntervalMinutes(clips);
 }
 
 export function dayRangeForPlan(day: string, tz: string): { since: string; until: string } {

@@ -29,6 +29,31 @@ test("day-plan planner: at most three must-dos and roll boost prefers rolled tas
   assert.equal(pickMustDos(tasks.slice(0, 2), 3).length, 2);
 });
 
+test("day-plan planner: five eligible tasks yield exactly three must-dos", () => {
+  const day = "2026-06-12";
+  const tasks = Array.from({ length: 5 }, (_, i) => ({
+    source: "board" as const,
+    id: String(i),
+    title: `Task ${i}`,
+    priority: 1 + (i % 3),
+    dueDay: day,
+    estimateMinutes: 30,
+    scheduled: false,
+  }));
+  const plan = buildDeterministicPlan({
+    context: {
+      day,
+      tz: "UTC",
+      occurrences: [],
+      tasks,
+      allDayLabels: [],
+      sources: { calendarUnavailable: false, todoistUnavailable: false },
+    },
+    weekendOverride: true,
+  });
+  assert.equal(plan.mustDos.length, 3);
+});
+
 test("day-plan planner: break lands in free gap near midpoint", () => {
   const day = "2026-06-04";
   const tz = "America/Chicago";
