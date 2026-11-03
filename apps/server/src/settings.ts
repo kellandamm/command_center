@@ -50,17 +50,19 @@ function booleanSetting(value: unknown, fallback: boolean, field: string): boole
   return value;
 }
 
-function objectSetting(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+function objectSetting(value: unknown, field: string): Record<string, unknown> {
+  if (value === undefined) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new ValidationError(`${field} must be an object`);
+  return value as Record<string, unknown>;
 }
 
 function normalizeViewPreferences(input: unknown, base: ViewPreferences): ViewPreferences {
-  const i = objectSetting(input);
-  const briefing = objectSetting(i.briefing);
-  const hobie = objectSetting(i.hobie);
-  const calendar = objectSetting(i.calendar);
-  const activity = objectSetting(i.activity);
-  const notes = objectSetting(i.notes);
+  const i = objectSetting(input, "viewPreferences");
+  const briefing = objectSetting(i.briefing, "viewPreferences.briefing");
+  const hobie = objectSetting(i.hobie, "viewPreferences.hobie");
+  const calendar = objectSetting(i.calendar, "viewPreferences.calendar");
+  const activity = objectSetting(i.activity, "viewPreferences.activity");
+  const notes = objectSetting(i.notes, "viewPreferences.notes");
   return {
     density: enumSetting(i.density, ["comfortable", "compact"], base.density, "viewPreferences.density"),
     briefing: {
@@ -108,7 +110,8 @@ export function applySettings(base: Settings, input: unknown): Settings {
     }
   }
   if (i.sidebarTabs !== undefined) {
-    out.sidebarTabs = normalizeSidebarTabs(Array.isArray(i.sidebarTabs) ? i.sidebarTabs : out.sidebarTabs);
+    if (!Array.isArray(i.sidebarTabs)) throw new ValidationError("sidebarTabs must be an array");
+    out.sidebarTabs = normalizeSidebarTabs(i.sidebarTabs);
   }
   if (i.viewPreferences !== undefined) {
     out.viewPreferences = normalizeViewPreferences(i.viewPreferences, out.viewPreferences);
@@ -118,6 +121,7 @@ export function applySettings(base: Settings, input: unknown): Settings {
 
 export class SettingsStore {
   private current: Settings = structuredClone(DEFAULT_SETTINGS);
+  private queue: Promise<void> = Promise.resolve();
   private path: string;
 
   constructor(dir: string) {
@@ -138,9 +142,14 @@ export class SettingsStore {
   }
 
   async update(input: unknown): Promise<Settings> {
-    const next = applySettings(this.current, input);
-    await writeFileAtomic(this.path, JSON.stringify(next, null, 2));
-    this.current = next;
-    return this.current;
+    const patch = structuredClone(input);
+    const run = this.queue.then(async () => {
+      const next = applySettings(this.current, patch);
+      await writeFileAtomic(this.path, JSON.stringify(next, null, 2));
+      this.current = next;
+      return next;
+    });
+    this.queue = run.then(() => {}, () => {});
+    return run;
   }
 }

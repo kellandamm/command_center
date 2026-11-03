@@ -5,6 +5,8 @@ export function settingsPageBody(): string {
   return `<div class="phase2-page settings-page">
 <div class="settings-stack">
 ${pageHeader({ title: "Settings", description: "Tune schedules, view behavior, and navigation." })}
+<p id="settings-load-status" role="status">Loading current settings...</p>
+<button type="button" id="settings-retry" class="ghost" hidden>Retry loading settings</button>
 <div class="settings-tabs" role="tablist" aria-label="Settings">
   <button type="button" role="tab" class="ghost on" id="settings-tab-general" data-section="general" aria-selected="true" aria-controls="settings-panel-general">General</button>
   <button type="button" role="tab" class="ghost" id="settings-tab-connections" data-section="connections" aria-selected="false" aria-controls="settings-panel-connections" tabindex="-1">Connections</button>
@@ -13,6 +15,11 @@ ${pageHeader({ title: "Settings", description: "Tune schedules, view behavior, a
 </div>
 <div class="settings-tab-panels">
 <div role="tabpanel" class="settings-section-panel on" id="settings-panel-general" aria-labelledby="settings-tab-general">
+<section class="card settings-card" aria-label="Current settings">
+<h2>Current settings</h2>
+<p class="dim">Saved preferences are shared on this server. Deployment-managed values are read-only here; change the environment and restart to update them. Provider overrides take effect immediately. Configured does not guarantee access.</p>
+<div id="settings-overview" style="overflow-wrap:anywhere"></div>
+</section>
 <section class="card settings-card" id="settings-features" aria-label="Deployment features">
 <h2 style="margin:0 0 .5rem;font-size:1rem">Features</h2>
 <p class="dim" style="margin:0 0 .75rem">Read-only deployment flags (no secret values).</p>
@@ -23,6 +30,7 @@ ${pageHeader({ title: "Settings", description: "Tune schedules, view behavior, a
 <div class="settings-link-list">
 ${settingsLinkRow({ href: "/settings/connections", label: "Manage service connections and keys", iconName: "plug" })}
 ${settingsLinkRow({ href: "/settings/calendars", label: "Manage calendars and subscriptions", iconName: "calendar" })}
+${settingsLinkRow({ href: "/settings/capture", label: "Manage browser capture access", iconName: "plug" })}
 </div>
 </div>
 <div role="tabpanel" class="settings-section-panel" id="settings-panel-notifications" aria-labelledby="settings-tab-notifications" hidden>
@@ -38,6 +46,7 @@ ${settingsLinkRow({ href: "/settings/calendars", label: "Manage calendars and su
 </section>
 </div>
 <div role="tabpanel" class="settings-section-panel" id="settings-panel-views" aria-labelledby="settings-tab-views" hidden>
+<fieldset id="settings-editor" disabled style="border:0;padding:0;margin:0;min-width:0">
 <div class="settings-subtabs" role="tablist" aria-label="View and navigation preferences">
   <button type="button" role="tab" class="ghost on" id="settings-subtab-views" data-subtab="views" aria-selected="true" aria-controls="tab-views">Views</button>
   <button type="button" role="tab" class="ghost" id="settings-subtab-topics" data-subtab="topics" aria-selected="false" aria-controls="tab-topics" tabindex="-1">Briefing topics</button>
@@ -74,6 +83,7 @@ ${settingsLinkRow({ href: "/settings/calendars", label: "Manage calendars and su
 <div class="card settings-card settings-sub-panel" id="tab-schedule" role="tabpanel" aria-labelledby="settings-subtab-schedule" hidden>
 <form id="f-schedule">
 <p class="dim">Prepare your keyword digest, calendar, and weather once a day at this time in the server's configured timezone.</p>
+<p id="schedule-timezone" class="dim"></p>
 <label for="briefingTime">Daily briefing time</label><input id="briefingTime" type="time" required>
 <div class="row" style="margin-top:18px"><button type="submit">Save schedule</button><span id="saved-schedule" class="dim"></span></div>
 </form></div>
@@ -82,6 +92,7 @@ ${settingsLinkRow({ href: "/settings/calendars", label: "Manage calendars and su
 <div id="tabs-editor"></div>
 <div class="row" style="margin-top:1rem"><button type="button" id="tabs-save">Save tabs</button><span id="saved-tabs" class="dim"></span></div>
 </div>
+</fieldset>
 </div>
 </div>
 </div>
@@ -168,6 +179,7 @@ if(subTablist){
 }
 function showHashTab(){
   var name=location.hash.slice(1);
+  if(name==="overview"){setSettingsSection("general",undefined,false);return;}
   if(!name)return;
   if(SETTINGS_SECTIONS.indexOf(name)>=0&&name!=="views"){setSettingsSection(name,undefined,false);return;}
   if(VIEW_SUBTABS.indexOf(name)>=0){setSettingsSection("views",name,false);return;}

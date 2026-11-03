@@ -582,6 +582,33 @@ export function createApp(app: App): Server {
         return json(res, 200, {
           settings: app.settings.get(),
           briefingProviders: { search: Boolean(app.cfg.braveSearchApiKey), summarizer: llmConfigured(app.cfg) },
+          runtime: {
+            timezone: app.cfg.tz,
+            version: app.cfg.version,
+            weather: { provider: "Open-Meteo", latitude: app.cfg.weatherLat, longitude: app.cfg.weatherLon },
+            githubUsername: app.cfg.githubUsername,
+            integrations: {
+              github: !!app.cfg.githubToken, todoist: !!app.cfg.todoistApiToken,
+              recallio: recallioConfigured(app.cfg), docker: !!app.cfg.dockerSocket,
+            },
+            calendar: {
+              available: !!app.calendar,
+              native: app.calendar?.store.list().filter((entry) => entry.kind === "native" && entry.enabled).length ?? 0,
+              subscriptions: app.calendar?.store.list().filter((entry) => entry.kind === "ics" && entry.enabled).length ?? 0,
+              environmentFeeds: app.cfg.icsUrls.length + app.cfg.icsLocalFiles.length,
+            },
+            access: {
+              cloudflare: !!app.cfg.cfTeamDomain, adminToken: !!app.cfg.adminToken,
+              insecureNoAuth: app.cfg.allowInsecureNoAuth, canManageConnections: who.owner === true,
+              encryptedStorage: !!app.connections?.status().writable,
+            },
+            agents: {
+              mcpClients: Object.keys(app.cfg.mcpAppTokens).length,
+              cloudflareClients: Object.keys(app.cfg.mcpCfClientMap).length,
+              webhook: !!app.cfg.webhookSecret, hobiePoll: !!app.cfg.hobiePollToken,
+              maxPendingTasks: app.cfg.mcpMaxHobiePending,
+            },
+          },
           ntfy,
           meta: {
             canManage: canManageSharedServerState(app.cfg, principal),

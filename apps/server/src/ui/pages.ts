@@ -116,6 +116,9 @@ function setSettingsReadOnly(meta){
   else hint.hidden=true;
 }
 function loadSettings(){
+  document.getElementById("settings-editor").disabled=true;
+  document.getElementById("settings-retry").hidden=true;
+  document.getElementById("settings-load-status").textContent="Loading current settings...";
   return api("/api/settings").then(function(r){
     var s=r.settings;
     settingsState.sidebarTabs=s.sidebarTabs||[];
@@ -124,14 +127,51 @@ function loadSettings(){
     document.getElementById("briefingTopics").value=(s.briefingTopics||[]).join("\\n");
     var providers=r.briefingProviders||{};
     document.getElementById("topics-providers").textContent=providers.search&&providers.summarizer
-      ?"Brave Search and AI summarizer are ready."
+      ?"Brave Search and AI summarizer are configured. Check service connections to verify access."
       :"Connection setup needed: "+[!providers.search?"Brave Search (BRAVE_SEARCH_API_KEY)":"",!providers.summarizer?"AI summarizer (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL)":""].filter(Boolean).join("; ")+". Open service connections to configure keys, or use deployment environment variables.";
     renderDeploymentFeatures(r.meta||{});
     var meta=r.meta||{};
     renderNtfy(r.ntfy);
-    setSettingsReadOnly(meta);
-    document.getElementById("topics-save").disabled=meta.canManage===false;
+    settingsState.renderOverview=function(s){
+    var runtime=r.runtime;
+    document.getElementById("schedule-timezone").textContent=runtime?"Server timezone: "+runtime.timezone+". This is not necessarily your browser's timezone.":"Server timezone unavailable. Reload to check before changing the schedule.";
+    var rows=[
+      ["Daily briefing",s.briefingTime+(runtime?" in "+runtime.timezone:" (timezone unavailable)")],
+      ["Followed topics",s.briefingTopics.length?s.briefingTopics.join(", "):"None - keyword searches are off"],
+      ["Keyword digest",!s.briefingTopics.length?"Off - no topics":providers.search&&providers.summarizer?"Configured - access not verified":"Blocked - configure Brave Search and AI summarizer"],
+      ["Page density",s.viewPreferences.density],
+      ["Briefing sections",Object.keys(s.viewPreferences.briefing).filter(function(key){return s.viewPreferences.briefing[key];}).join(", ")||"None"],
+      ["Calendar week starts",s.viewPreferences.calendar.weekStartsOn],
+      ["Agent queue / activity",s.viewPreferences.hobie.status+" / "+s.viewPreferences.activity.limit+" entries"],
+      ["Notes text size",s.viewPreferences.notes.fontSize],
+      ["Visible sidebar tabs",s.sidebarTabs.filter(function(tab){return tab.visible;}).sort(function(a,b){return a.order-b.order;}).map(function(tab){return tab.label;}).join(", ")]
+    ];
+    rows.push(["AI features",providers.summarizer?"Configured - Service connections can check access, but cannot guarantee model support":"Unavailable - configure the AI summarizer"],
+      ["Briefing web search",providers.search?"Configured - provider access must be tested in Service connections":"Unavailable - configure Brave Search"]);
+    if(runtime){
+      var access=runtime.access,agents=runtime.agents,calendar=runtime.calendar;
+      rows.push(["Server version",runtime.version],["Weather (deployment)",runtime.weather.provider+" at "+runtime.weather.latitude+", "+runtime.weather.longitude+"; no API key required"],
+        ["GitHub author (deployment)",runtime.githubUsername+(runtime.integrations&&runtime.integrations.github?"; hourly merged PR import configured":"; merged PR import unavailable without a token")],
+        ["Calendars",calendar.native+" enabled native / "+calendar.subscriptions+" enabled subscriptions / "+calendar.environmentFeeds+" deployment feeds; subscription access is checked when calendars load"],
+        ["Authentication (deployment)",[access.cloudflare?"Cloudflare Access":null,access.adminToken?"Admin token":null,access.insecureNoAuth?"WARNING: unauthenticated access is allowed":null].filter(Boolean).join("; ")||"No authentication configured"],
+        ["Connection management",access.canManageConnections?"Verified owner - provider settings are available":"Read-only deployment summary - sign in as a configured owner through Cloudflare Access to manage provider settings"],
+        ["Encrypted credential storage",access.encryptedStorage?"Enabled":"Disabled - set CONNECTIONS_MASTER_KEY to save provider secrets"],
+        ["Agent access (deployment)",agents.mcpClients+" bearer clients / "+agents.cloudflareClients+" Cloudflare mappings; Hobie polling "+(agents.hobiePoll?"configured":"not configured")+"; webhook "+(agents.webhook?"configured":"not configured")],
+        ["Agent queue limit (deployment)",agents.maxPendingTasks+" pending tasks across all clients"]
+      );
+      if(runtime.integrations)rows.push(
+        ["Todoist task creation",runtime.integrations.todoist?"Token configured - used by agents/MCP and webhook, not a board sync":"Unavailable - no token configured"],
+        ["Recallio memory search",runtime.integrations.recallio?"Endpoint configured - check required credentials and access in Service connections":"Unavailable - no endpoint configured"],
+        ["Docker panel (deployment)",runtime.integrations.docker?"Socket configured - access is checked when the panel loads":"Disabled - no socket configured"]
+      );
+    }
+    document.getElementById("settings-overview").innerHTML='<dl>'+rows.map(function(row){return '<dt style="font-weight:600;margin-top:1rem">'+esc(row[0])+'</dt><dd style="margin:.25rem 0">'+esc(String(row[1]))+'</dd>';}).join("")+'</dl>';
+    };
+    settingsState.renderOverview(s);
+    document.getElementById("settings-editor").disabled=false;
+    document.getElementById("settings-load-status").textContent=r.runtime?"Current settings loaded from this server. Unsaved edits do not change this summary.":"Preferences loaded; deployment summary is unavailable.";
     renderTabsEditor();bindViewPreferences();
+    setSettingsReadOnly(meta);
   });
 }
 document.getElementById("f-topics").onsubmit=function(e){
@@ -141,27 +181,17 @@ document.getElementById("f-topics").onsubmit=function(e){
   if(topics.length>10||topics.some(function(s){return s.length>120})){status.textContent="Use up to 10 topics, with no more than 120 characters each.";return}
   button.disabled=true;status.textContent="Saving...";
   api("/api/settings","PUT",{briefingTopics:topics}).then(function(r){
-    document.getElementById("briefingTopics").value=r.settings.briefingTopics.join("\\n");status.textContent="Topics saved.";
+    document.getElementById("briefingTopics").value=r.settings.briefingTopics.join("\\n");settingsState.renderOverview(r.settings);status.textContent="Topics saved.";
   }).catch(function(err){status.textContent=err.message||"Could not save topics."}).finally(function(){button.disabled=false});
 };
 document.getElementById("f-schedule").onsubmit=function(e){e.preventDefault();
-  document.getElementById("saved-schedule").textContent="Saving…";
-  api("/api/settings","PUT",{briefingTime:document.getElementById("briefingTime").value})
-    .then(function(){document.getElementById("saved-schedule").textContent="Saved";location.reload()})
-    .catch(function(err){document.getElementById("saved-schedule").textContent=err.message});
+  saveSettingsSection("saved-schedule",{briefingTime:document.getElementById("briefingTime").value});
 };
 document.getElementById("views-save").onclick=function(){
-  var status=document.getElementById("saved-views");
-  status.textContent="Saving…";
-  api("/api/settings","PUT",{viewPreferences:settingsState.viewPreferences})
-    .then(function(){status.textContent="Saved";location.reload()})
-    .catch(function(err){status.textContent=err.message});
+  saveSettingsSection("saved-views",{viewPreferences:settingsState.viewPreferences});
 };
 document.getElementById("tabs-save").onclick=function(){
-  document.getElementById("saved-tabs").textContent="Saving…";
-  api("/api/settings","PUT",{sidebarTabs:settingsState.sidebarTabs})
-    .then(function(){document.getElementById("saved-tabs").textContent="Saved";location.reload()})
-    .catch(function(err){document.getElementById("saved-tabs").textContent=err.message});
+  saveSettingsSection("saved-tabs",{sidebarTabs:settingsState.sidebarTabs});
 };
 var ntfyBtn=document.getElementById("ntfy-test");
 if(ntfyBtn)ntfyBtn.onclick=function(){
@@ -171,7 +201,18 @@ if(ntfyBtn)ntfyBtn.onclick=function(){
     if(status)status.textContent=r.ok?"Sent. Check your phone.":"Server could not reach ntfy.";
   }).catch(function(err){if(status)status.textContent=err.message||"Could not send test."});
 };
-loadSettings().catch(function(err){document.getElementById("topics-providers").textContent=err.message||"Could not load Settings. Reload to retry."});
+function saveSettingsSection(statusId,patch){
+  var status=document.getElementById(statusId),editor=document.getElementById("settings-editor");
+  status.textContent="Saving...";editor.disabled=true;
+  api("/api/settings","PUT",patch).then(function(){status.textContent="Saved";location.reload();})
+    .catch(function(err){status.textContent=err.message||"Could not save settings. Your draft is unchanged.";editor.disabled=false;});
+}
+function reloadSettings(){loadSettings().catch(function(err){
+  document.getElementById("settings-editor").disabled=true;
+  document.getElementById("settings-load-status").textContent=err.message||"Could not load Settings. Editing is disabled to avoid overwriting current preferences.";
+  document.getElementById("settings-retry").hidden=false;
+});}
+document.getElementById("settings-retry").onclick=reloadSettings;reloadSettings();
 `,
   });
 }
