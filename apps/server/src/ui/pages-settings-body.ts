@@ -1,189 +1,64 @@
-/** Settings page markup (kept separate to keep pages.ts readable). */
-import { pageHeader, settingsLinkRow } from "./components";
+function actions(id: string, label = "Save changes"): string {
+  return `<div class="settings-actions" id="actions-${id}" hidden><button type="submit" id="${id}-save">${label}</button><button type="button" class="ghost" data-cancel="${id}">Cancel</button><span id="saved-${id}" role="status" aria-live="polite"></span></div>`;
+}
+
+function select(id: string, label: string, pref: string, options: [string, string][], help = ""): string {
+  return `<div class="settings-row"><div><label for="${id}">${label}</label>${help ? `<p class="dim">${help}</p>` : ""}</div><select id="${id}" data-pref="${pref}">${options.map(([value, name]) => `<option value="${value}">${name}</option>`).join("")}</select></div>`;
+}
 
 export function settingsPageBody(): string {
-  return `<div class="phase2-page settings-page">
-<div class="settings-stack">
-${pageHeader({ title: "Settings", description: "Tune schedules, view behavior, and navigation." })}
-<p id="settings-load-status" role="status">Loading current settings...</p>
+  return `<p id="settings-load-status" role="status">Loading current settings...</p>
 <button type="button" id="settings-retry" class="ghost" hidden>Retry loading settings</button>
-<div class="settings-tabs" role="tablist" aria-label="Settings">
-  <button type="button" role="tab" class="ghost on" id="settings-tab-general" data-section="general" aria-selected="true" aria-controls="settings-panel-general">General</button>
-  <button type="button" role="tab" class="ghost" id="settings-tab-connections" data-section="connections" aria-selected="false" aria-controls="settings-panel-connections" tabindex="-1">Connections</button>
-  <button type="button" role="tab" class="ghost" id="settings-tab-notifications" data-section="notifications" aria-selected="false" aria-controls="settings-panel-notifications" tabindex="-1">Notifications</button>
-  <button type="button" role="tab" class="ghost" id="settings-tab-views" data-section="views" aria-selected="false" aria-controls="settings-panel-views" tabindex="-1">Views</button>
-</div>
-<div class="settings-tab-panels">
-<div role="tabpanel" class="settings-section-panel on" id="settings-panel-general" aria-labelledby="settings-tab-general">
-<section class="card settings-card" aria-label="Current settings">
-<h2>Current settings</h2>
-<p class="dim">Saved preferences are shared on this server. Deployment-managed values are read-only here; change the environment and restart to update them. Provider overrides take effect immediately. Configured does not guarantee access.</p>
-<div id="settings-overview" style="overflow-wrap:anywhere"></div>
-</section>
-<section class="card settings-card" id="settings-features" aria-label="Deployment features">
-<h2 style="margin:0 0 .5rem;font-size:1rem">Features</h2>
-<p class="dim" style="margin:0 0 .75rem">Read-only deployment flags (no secret values).</p>
-<div id="settings-features-list" class="settings-features-list"></div>
-</section>
-</div>
-<div role="tabpanel" class="settings-section-panel" id="settings-panel-connections" aria-labelledby="settings-tab-connections" hidden>
-<div class="settings-link-list">
-${settingsLinkRow({ href: "/settings/connections", label: "Manage service connections and keys", iconName: "plug" })}
-${settingsLinkRow({ href: "/settings/calendars", label: "Manage calendars and subscriptions", iconName: "calendar" })}
-${settingsLinkRow({ href: "/settings/capture", label: "Manage browser capture access", iconName: "plug" })}
-</div>
-</div>
-<div role="tabpanel" class="settings-section-panel" id="settings-panel-notifications" aria-labelledby="settings-tab-notifications" hidden>
-<section class="card settings-card" id="settings-ntfy" aria-label="Phone notifications">
-<h2 style="margin:0 0 .5rem;font-size:1rem">Phone notifications (ntfy)</h2>
-<p id="ntfy-status" class="dim" role="status">Checking…</p>
-<div class="row" style="margin-top:.75rem">
-<button type="button" id="ntfy-test" disabled>Send test notification</button>
-<span id="ntfy-test-status" class="dim" role="status"></span>
-</div>
-<p class="dim">Configure <code>NTFY_TOPIC</code> on the server (or save credentials under Service connections). Subscribe to the same topic in the ntfy app on your phone. The morning briefing digest is sent even during quiet hours; reminders and other alerts follow <code>NTFY_QUIET_HOURS</code> in the configured workspace <code>TZ</code>.</p>
-<p id="ntfy-owner-hint" class="dim" role="status" hidden>Owner sign-in required to send a test notification.</p>
-</section>
-</div>
-<div role="tabpanel" class="settings-section-panel" id="settings-panel-views" aria-labelledby="settings-tab-views" hidden>
-<fieldset id="settings-editor" disabled style="border:0;padding:0;margin:0;min-width:0">
-<div class="settings-subtabs" role="tablist" aria-label="View and navigation preferences">
-  <button type="button" role="tab" class="ghost on" id="settings-subtab-views" data-subtab="views" aria-selected="true" aria-controls="tab-views">Views</button>
-  <button type="button" role="tab" class="ghost" id="settings-subtab-topics" data-subtab="topics" aria-selected="false" aria-controls="tab-topics" tabindex="-1">Briefing topics</button>
-  <button type="button" role="tab" class="ghost" id="settings-subtab-schedule" data-subtab="schedule" aria-selected="false" aria-controls="tab-schedule" tabindex="-1">Schedule</button>
-  <button type="button" role="tab" class="ghost" id="settings-subtab-tabs" data-subtab="tabs" aria-selected="false" aria-controls="tab-tabs" tabindex="-1">Tabs</button>
-</div>
-<div class="card settings-card settings-sub-panel on" id="tab-views" role="tabpanel" aria-labelledby="settings-subtab-views">
-<p class="dim">Choose what each page shows and how it’s displayed. These preferences are saved on this server.</p>
-<div class="settings-options-grid">
-<div class="settings-option"><label for="pref-density">Page density</label><select id="pref-density" data-pref="density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select><p class="dim">Compact reduces spacing across supported pages.</p></div>
-<fieldset class="settings-option"><legend>Daily Briefing sections</legend>
-<label class="row choice-row"><input type="checkbox" data-pref="briefing.topics"/> Keyword digest</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.weather"/> Weather</label><label class="row choice-row"><input type="checkbox" data-pref="briefing.calendar"/> Calendar</label></fieldset>
-<div class="settings-option"><label for="pref-hobie-status">Agent queue filter</label><select id="pref-hobie-status" data-pref="hobie.status"><option value="all">All tasks</option><option value="pending">Pending</option><option value="claimed">Claimed</option><option value="done">Done</option></select><p class="dim">Default filter on Agent → Queue.</p></div>
-<div class="settings-option"><label for="pref-calendar-week">Calendar week starts on</label><select id="pref-calendar-week" data-pref="calendar.weekStartsOn"><option value="monday">Monday</option><option value="sunday">Sunday</option></select></div>
-<div class="settings-option"><label for="pref-activity-limit">Activity entries</label><select id="pref-activity-limit" data-pref="activity.limit"><option value="25">25</option><option value="50">50</option><option value="100">100</option><option value="200">200</option></select></div>
-<div class="settings-option"><label for="pref-notes-size">Notes text size</label><select id="pref-notes-size" data-pref="notes.fontSize"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></div>
-</div>
-<div class="row" style="margin-top:1rem"><button type="button" id="views-save">Save view preferences</button><span id="saved-views" class="dim"></span></div>
-</div>
-<div class="card settings-card settings-sub-panel" id="tab-topics" role="tabpanel" aria-labelledby="settings-subtab-topics" hidden>
-<h2>Briefing topics</h2>
-<p>Follow what matters to you. Your daily edition searches the web for each keyword or phrase and summarizes recent results with source links.</p>
-<p class="dim">Searches cover the past 24 hours, not RSS feeds. AI digests use search excerpts, not full articles. These topics are shared across this server.</p>
 <p id="settings-manage-hint" class="dim" role="status" hidden></p>
-<p id="topics-providers" role="status">Checking search and summarizer configuration...</p>
-<form id="f-topics">
-<label for="briefingTopics">Keywords and phrases</label>
-<textarea id="briefingTopics" rows="8" maxlength="1210" placeholder="Microsoft Fabric&#10;AI agent security&#10;Chicago technology" aria-describedby="topics-hint"></textarea>
-<p id="topics-hint" class="dim">One topic per line. Up to 10 topics, 120 characters each. Remove a line to stop following it. Leave blank to turn off keyword searches.</p>
-<div class="row"><button type="submit" id="topics-save" disabled>Save topics</button><span id="saved-topics" role="status"></span></div>
-</form>
-<p class="dim">Saved topics apply to the next scheduled edition. To use them now, open <a href="/briefing">Daily Briefing</a> and choose Refresh edition.</p>
+<div data-settings-panel="general" id="settings-panel-general">
+<section class="settings-group"><h3>Your workspace</h3><p>Preferences here are shared by everyone using this server, not just this browser. Changes take effect after you save.</p><div id="settings-general-summary"></div></section>
+<section class="settings-group"><h3>Connected features</h3><p id="settings-setup-status" role="status"></p><p><a href="/settings/connections">Review service connections</a> to see which features each service powers and check its access.</p></section>
 </div>
-<div class="card settings-card settings-sub-panel" id="tab-schedule" role="tabpanel" aria-labelledby="settings-subtab-schedule" hidden>
-<form id="f-schedule">
-<p class="dim">Prepare your keyword digest, calendar, and weather once a day at this time in the server's configured timezone.</p>
-<p id="schedule-timezone" class="dim"></p>
-<label for="briefingTime">Daily briefing time</label><input id="briefingTime" type="time" required>
-<div class="row" style="margin-top:18px"><button type="submit">Save schedule</button><span id="saved-schedule" class="dim"></span></div>
-</form></div>
-<div class="card settings-card settings-sub-panel" id="tab-tabs" role="tabpanel" aria-labelledby="settings-subtab-tabs" hidden>
-<p class="dim">Show, hide, rename, and reorder sidebar tabs. Dashboard and Settings are always visible.</p>
-<div id="tabs-editor"></div>
-<div class="row" style="margin-top:1rem"><button type="button" id="tabs-save">Save tabs</button><span id="saved-tabs" class="dim"></span></div>
+<fieldset id="settings-editor" disabled style="border:0;padding:0;margin:0;min-width:0">
+<div data-settings-panel="appearance" id="settings-panel-appearance" hidden>
+<form id="f-views" class="settings-group"><h3>Display defaults</h3><p class="dim settings-scope">Shared preferences</p>
+${select("pref-density", "Page density", "density", [["comfortable", "Comfortable"], ["compact", "Compact"]], "Spacing across supported pages.")}
+${select("pref-notes-size", "Notes text size", "notes.fontSize", [["small", "Small"], ["medium", "Medium"], ["large", "Large"]])}
+${select("pref-hobie-status", "Agent queue filter", "hobie.status", [["all", "All tasks"], ["pending", "Pending"], ["claimed", "Claimed"], ["done", "Done"]])}
+${select("pref-activity-limit", "Activity entries", "activity.limit", [["25", "25"], ["50", "50"], ["100", "100"], ["200", "200"]])}
+${actions("views")}</form>
+<form id="f-tabs" class="settings-group"><h3>Sidebar navigation</h3><p class="dim">Show, hide, rename, and reorder pages. Dashboard and Settings always stay visible.</p><div id="tabs-editor"></div>${actions("tabs")}</form>
+</div>
+<div data-settings-panel="briefing" id="settings-panel-briefing" hidden>
+<form id="f-schedule" class="settings-group"><h3>Daily schedule</h3><p class="dim">Prepare your keyword digest, calendar, and weather once a day.</p><div class="settings-row"><div><label for="briefingTime">Briefing time</label><p id="schedule-timezone" class="dim"></p></div><input id="briefingTime" type="time" required></div>${actions("schedule")}</form>
+<form id="f-topics" class="settings-group"><h3>Followed topics</h3><p>Search the past 24 hours for keywords and phrases. AI digests summarize search excerpts with source links, not full articles.</p><p id="topics-providers" class="dim" role="status"></p><label for="briefingTopics">Keywords and phrases</label><textarea id="briefingTopics" rows="6" maxlength="1210" placeholder="Microsoft Fabric&#10;AI agent security" aria-describedby="topics-hint"></textarea><p id="topics-hint" class="dim">One topic per line. Up to 10 topics, 120 characters each. Leave blank to turn off keyword searches.</p>${actions("topics", "Save topics")}<p class="dim">Applies to the next edition. Use Refresh edition in <a href="/briefing">Daily Briefing</a> to apply saved changes now.</p></form>
+<form id="f-briefing" class="settings-group"><h3>Visible sections</h3><p class="dim">Choose what appears in Daily Briefing.</p><label class="row"><input type="checkbox" data-pref="briefing.topics">Keyword digest</label><label class="row"><input type="checkbox" data-pref="briefing.weather">Weather</label><label class="row"><input type="checkbox" data-pref="briefing.calendar">Calendar</label>${actions("briefing")}</form>
+</div>
+<div data-settings-panel="calendars" id="settings-panel-calendars" hidden>
+<form id="f-calendar" class="settings-group"><h3>Calendar display</h3>${select("pref-calendar-week", "Week starts on", "calendar.weekStartsOn", [["monday", "Monday"], ["sunday", "Sunday"]])}${actions("calendar")}</form><p><a href="/settings/calendars">Manage calendars, Google connection, subscriptions, and sharing</a></p>
 </div>
 </fieldset>
-</div>
-</div>
-</div>
-</div>`;
+<div data-settings-panel="notifications" id="settings-panel-notifications" hidden><section class="settings-group" id="settings-ntfy"><h3>Phone notifications</h3><p id="ntfy-status" class="dim" role="status">Loading notification settings...</p><div id="ntfy-details"></div><div class="settings-actions"><button type="button" id="ntfy-test" disabled>Send test notification</button><span id="ntfy-test-status" role="status"></span></div><p id="ntfy-owner-hint" class="dim" hidden>A verified owner login is required to send a test notification.</p><p><a href="/settings/connections#ntfy">Manage ntfy connection</a></p><details><summary>Delivery and quiet hours</summary><p class="dim">The morning briefing digest is sent even during quiet hours. Reminders and other alerts follow deployment quiet hours in the server timezone. Deployment ntfy values take precedence over saved connection values.</p></details></section></div>
+<div data-settings-panel="advanced" id="settings-panel-advanced" hidden><section class="settings-group"><h3>Server configuration</h3><p class="dim">Deployment-managed, read-only values. Change the server environment and restart to update them. No secret values are shown.</p><div id="settings-overview"></div><details><summary>Deployment setup reference</summary><p class="dim">Set <code>TZ</code> for the server timezone. Weather uses <code>WEATHER_LAT</code> and <code>WEATHER_LON</code>. Provider credentials belong in Connections or deployment configuration.</p><p class="dim"><code>OWNER_EMAILS</code> restricts shared-setting edits. Provider and calendar management still require a verified owner login through Cloudflare Access. <code>CONNECTIONS_MASTER_KEY</code> enables encrypted storage; keep the key backed up separately from the data volume.</p></details></section><section class="settings-group" id="settings-features"><h3>Deployment features</h3><div id="settings-features-list"></div><details><summary>Change deployment features</summary><p class="dim">Use <code>WHITEBOARD_ENABLED</code> and <code>SHARE_LINKS_ENABLED</code>, then restart the server. Public share links also require a narrowly scoped Cloudflare Access policy. See the self-hosting documentation before enabling them.</p></details></section></div>
+<div id="settings-conflict" role="alert" hidden><h3>Settings changed elsewhere</h3><p>Your draft is retained. Review the current server values below, then choose which version to keep. Saving is paused until you decide.</p><pre id="settings-conflict-current" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre><div class="settings-actions"><button id="settings-conflict-reload" type="button">Discard draft and load current</button><button id="settings-conflict-keep" type="button" class="ghost">Keep draft against reviewed version</button></div></div>`;
 }
 
 export const SETTINGS_PAGE_TAB_SCRIPT = `
-var settingsState={sidebarTabs:[],viewPreferences:{}};
-var SETTINGS_SECTIONS=["general","connections","notifications","views"];
-var VIEW_SUBTABS=["views","topics","schedule","tabs"];
-function syncMainTabs(section){
-  document.querySelectorAll(".settings-tabs [data-section]").forEach(function(b){
-    var on=b.dataset.section===section;
-    b.classList.toggle("on",on);
-    b.setAttribute("aria-selected",on?"true":"false");
-    b.tabIndex=on?0:-1;
-  });
-  document.querySelectorAll(".settings-section-panel").forEach(function(p){
-    var on=p.id==="settings-panel-"+section;
-    p.classList.toggle("on",on);
-    if(on){p.removeAttribute("hidden");p.tabIndex=0;} else {p.setAttribute("hidden","");p.tabIndex=-1;}
-  });
+var settingsState={sidebarTabs:[],viewPreferences:{}},activeSettingsCategory="general";
+var categoryInfo={
+ general:["General","Workspace scope, timezone, and setup."],
+ appearance:["Appearance & navigation","Display defaults and the pages in your sidebar."],
+ briefing:["Daily briefing","Your schedule, followed topics, and edition contents."],
+ calendars:["Calendar display","Shared display defaults for the calendar."],
+ notifications:["Notifications","Current phone notification setup and delivery behavior."],
+ advanced:["Advanced","Read-only deployment configuration and access."]
+};
+function showSettingsCategory(){
+ var name=location.hash.slice(1),aliases={overview:"general",views:"appearance",tabs:"appearance",topics:"briefing",schedule:"briefing"};
+ if(name==="connections"||name==="capture"){confirmSettingsLeave().then(function(leave){if(leave)location.replace("/settings/"+name);});return;}
+ var category=aliases[name]||name;if(!categoryInfo[category])category="general";
+ activeSettingsCategory=category;
+ document.querySelectorAll("[data-settings-panel]").forEach(function(panel){panel.hidden=panel.dataset.settingsPanel!==category;});
+ $("settings-category-title").textContent=categoryInfo[category][0];$("settings-category-description").textContent=categoryInfo[category][1];
+ document.querySelectorAll("[data-settings-category]").forEach(function(a){if(a.dataset.settingsCategory===category)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current");});
+ var href=category==="calendars"?"/settings/calendars":"/settings#"+category;
+ $("settings-category").value=href;$("settings-category").dataset.current=href;
+ if(["topics","schedule","tabs"].includes(name))requestAnimationFrame(function(){var form=$("f-"+name);if(form)form.scrollIntoView({block:"start"});});
 }
-function syncViewSub(sub){
-  document.querySelectorAll(".settings-subtabs [data-subtab]").forEach(function(b){
-    var on=b.dataset.subtab===sub;
-    b.classList.toggle("on",on);
-    b.setAttribute("aria-selected",on?"true":"false");
-    b.tabIndex=on?0:-1;
-  });
-  document.querySelectorAll("#settings-panel-views .settings-sub-panel").forEach(function(p){
-    var on=p.id==="tab-"+sub;
-    p.classList.toggle("on",on);
-    if(on){p.removeAttribute("hidden");p.tabIndex=0;} else {p.setAttribute("hidden","");p.tabIndex=-1;}
-  });
-}
-function updateSettingsHash(section,viewSub){
-  var hash="#"+(section==="views"?(viewSub||"views"):section);
-  if(location.hash!==hash)history.replaceState(null,"",location.pathname+location.search+hash);
-}
-function setSettingsSection(section,viewSub,syncHash){
-  syncMainTabs(section);
-  if(section==="views")syncViewSub(viewSub||"views");
-  if(syncHash!==false)updateSettingsHash(section,section==="views"?(viewSub||"views"):undefined);
-}
-function bindSettingsTablist(list,onActivate){
-  list.addEventListener("keydown",function(ev){
-    var tabs=Array.from(list.querySelectorAll('[role="tab"]'));
-    if(!tabs.length)return;
-    var idx=tabs.indexOf(document.activeElement);
-    if(idx<0){
-      idx=tabs.findIndex(function(t){return t.getAttribute("aria-selected")==="true";});
-      if(idx<0)return;
-    }
-    var next=idx;
-    if(ev.key==="ArrowRight")next=(idx+1)%tabs.length;
-    else if(ev.key==="ArrowLeft")next=(idx-1+tabs.length)%tabs.length;
-    else if(ev.key==="Home")next=0;
-    else if(ev.key==="End")next=tabs.length-1;
-    else return;
-    ev.preventDefault();
-    var tab=tabs[next];
-    tab.focus();
-    onActivate(tab);
-  });
-}
-document.querySelectorAll(".settings-tabs [data-section]").forEach(function(b){
-  b.onclick=function(){setSettingsSection(b.dataset.section,b.dataset.section==="views"?"views":undefined);};
-});
-document.querySelectorAll(".settings-subtabs [data-subtab]").forEach(function(b){
-  b.onclick=function(){setSettingsSection("views",b.dataset.subtab);};
-});
-var mainTablist=document.querySelector(".settings-tabs");
-if(mainTablist){
-  bindSettingsTablist(mainTablist,function(tab){
-    setSettingsSection(tab.dataset.section,tab.dataset.section==="views"?"views":undefined);
-  });
-}
-var subTablist=document.querySelector(".settings-subtabs");
-if(subTablist){
-  bindSettingsTablist(subTablist,function(tab){
-    setSettingsSection("views",tab.dataset.subtab);
-  });
-}
-function showHashTab(){
-  var name=location.hash.slice(1);
-  if(name==="overview"){setSettingsSection("general",undefined,false);return;}
-  if(!name)return;
-  if(SETTINGS_SECTIONS.indexOf(name)>=0&&name!=="views"){setSettingsSection(name,undefined,false);return;}
-  if(VIEW_SUBTABS.indexOf(name)>=0){setSettingsSection("views",name,false);return;}
-}
-window.addEventListener("hashchange",showHashTab);showHashTab();
-if(!location.hash.slice(1))setSettingsSection("general",undefined,false);
+window.addEventListener("hashchange",showSettingsCategory);showSettingsCategory();
 `;

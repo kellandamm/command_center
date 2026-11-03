@@ -29,7 +29,7 @@ import { visibleNavTabs } from "./nav-tabs";
 import { panels } from "./panels/registry";
 import type { PanelContext } from "./panels/types";
 import type { SettingsStore } from "./settings";
-import { ValidationError } from "./settings";
+import { SettingsConflictError, ValidationError } from "./settings";
 import { MANIFEST, SERVICE_WORKER, iconPng } from "./pwa";
 import { dailyBriefingPage } from "./ui/daily-briefing-page";
 import { DashboardLayoutStore, LayoutPayloadError } from "./dashboard-layout/storage";
@@ -333,7 +333,7 @@ export function createApp(app: App): Server {
           return json(res, 200, app.connections.status());
         }
         if (!match[2] && method === "DELETE") {
-          await app.connections.remove(provider);
+          await app.connections.remove(provider, req.headers["if-match"]);
           return json(res, 200, app.connections.status());
         }
         return json(res, 405, { error: "Method not allowed" });
@@ -578,9 +578,14 @@ export function createApp(app: App): Server {
 
       if (get && path === "/api/settings") {
         const principal = { owner: who.owner === true, who: who.who, email: who.email, serviceToken: who.serviceToken };
-        const ntfy = { ...ntfyStatus(resolveNtfyConfig(deployment, app.cfg)), canTest: who.owner === true };
+        const ntfy = {
+          ...ntfyStatus(resolveNtfyConfig(deployment, app.cfg)), canTest: who.owner === true,
+          quietHours: deployment.ntfyQuietHours, reminderMinutes: deployment.ntfyReminderMinutes,
+          coachEnabled: deployment.ntfyCoach,
+        };
         return json(res, 200, {
           settings: app.settings.get(),
+          revision: app.settings.revision(),
           briefingProviders: { search: Boolean(app.cfg.braveSearchApiKey), summarizer: llmConfigured(app.cfg) },
           runtime: {
             timezone: app.cfg.tz,
@@ -628,7 +633,7 @@ export function createApp(app: App): Server {
           return json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
         }
         const next = await app.settings.update(await readBody(req));
-        return json(res, 200, { settings: next });
+        return json(res, 200, { settings: next, revision: app.settings.revision(next) });
       }
 
       if (
@@ -699,6 +704,7 @@ export function createApp(app: App): Server {
     } catch (err) {
       if (err instanceof CalendarConflictError) return json(res, 409, { error: err.message });
       if (err instanceof NoteConflictError) return json(res, 409, { error: err.message });
+      if (err instanceof SettingsConflictError) return json(res, 409, { error: err.message });
       if (err instanceof ValidationError) return json(res, 400, { error: err.message });
       console.error("request failed:", err);
       return json(res, 500, { error: "internal error" });

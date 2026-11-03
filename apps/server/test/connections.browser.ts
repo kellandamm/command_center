@@ -41,30 +41,34 @@ test("owner connection forms handle secrets, errors, disconnect and mobile layou
       return route.fulfill({ status: 404, json: { error: "not found" } });
     });
     await page.goto("https://connections.test/settings/connections");
+    await page.getByRole("button", { name: "Manage Brave Search", exact: true }).click();
     const input = page.getByLabel("API key", { exact: true });
     await input.waitFor();
     await page.getByText("Used by: Web searches for Daily Briefing topics.", { exact: true }).waitFor();
-    assert.equal(await page.getByRole("button", { name: "Test connection" }).isDisabled(), true);
+    assert.equal(await page.getByRole("button", { name: "Test access" }).isDisabled(), true);
     assert.equal(await input.getAttribute("type"), "password");
     await input.fill("do-not-echo-this");
-    await page.getByRole("button", { name: "Save / reconnect" }).click();
+    await page.getByRole("button", { name: "Save changes", exact: true }).click();
     await page.getByText("Could not save connection", { exact: true }).waitFor();
     assert.equal(await input.inputValue(), "do-not-echo-this");
     failSave = false;
-    await page.getByRole("button", { name: "Save / reconnect" }).click();
+    await page.getByRole("button", { name: "Save changes", exact: true }).click();
     await page.getByText("Source: saved", { exact: true }).waitFor();
     assert.equal(await input.inputValue(), "");
     assert.ok(!(await page.locator("body").innerText()).includes("do-not-echo-this"));
+    await page.getByRole("checkbox", { name: "Replace saved credential" }).check();
     await input.fill("unsaved-key");
-    await page.getByRole("button", { name: "Test connection" }).click();
+    await page.getByRole("button", { name: "Test access" }).click();
     await page.getByText("Save your changes first. The access check uses effective settings, not unsaved fields.", { exact: true }).waitFor();
     await input.fill("");
-    await page.getByRole("button", { name: "Test connection" }).click();
+    await page.getByRole("button", { name: "Test access" }).click();
     await page.getByText("Not ready: Provider unavailable", { exact: true }).waitFor();
     page.on("dialog", (dialog) => dialog.accept());
+    await page.getByText("Advanced actions", { exact: true }).click();
     await page.getByRole("button", { name: "Disconnect", exact: true }).click();
     await page.getByText("Disconnected", { exact: true }).waitFor();
-    await page.getByRole("button", { name: "Remove saved settings" }).click();
+    await page.getByText("Advanced actions", { exact: true }).click();
+    await page.getByRole("button", { name: "Restore deployment defaults" }).click();
     await page.getByText("Source: unset", { exact: true }).waitFor();
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
@@ -98,6 +102,7 @@ test("connection values render safely and saving one service preserves other dra
         },
       ],
     });
+
     await page.route("**/*", async (route) => {
       const req = route.request(), url = new URL(req.url());
       if (url.hostname !== "connections.test") return route.abort();
@@ -112,16 +117,61 @@ test("connection values render safely and saving one service preserves other dra
     });
     await page.goto("https://connections.test/settings/connections");
     const llm = page.locator('[data-connection-id="llm"]'), brave = page.locator('[data-connection-id="brave"]');
+    assert.equal(await llm.locator("form").isHidden(), true);
+    await llm.getByRole("button", { name: "Manage AI summarizer" }).click();
     await llm.getByText("Current: https://models.example/v1", { exact: true }).waitFor();
     await llm.getByText("Current: <img src=x onerror=alert(1)>", { exact: true }).waitFor();
     assert.equal(await llm.locator("img").count(), 0);
     await llm.getByLabel("Model", { exact: true }).fill("keep-this-draft");
+    await brave.getByRole("button", { name: "Manage Brave Search" }).click();
     await brave.getByLabel("API key", { exact: true }).fill("new-brave-secret");
-    await brave.getByRole("button", { name: "Save / reconnect" }).click();
+    await brave.getByRole("button", { name: "Save changes", exact: true }).click();
     await brave.getByText("Source: saved", { exact: true }).waitFor();
     assert.equal(await llm.getByLabel("Model", { exact: true }).inputValue(), "keep-this-draft");
     assert.equal(await brave.getByLabel("API key", { exact: true }).inputValue(), "");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});
+
+test("connection conflicts retain secret drafts until review; pending submissions are single-flight and Cancel clears secrets", { timeout: 60_000 }, async () => {
+  const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
+  try {
+    const page = await browser.newPage(); page.setDefaultTimeout(5000);
+    const errors: string[] = []; page.on("pageerror", (error) => errors.push(error.message));
+    let revision = "v1", writes = 0, conflict = true, release: (() => void) | undefined;
+    const wait = new Promise<void>((resolve) => { release = resolve; });
+    const payload = () => ({ writable: true, connections: [{ id: "brave", label: "Brave Search", revision, disabled: false, configured: true, hasSavedSettings: true, usage: "Daily briefing search.", fallback: "Requires a key.", fields: [{ name: "braveSearchApiKey", secret: true, configured: true, source: "saved", value: null }] }] });
+    await page.route("**/*", async (route) => {
+      const request = route.request(), url = new URL(request.url());
+      if (url.hostname !== "connections.test") return route.abort();
+      if (url.pathname === "/settings/connections") return route.fulfill({ contentType: "text/html", body: connectionsPage() });
+      if (url.pathname === "/api/settings") return route.fulfill({ json: { settings: DEFAULT_SETTINGS } });
+      if (url.pathname === "/api/connections") return route.fulfill({ json: payload() });
+      if (url.pathname === "/api/connections/brave" && request.method() === "PUT") {
+        writes++;
+        if (conflict) { conflict = false; revision = "v2"; return route.fulfill({ status: 409, json: { error: "Settings changed elsewhere. Review the current settings." } }); }
+        assert.equal(request.postDataJSON().expectedRevision, "v2");
+        await wait; revision = "v3"; return route.fulfill({ json: payload() });
+      }
+      return route.fulfill({ status: 404 });
+    });
+    await page.goto("http://connections.test/settings/connections#brave");
+    await page.getByRole("checkbox", { name: "Replace saved credential" }).check();
+    const input = page.getByLabel("API key", { exact: true }); await input.fill("secret-draft");
+    await page.getByRole("button", { name: "Save changes", exact: true }).click();
+    await page.getByRole("button", { name: "Keep draft against reviewed version" }).waitFor();
+    assert.equal(await input.inputValue(), "secret-draft");
+    assert.equal(await page.getByRole("button", { name: "Save changes", exact: true }).isDisabled(), true);
+    await page.getByRole("button", { name: "Keep draft against reviewed version" }).click();
+    await page.getByRole("button", { name: "Save changes", exact: true }).click();
+    await page.locator("form").evaluate((form: HTMLFormElement) => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    release!(); await page.getByText("Connection settings saved. Use Test access to check access.", { exact: true }).waitFor();
+    assert.equal(writes, 2); assert.equal(await input.inputValue(), "");
+    await page.getByRole("checkbox", { name: "Replace saved credential" }).check(); await input.fill("cancel-this-secret");
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    assert.equal(await input.inputValue(), ""); assert.equal(await input.isHidden(), true);
+    assert.ok(!(await page.locator("body").innerText()).includes("secret-draft"));
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

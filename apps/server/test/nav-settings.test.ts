@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { applySidebarTabsPatch, normalizeSidebarTabs, visibleNavTabs } from "../src/nav-tabs";
-import { applySettings, DEFAULT_SETTINGS, SettingsStore } from "../src/settings";
+import { applySettings, DEFAULT_SETTINGS, SettingsConflictError, SettingsStore } from "../src/settings";
 
 test("nav: dashboard and settings tabs always visible", () => {
   const tabs = normalizeSidebarTabs(
@@ -141,4 +141,28 @@ test("settings: malformed preference sections are rejected instead of reporting 
   assert.throws(() => applySettings(DEFAULT_SETTINGS, { viewPreferences: null }), /viewPreferences must be an object/);
   assert.throws(() => applySettings(DEFAULT_SETTINGS, { viewPreferences: { calendar: [] } }), /viewPreferences.calendar must be an object/);
   assert.throws(() => applySettings(DEFAULT_SETTINGS, { sidebarTabs: "invalid" }), /sidebarTabs must be an array/);
+});
+
+test("settings: revisions reject stale queued writes without breaking legacy persistence", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "settings-revisions-"));
+  try {
+    const store = new SettingsStore(dir); await store.load();
+    const revision = store.revision();
+    assert.match(revision, /^[a-f0-9]{64}$/);
+    const results = await Promise.allSettled([
+      store.update({ briefingTime: "08:00", expectedRevision: revision }),
+      store.update({ briefingTopics: ["Stale draft"], expectedRevision: revision }),
+    ]);
+    assert.equal(results[0]!.status, "fulfilled");
+    assert.equal(results[1]!.status, "rejected");
+    if (results[1]!.status === "rejected") assert.ok(results[1]!.reason instanceof SettingsConflictError);
+    assert.deepEqual(store.get().briefingTopics, []);
+    assert.notEqual(store.revision(), revision);
+    await assert.rejects(store.update({ expectedRevision: null }), /must be a string/);
+    await store.update({ briefingTopics: ["Legacy client"] });
+    const reopened = new SettingsStore(dir); await reopened.load();
+    assert.equal(reopened.get().briefingTime, "08:00");
+    assert.deepEqual(reopened.get().briefingTopics, ["Legacy client"]);
+    assert.notEqual(reopened.revision(), store.revision(), "A restart invalidates old browser revisions");
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });

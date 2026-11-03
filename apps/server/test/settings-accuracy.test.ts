@@ -14,6 +14,7 @@ import { DailyBriefingService } from "../src/daily-briefing/service";
 import { NotesStore } from "../src/notes/store";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 import { canManageSharedServerState, computeOwnerReason } from "../src/owner-auth";
+import { ConnectionsStore } from "../src/connections";
 
 const TOKEN = "t".repeat(32);
 
@@ -31,8 +32,9 @@ async function harness(env: Record<string, string> = {}, owner = false) {
   const dailyBriefing = await DailyBriefingService.open(dir, cfg.tz);
   const notes = await NotesStore.open(dir);
   const integration = await openIntegrationStores(dir, cfg);
+  const connections = await ConnectionsStore.open(cfg);
   const server = createApp({
-    cfg,
+    cfg: connections.config, deployment: cfg, connections,
     auth: owner
       ? async () => ({ ok: true, who: "owner@example.com", owner: true })
       : makeAuthenticator(cfg),
@@ -51,6 +53,25 @@ async function harness(env: Record<string, string> = {}, owner = false) {
 }
 
 const writeHeaders = { authorization: `Bearer ${TOKEN}`, "x-ah": "1", "content-type": "application/json" };
+
+test("settings and provider APIs return 409 for stale revisions, preserve current data and redact secrets", async () => {
+  const h = await harness({ CONNECTIONS_MASTER_KEY: "a".repeat(64) }, true);
+  try {
+    const initial = await fetch(h.base + "/api/settings").then((r) => r.json());
+    const put = (body: unknown) => fetch(h.base + "/api/settings", { method: "PUT", headers: writeHeaders, body: JSON.stringify(body) });
+    assert.equal((await put({ briefingTime: "09:00", expectedRevision: initial.revision })).status, 200);
+    assert.equal((await put({ briefingTime: "10:00", expectedRevision: initial.revision })).status, 409);
+    assert.equal((await fetch(h.base + "/api/settings").then((r) => r.json())).settings.briefingTime, "09:00");
+    const providers = await fetch(h.base + "/api/connections").then((r) => r.json());
+    const revision = providers.connections.find((item: { id: string }) => item.id === "brave").revision;
+    const updated = await fetch(h.base + "/api/connections/brave", { method: "PUT", headers: writeHeaders, body: JSON.stringify({ values: { braveSearchApiKey: "private-key-no-echo" }, expectedRevision: revision }) });
+    assert.equal(updated.status, 200); assert.ok(!(await updated.text()).includes("private-key-no-echo"));
+    const stale = await fetch(h.base + "/api/connections/brave", { method: "DELETE", headers: { ...writeHeaders, "if-match": revision } });
+    assert.equal(stale.status, 409); assert.ok(!(await stale.text()).includes("private-key-no-echo"));
+    const current = await fetch(h.base + "/api/connections").then((r) => r.json());
+    assert.equal(current.connections.find((item: { id: string }) => item.id === "brave").hasSavedSettings, true);
+  } finally { await h.close(); }
+});
 
 test("canManageSharedServerState: open when OWNER_EMAILS unset; owner or admin-token when set", () => {
   const open = loadConfig({ DATA_DIR: "/tmp/x", ALLOW_INSECURE_NO_AUTH: "1" });
