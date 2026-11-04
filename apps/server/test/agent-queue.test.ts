@@ -274,6 +274,32 @@ test("Agent Studio page dispatches tasks through owner-only queue API", async ()
   }
 });
 
+test("Agent Overview is the Agent landing page and preserves existing views", async () => {
+  const h = await harness({}, true);
+  try {
+    const overview = await fetch(`${h.base}/agent`);
+    assert.equal(overview.status, 200);
+    const overviewHtml = await overview.text();
+    assert.match(overviewHtml, /Agent Overview/);
+    assert.match(overviewHtml, /agent-overview-running-list/);
+    assert.match(overviewHtml, /agent-overview-approval-list/);
+    assert.match(overviewHtml, /class="sidebar-sub on"[^>]*>.*Overview/);
+    const scripts = [...overviewHtml.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)];
+    assert.ok(scripts.length);
+    assert.doesNotThrow(() => new Function(scripts[scripts.length - 1]![1]!));
+
+    const board = await fetch(`${h.base}/agent?view=board`);
+    assert.equal(board.status, 200);
+    assert.match(await board.text(), /board-columns/);
+
+    const studio = await fetch(`${h.base}/agent?view=studio`);
+    assert.equal(studio.status, 200);
+    assert.match(await studio.text(), /studio-mission-title/);
+  } finally {
+    await h.close();
+  }
+});
+
 test("Agent Chat exposes persistent chat UI and blocks unsafe or unauthorized connections", async () => {
   const h = await harness({ CONNECTIONS_MASTER_KEY: "a".repeat(64) }, true);
   try {

@@ -496,6 +496,7 @@ function sidebarLink(tab: SidebarTab, isOn: boolean, extraClass = ""): string {
 }
 
 const AGENT_ACTIVE_MAP: Record<string, string> = {
+  "/agent/overview": "overview",
   "/agent/studio": "studio",
   "/agent/chat": "chat",
   "/board": "board",
