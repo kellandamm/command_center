@@ -1,5 +1,5 @@
 import type { BoardStore } from "../board/store";
-import { DONE } from "../board/types";
+import { BOARD_COLUMNS, DONE, type BoardColumn } from "../board/types";
 import type { CalendarWorkspace } from "../calendar/workspace";
 import { todoistConfigured, type Config } from "../config";
 import type { HobieQueueStore } from "../stores/hobie-queue";
@@ -9,10 +9,14 @@ import { completeTask, reopenTask } from "../todoist/client";
 import type { FetchLike } from "../llm/provider";
 import { enrichStoredPlanForRead } from "./service";
 import { gatherDayPlanContext } from "./gather";
-import { DayPlanStore } from "./store";
-import type { DayPlanSnapshot } from "./types";
+import type { DayPlanStore } from "./store";
+import type { DayPlanSnapshot, TaskSource } from "./types";
 import { DayPlanNotFoundError } from "./validate";
 
+/**
+ * Defense-in-depth CSRF-style marker from the day-plan page script.
+ * Not proof of a human click — the real gate is CF-verified owner (`isDayPlanOwner`).
+ */
 export const DAY_PLAN_UI_HEADER = "x-day-plan-ui";
 
 export class MustDoRemoteError extends Error {
@@ -24,16 +28,49 @@ export class MustDoRemoteError extends Error {
   }
 }
 
+export class MustDoInFlightError extends Error {
+  readonly status = 409;
+  constructor() {
+    super("Must-do action already in progress.");
+  }
+}
+
+const inflight = new Set<string>();
+let boardMoveDelayMs: number | null = null;
+
+export function __clearMustDoInflightForTests(): void {
+  inflight.clear();
+  boardMoveDelayMs = null;
+}
+
+export function __setBoardMoveDelayMs(ms: number | null): void {
+  boardMoveDelayMs = ms;
+}
+
+function inflightKey(day: string, slot: number, op: "complete" | "reopen"): string {
+  return `${day}:${slot}:${op}`;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function boardColumnOrBacklog(value: string | null | undefined): BoardColumn {
+  if (value && (BOARD_COLUMNS as readonly string[]).includes(value)) return value as BoardColumn;
+  return "Backlog";
+}
+
 async function completeRemote(opts: {
   cfg: Config;
   board: BoardStore;
   hobieQueue: HobieQueueStore;
   wins: WinsStore;
-  source: "board" | "todoist";
+  source: TaskSource;
   refId: string;
   fetchFn?: FetchLike;
 }): Promise<void> {
   if (opts.source === "board") {
+    if (boardMoveDelayMs) await sleep(boardMoveDelayMs);
     const card = opts.board.get(opts.refId);
     if (!card) throw new MustDoRemoteError("Linked board card is unavailable.", 409);
     if (card.column === DONE) return;
@@ -58,15 +95,17 @@ async function reopenRemote(opts: {
   board: BoardStore;
   hobieQueue: HobieQueueStore;
   wins: WinsStore;
-  source: "board" | "todoist";
+  source: TaskSource;
   refId: string;
+  boardReopenColumn?: string | null;
   fetchFn?: FetchLike;
 }): Promise<void> {
   if (opts.source === "board") {
     const card = opts.board.get(opts.refId);
     if (!card) throw new MustDoRemoteError("Linked board card is unavailable.", 409);
     if (card.column !== DONE) return;
-    const moved = await opts.board.move(opts.refId, "Backlog", {
+    const target = boardColumnOrBacklog(opts.boardReopenColumn);
+    const moved = await opts.board.move(opts.refId, target, {
       hobieQueue: opts.hobieQueue,
       maxHobiePending: opts.cfg.mcpMaxHobiePending,
       wins: opts.wins,
@@ -82,6 +121,18 @@ async function reopenRemote(opts: {
   }
 }
 
+function assertSlotStillMatches(
+  store: DayPlanStore,
+  day: string,
+  slot: number,
+  expected: { source: TaskSource; refId: string },
+): void {
+  const must = store.load(day)?.mustDos.find((m) => m.slot === slot);
+  if (!must || must.source !== expected.source || must.refId !== expected.refId) {
+    throw new MustDoRemoteError("Must-do slot changed.", 409);
+  }
+}
+
 export async function completeMustDoOnOwnerClick(opts: {
   cfg: Config;
   board: BoardStore;
@@ -94,29 +145,49 @@ export async function completeMustDoOnOwnerClick(opts: {
   slot: number;
   fetchFn?: FetchLike;
 }): Promise<DayPlanSnapshot> {
-  const plan = opts.store.load(opts.day);
-  if (!plan) throw new DayPlanNotFoundError();
-  const must = plan.mustDos.find((m) => m.slot === opts.slot);
-  if (!must) throw new ValidationError("Invalid must-do slot.");
+  const key = inflightKey(opts.day, opts.slot, "complete");
+  if (inflight.has(key)) throw new MustDoInFlightError();
+  inflight.add(key);
+  try {
+    const plan = opts.store.load(opts.day);
+    if (!plan) throw new DayPlanNotFoundError();
+    const must = plan.mustDos.find((m) => m.slot === opts.slot);
+    if (!must) throw new ValidationError("Invalid must-do slot.");
 
-  if (must.completedAt) {
-    return enrichAfterPatch(opts, plan);
+    if (must.completedAt) {
+      return enrichAfterPatch(opts, plan);
+    }
+
+    const expected = { source: must.source, refId: must.refId };
+    let boardReopenColumn: string | null = null;
+    if (must.source === "board") {
+      const card = opts.board.get(must.refId);
+      if (card && card.column !== DONE) boardReopenColumn = card.column;
+    }
+
+    await completeRemote({
+      cfg: opts.cfg,
+      board: opts.board,
+      hobieQueue: opts.hobieQueue,
+      wins: opts.wins,
+      source: must.source,
+      refId: must.refId,
+      fetchFn: opts.fetchFn,
+    });
+
+    assertSlotStillMatches(opts.store, opts.day, opts.slot, expected);
+
+    const completedAt = opts.now.toISOString();
+    const patched = opts.store.patchMustDoCompletion(opts.day, opts.slot, {
+      completedAt,
+      match: expected,
+      boardReopenColumn: must.source === "board" ? boardReopenColumn : undefined,
+    });
+    if (!patched) throw new MustDoRemoteError("Must-do slot changed.", 409);
+    return enrichAfterPatch(opts, patched);
+  } finally {
+    inflight.delete(key);
   }
-
-  await completeRemote({
-    cfg: opts.cfg,
-    board: opts.board,
-    hobieQueue: opts.hobieQueue,
-    wins: opts.wins,
-    source: must.source,
-    refId: must.refId,
-    fetchFn: opts.fetchFn,
-  });
-
-  const completedAt = opts.now.toISOString();
-  const patched = opts.store.patchMustDoCompletion(opts.day, opts.slot, completedAt);
-  if (!patched) throw new DayPlanNotFoundError();
-  return enrichAfterPatch(opts, patched);
 }
 
 export async function reopenMustDoOnOwnerClick(opts: {
@@ -131,28 +202,45 @@ export async function reopenMustDoOnOwnerClick(opts: {
   slot: number;
   fetchFn?: FetchLike;
 }): Promise<DayPlanSnapshot> {
-  const plan = opts.store.load(opts.day);
-  if (!plan) throw new DayPlanNotFoundError();
-  const must = plan.mustDos.find((m) => m.slot === opts.slot);
-  if (!must) throw new ValidationError("Invalid must-do slot.");
+  const key = inflightKey(opts.day, opts.slot, "reopen");
+  if (inflight.has(key)) throw new MustDoInFlightError();
+  inflight.add(key);
+  try {
+    const plan = opts.store.load(opts.day);
+    if (!plan) throw new DayPlanNotFoundError();
+    const must = plan.mustDos.find((m) => m.slot === opts.slot);
+    if (!must) throw new ValidationError("Invalid must-do slot.");
 
-  if (!must.completedAt) {
-    return enrichAfterPatch(opts, plan);
+    if (!must.completedAt) {
+      return enrichAfterPatch(opts, plan);
+    }
+
+    const expected = { source: must.source, refId: must.refId };
+    const boardReopenColumn = must.boardReopenColumn;
+
+    await reopenRemote({
+      cfg: opts.cfg,
+      board: opts.board,
+      hobieQueue: opts.hobieQueue,
+      wins: opts.wins,
+      source: must.source,
+      refId: must.refId,
+      boardReopenColumn,
+      fetchFn: opts.fetchFn,
+    });
+
+    assertSlotStillMatches(opts.store, opts.day, opts.slot, expected);
+
+    const patched = opts.store.patchMustDoCompletion(opts.day, opts.slot, {
+      completedAt: null,
+      match: expected,
+      boardReopenColumn: null,
+    });
+    if (!patched) throw new MustDoRemoteError("Must-do slot changed.", 409);
+    return enrichAfterPatch(opts, patched);
+  } finally {
+    inflight.delete(key);
   }
-
-  await reopenRemote({
-    cfg: opts.cfg,
-    board: opts.board,
-    hobieQueue: opts.hobieQueue,
-    wins: opts.wins,
-    source: must.source,
-    refId: must.refId,
-    fetchFn: opts.fetchFn,
-  });
-
-  const patched = opts.store.patchMustDoCompletion(opts.day, opts.slot, null);
-  if (!patched) throw new DayPlanNotFoundError();
-  return enrichAfterPatch(opts, patched);
 }
 
 async function enrichAfterPatch(

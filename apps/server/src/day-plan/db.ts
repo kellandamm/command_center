@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 
 export const DAY_PLAN_DB = "day-plan.sqlite";
-export const DAY_PLAN_SCHEMA_VERSION = 2;
+export const DAY_PLAN_SCHEMA_VERSION = 3;
 
 export type DayPlanLlmSlot = "auto" | "manual";
 
@@ -56,6 +56,8 @@ export function initDayPlanSchema(db: DatabaseSync): void {
   if (!cols.has("sources_json")) db.exec(`ALTER TABLE plan_days ADD COLUMN sources_json TEXT NOT NULL DEFAULT '{}'`);
   if (!cols.has("llm_generated_at")) db.exec(`ALTER TABLE plan_days ADD COLUMN llm_generated_at TEXT`);
   if (!cols.has("weekend_override")) db.exec(`ALTER TABLE plan_days ADD COLUMN weekend_override INTEGER NOT NULL DEFAULT 0`);
+  const mustCols = new Set((db.prepare("PRAGMA table_info(plan_must_dos)").all() as { name: string }[]).map((r) => r.name));
+  if (!mustCols.has("board_reopen_column")) db.exec(`ALTER TABLE plan_must_dos ADD COLUMN board_reopen_column TEXT`);
   const version = (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
   if (version < DAY_PLAN_SCHEMA_VERSION) {
     db.exec(`PRAGMA user_version = ${DAY_PLAN_SCHEMA_VERSION}`);

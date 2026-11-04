@@ -198,7 +198,7 @@ test("day-plan schema v1 -> v2 keeps plans and LLM claims and adds weekend_overr
       s.close();
     }
     const raw2 = new DatabaseSync(join(dir, DAY_PLAN_DB));
-    assert.equal((raw2.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 2);
+    assert.equal((raw2.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 3);
     raw2.close();
   } finally {
     await rm(dir, { recursive: true, force: true });

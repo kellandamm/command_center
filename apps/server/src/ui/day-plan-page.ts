@@ -83,7 +83,7 @@ export function dayPlanPage(nav?: NavLink[], opts?: { owner: boolean }): string 
 
 function dayPlanScript(): string {
   return `
-var dpState={day:"",plan:null,undo:null,toastTimer:null};
+var dpState={day:"",plan:null,undo:null,toastTimer:null,busy:false};
 function dpApi(path,method,body){
   return fetch(path,{method:method||"GET",headers:{"x-ah":"1","x-day-plan-ui":"1","content-type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)})
     .then(function(r){return r.json().catch(function(){return{}}).then(function(j){if(!r.ok)throw new Error(j.error||("HTTP "+r.status));return j;});});
@@ -158,6 +158,8 @@ function loadPlan(day){
   return dpApi("/api/day-plan?day="+encodeURIComponent(day)).then(applyPlan).catch(function(err){showBanner(err.message||"Could not load day plan.");});
 }
 function completeMustDo(slot){
+  if(dpState.busy)return;
+  dpState.busy=true;
   showBanner("");
   dpApi("/api/day-plan/must-do/complete","POST",{day:dpState.day,slot:slot}).then(function(r){
     applyPlan(r);
@@ -165,14 +167,17 @@ function completeMustDo(slot){
   }).catch(function(err){
     showBanner(err.message||"Could not complete must-do.");
     loadPlan(dpState.day);
-  });
+  }).finally(function(){dpState.busy=false;});
 }
 function reopenMustDo(slot){
+  if(dpState.busy)return;
+  dpState.busy=true;
   showBanner("");
   dpApi("/api/day-plan/must-do/reopen","POST",{day:dpState.day,slot:slot}).then(function(r){
     applyPlan(r);
     showToast("Must-do reopened.");
-  }).catch(function(err){showBanner(err.message||"Could not undo completion.");});
+  }).catch(function(err){showBanner(err.message||"Could not undo completion.");})
+  .finally(function(){dpState.busy=false;});
 }
 document.getElementById("dp-toast-undo").onclick=function(){
   if(!dpState.undo)return;

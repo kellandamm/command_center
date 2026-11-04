@@ -18,6 +18,7 @@ import {
 } from "./validate";
 import {
   DAY_PLAN_UI_HEADER,
+  MustDoInFlightError,
   MustDoRemoteError,
   completeMustDoOnOwnerClick,
   reopenMustDoOnOwnerClick,
@@ -51,6 +52,7 @@ function parseGenerateBody(body: unknown, tz: string, now: Date): { day: string;
 }
 
 function denyUnlessOwnerUiClick(req: IncomingMessage, res: ServerResponse): boolean {
+  // Defense-in-depth with x-ah; owner gate is CF-verified email in OWNER_EMAILS.
   if (req.headers[DAY_PLAN_UI_HEADER] !== "1") {
     json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
     return false;
@@ -179,7 +181,7 @@ export async function handleDayPlanRoutes(
       }
       if (err instanceof ValidationError) throw err;
       const fail = err as Error & { code?: string };
-      console.error("day-plan PUT failed:", fail.message, fail.code ?? "");
+      console.error("day-plan PUT failed:", fail.message);
       json(res, 500, { error: "internal error" });
     }
     return true;
@@ -213,6 +215,10 @@ export async function handleDayPlanRoutes(
       }
       if (err instanceof ValidationError) throw err;
       if (err instanceof MustDoRemoteError) {
+        json(res, err.status, { error: err.message });
+        return true;
+      }
+      if (err instanceof MustDoInFlightError) {
         json(res, err.status, { error: err.message });
         return true;
       }
@@ -250,6 +256,10 @@ export async function handleDayPlanRoutes(
       }
       if (err instanceof ValidationError) throw err;
       if (err instanceof MustDoRemoteError) {
+        json(res, err.status, { error: err.message });
+        return true;
+      }
+      if (err instanceof MustDoInFlightError) {
         json(res, err.status, { error: err.message });
         return true;
       }
