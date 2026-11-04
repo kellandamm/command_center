@@ -13,11 +13,12 @@ import { SettingsStore } from "../src/settings";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 import { CalendarWorkspace } from "../src/calendar/workspace";
 import { createTestCfAccessJwt, TEST_CF_AUD, TEST_CF_TEAM } from "./cf-access-jwt";
+import { planTestSaturday } from "./day-plan-relative-days";
 
 const TOKEN = "t".repeat(32);
-const SAT = "2026-11-07";
 
 test("day-plan API: every route 403s for admin-token/service/non-owner and 200s for CF owner; override wired", async () => {
+  const SAT = planTestSaturday();
   const keys = await createTestCfAccessJwt();
   const dir = await mkdtemp(join(tmpdir(), "cc-dp-matrix-"));
   const cfg = loadConfig({

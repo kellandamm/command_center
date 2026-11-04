@@ -14,10 +14,10 @@ import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 import { CalendarWorkspace } from "../src/calendar/workspace";
 import { createTestCfAccessJwt, TEST_CF_AUD, TEST_CF_TEAM } from "./cf-access-jwt";
 import { BoardStore } from "../src/board/store";
+import { dayKey } from "../src/store";
+import { planTestMonday, planTestSaturday, PLAN_TEST_TZ } from "./day-plan-relative-days";
 
 const TOKEN = "t".repeat(32);
-const SAT = "2026-11-07";
-const MON = "2026-11-03";
 
 async function ownerServer(boardSeed?: (board: BoardStore) => void) {
   const keys = await createTestCfAccessJwt();
@@ -64,6 +64,7 @@ async function ownerServer(boardSeed?: (board: BoardStore) => void) {
 }
 
 test("day-plan API: weekendOverride survives partial PUT on Saturday", async () => {
+  const SAT = planTestSaturday();
   const h = await ownerServer((board) => {
     board.create({ title: "Sat work", dueDate: SAT, estimatedMinutes: 30 });
   });
@@ -90,6 +91,7 @@ test("day-plan API: weekendOverride survives partial PUT on Saturday", async () 
 });
 
 test("day-plan API: POST generate keeps stored work window", async () => {
+  const MON = planTestMonday();
   const h = await ownerServer((board) => {
     board.create({ title: "Mon task", dueDate: MON, estimatedMinutes: 30 });
   });
@@ -110,22 +112,29 @@ test("day-plan API: POST generate keeps stored work window", async () => {
 });
 
 test("day-plan API: invalid day and range return 400 on all routes", async () => {
+  const SAT = planTestSaturday();
   const h = await ownerServer();
   try {
     assert.equal((await h.call("GET", "/api/day-plan?day=not-a-day")).status, 400);
+    assert.equal((await h.call("GET", "/api/day-plan?day=")).status, 400);
     assert.equal((await h.call("GET", "/api/day-plan?day=2026-02-30")).status, 400);
     assert.equal((await h.call("POST", "/api/day-plan/generate", { day: "2026-02-30" })).status, 400);
     assert.equal((await h.call("GET", `/api/day-plan?day=${SAT}`)).status, 200);
     assert.equal((await h.call("PUT", "/api/day-plan", { day: "2026-02-30", workStart: "10:00" })).status, 400);
-    const far = "2099-01-01";
-    assert.equal((await h.call("GET", `/api/day-plan?day=${far}`)).status, 400);
-    assert.equal((await h.call("POST", "/api/day-plan/generate", { day: far })).status, 400);
+    const today = dayKey(new Date(), PLAN_TEST_TZ);
+    const shift = (d: string, n: number) => {
+      const [y, m, day] = d.split("-").map(Number);
+      return new Date(Date.UTC(y!, m! - 1, day! + n)).toISOString().slice(0, 10);
+    };
+    assert.equal((await h.call("GET", `/api/day-plan?day=${shift(today, -31)}`)).status, 400);
+    assert.equal((await h.call("GET", `/api/day-plan?day=${shift(today, 61)}`)).status, 400);
   } finally {
     await h.close();
   }
 });
 
 test("day-plan API: PUT rejects bad work window and override type", async () => {
+  const SAT = planTestSaturday();
   const h = await ownerServer();
   try {
     assert.equal((await h.call("GET", `/api/day-plan?day=${SAT}`)).status, 200);
@@ -139,6 +148,7 @@ test("day-plan API: PUT rejects bad work window and override type", async () => 
 });
 
 test("day-plan API: PUT unknown day returns 404", async () => {
+  const MON = planTestMonday();
   const h = await ownerServer();
   try {
     assert.equal((await h.call("PUT", "/api/day-plan", { day: MON, workStart: "10:00" })).status, 404);

@@ -111,7 +111,7 @@ Deterministic **`day-plan/planner.ts`**: timeline, ≤3 must-dos (rolled refs bo
 
 ## Storage
 
-`{dataDir}/day-plan.sqlite` with **`PRAGMA user_version = 1`** (bump on migrations).
+`{dataDir}/day-plan.sqlite` with **`PRAGMA user_version = 2`** (bump on migrations; v2 adds per-day **`weekend_override`** on `plan_days`).
 
 | Table | Purpose |
 |-------|---------|

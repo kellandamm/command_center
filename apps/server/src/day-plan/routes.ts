@@ -145,8 +145,9 @@ export async function handleDayPlanRoutes(
         return true;
       }
       if (err instanceof ValidationError) throw err;
-      console.error("day-plan PUT failed:", err);
-      json(res, 500, { error: "Internal error." });
+      const fail = err as Error & { code?: string };
+      console.error("day-plan PUT failed:", fail.message, fail.code ?? "");
+      json(res, 500, { error: "internal error" });
     }
     return true;
   }

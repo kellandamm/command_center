@@ -22,7 +22,8 @@ export function parseCalendarDay(value: string): string | null {
 }
 
 export function dayParamFromQuery(param: string | null, tz: string, now: Date): string {
-  if (param === null || param === "") return dayKey(now, tz);
+  if (param === null) return dayKey(now, tz);
+  if (param === "") throw new ValidationError("Invalid day.");
   const day = parseCalendarDay(param);
   if (!day) throw new ValidationError("Invalid day.");
   assertDayInPlanRange(day, now, tz);
