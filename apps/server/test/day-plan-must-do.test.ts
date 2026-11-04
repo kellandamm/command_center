@@ -18,8 +18,14 @@ import { DONE } from "../src/board/types";
 import { planTestMonday, PLAN_TEST_TZ } from "./day-plan-relative-days";
 import { dayKey } from "../src/store";
 import { DatabaseSync } from "node:sqlite";
+import { ValidationError } from "../src/settings";
 import { DAY_PLAN_DB } from "../src/day-plan/db";
+import { MUST_DO_REF_ID_MAX_LENGTH, parseMustDoActionBody } from "../src/day-plan/validate";
 import { inflight } from "../src/day-plan/must-do-inflight";
+import {
+  clearMustDoSyncConflictsForTests,
+  expireMustDoSyncConflictForTests,
+} from "../src/day-plan/must-do-sync-conflict";
 import { WAITING } from "../src/board/types";
 
 const TOKEN = "t".repeat(32);
@@ -27,6 +33,7 @@ const SECRET_TITLE = "SECRET_MUST_DO_TITLE_XYZ";
 
 function clearMustDoInflightForTests(): void {
   inflight.clear();
+  clearMustDoSyncConflictsForTests();
 }
 
 function delayBoardMove(board: BoardStore, ms: number): () => void {
@@ -382,4 +389,193 @@ test("day-plan must-do: conflict reopen uses remoteTask ref not current slot tas
     restoreMove();
     await h.close();
   }
+});
+
+async function triggerBoardSlotSyncConflict(
+  h: Awaited<ReturnType<typeof ownerHarness>>,
+  MON: string,
+  cardId: string,
+): Promise<{
+  slot: number;
+  remoteTask: { source: string; refId: string };
+  restoreMove: () => void;
+}> {
+  let restoreMove = delayBoardMove(h.integration.board, 150);
+  await h.call("GET", `/api/day-plan?day=${MON}`, h.owner);
+  const slot = (
+    (await (await h.call("GET", `/api/day-plan?day=${MON}`, h.owner)).json()) as {
+      plan: { mustDos: Array<{ slot: number; refId: string }> };
+    }
+  ).plan.mustDos.find((m) => m.refId === cardId)!.slot;
+  const completeReq = h.call("POST", "/api/day-plan/must-do/complete", h.ui, { day: MON, slot });
+  await new Promise((r) => setTimeout(r, 30));
+  const db = new DatabaseSync(join(h.dir, DAY_PLAN_DB));
+  db.prepare("UPDATE plan_must_dos SET ref_id = ? WHERE day = ? AND slot = ?").run("stale-ref", MON, slot);
+  db.close();
+  const conflictRes = await completeReq;
+  const body = (await conflictRes.json()) as {
+    remoteTask: { source: string; refId: string };
+  };
+  assert.equal(conflictRes.status, 409);
+  assert.equal(body.remoteTask.refId, cardId);
+  return { slot, remoteTask: body.remoteTask, restoreMove };
+}
+
+test("day-plan must-do: conflict reopen rejects unrelated board refId", async () => {
+  const MON = planTestMonday();
+  let cardInPlan = "";
+  let victimId = "";
+  const h = await ownerHarness(async (board) => {
+    cardInPlan = board.create({ title: "Plan card", dueDate: MON, estimatedMinutes: 10 }).id;
+    victimId = board.create({ title: "Victim", dueDate: MON, estimatedMinutes: 5 }).id;
+    await board.move(victimId, DONE);
+  });
+  let restoreMove = () => {};
+  try {
+    clearMustDoInflightForTests();
+    const triggered = await triggerBoardSlotSyncConflict(h, MON, cardInPlan);
+    restoreMove = triggered.restoreMove;
+    const { slot, remoteTask } = triggered;
+    assert.equal(h.integration.board.get(victimId)?.column, DONE);
+    const reopenRes = await h.call("POST", "/api/day-plan/must-do/reopen", h.ui, {
+      day: MON,
+      slot,
+      remoteTask: { source: "board", refId: victimId },
+    });
+    assert.equal(reopenRes.status, 409);
+    assert.equal(h.integration.board.get(victimId)?.column, DONE);
+    const okRes = await h.call("POST", "/api/day-plan/must-do/reopen", h.ui, { day: MON, slot, remoteTask });
+    assert.equal(okRes.status, 200);
+    assert.notEqual(h.integration.board.get(cardInPlan)?.column, DONE);
+  } finally {
+    clearMustDoInflightForTests();
+    restoreMove();
+    await h.close();
+  }
+});
+
+test("day-plan must-do: conflict reopen rejects unrelated todoist refId", async () => {
+  const MON = dayKey(new Date(), PLAN_TEST_TZ);
+  const reopenCalls: string[] = [];
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input);
+    if (url.includes("/api/v1/tasks?") && (!init?.method || init.method === "GET")) {
+      return new Response(
+        JSON.stringify({
+          results: [{ id: "td-plan", content: "Plan task", description: "", priority: 4, due: { date: MON } }],
+          next_cursor: null,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    if (url.includes("/tasks/") && url.includes("/reopen")) {
+      reopenCalls.push(url);
+      return new Response(null, { status: 204 });
+    }
+    if (url.includes("/tasks/td-plan/close")) {
+      await new Promise((r) => setTimeout(r, 150));
+      return new Response(null, { status: 204 });
+    }
+    return origFetch(input, init);
+  }) as typeof fetch;
+  const h = await ownerHarness();
+  try {
+    clearMustDoInflightForTests();
+    assert.equal((await h.call("POST", "/api/day-plan/generate", h.ui, { day: MON })).status, 200);
+    const slot = (
+      (await (await h.call("GET", `/api/day-plan?day=${MON}`, h.ui)).json()) as {
+        plan: { mustDos: Array<{ slot: number; source: string; refId: string }> };
+      }
+    ).plan.mustDos.find((m) => m.source === "todoist" && m.refId === "td-plan")!.slot;
+    const completeReq = h.call("POST", "/api/day-plan/must-do/complete", h.ui, { day: MON, slot });
+    await new Promise((r) => setTimeout(r, 30));
+    const db = new DatabaseSync(join(h.dir, DAY_PLAN_DB));
+    db.prepare("UPDATE plan_must_dos SET ref_id = ? WHERE day = ? AND slot = ?").run("td-other", MON, slot);
+    db.close();
+    assert.equal((await completeReq).status, 409);
+    reopenCalls.length = 0;
+    assert.equal(
+      (await h.call("POST", "/api/day-plan/must-do/reopen", h.ui, {
+        day: MON,
+        slot,
+        remoteTask: { source: "todoist", refId: "td-evil" },
+      })).status,
+      409,
+    );
+    assert.equal(reopenCalls.length, 0);
+    reopenCalls.length = 0;
+    assert.equal(
+      (await h.call("POST", "/api/day-plan/must-do/reopen", h.ui, {
+        day: MON,
+        slot,
+        remoteTask: { source: "todoist", refId: "td-plan" },
+      })).status,
+      200,
+    );
+    assert.ok(reopenCalls.some((u) => u.includes("/tasks/td-plan/reopen")));
+  } finally {
+    globalThis.fetch = origFetch;
+    clearMustDoInflightForTests();
+    await h.close();
+  }
+});
+
+test("day-plan must-do: second conflict reopen after consume is rejected", async () => {
+  const MON = planTestMonday();
+  let cardId = "";
+  const h = await ownerHarness((board) => {
+    cardId = board.create({ title: "Once", dueDate: MON, estimatedMinutes: 10 }).id;
+  });
+  let restoreMove = () => {};
+  try {
+    clearMustDoInflightForTests();
+    const { slot, remoteTask, restoreMove: rm } = await triggerBoardSlotSyncConflict(h, MON, cardId);
+    restoreMove = rm;
+    assert.equal(
+      (await h.call("POST", "/api/day-plan/must-do/reopen", h.ui, { day: MON, slot, remoteTask })).status,
+      200,
+    );
+    assert.equal(
+      (await h.call("POST", "/api/day-plan/must-do/reopen", h.ui, { day: MON, slot, remoteTask })).status,
+      409,
+    );
+  } finally {
+    clearMustDoInflightForTests();
+    restoreMove();
+    await h.close();
+  }
+});
+
+test("day-plan must-do: expired conflict reopen record is rejected", async () => {
+  const MON = planTestMonday();
+  let cardId = "";
+  const h = await ownerHarness((board) => {
+    cardId = board.create({ title: "TTL", dueDate: MON, estimatedMinutes: 10 }).id;
+  });
+  let restoreMove = () => {};
+  try {
+    clearMustDoInflightForTests();
+    const { slot, remoteTask, restoreMove: rm } = await triggerBoardSlotSyncConflict(h, MON, cardId);
+    restoreMove = rm;
+    expireMustDoSyncConflictForTests(MON, slot);
+    assert.equal(
+      (await h.call("POST", "/api/day-plan/must-do/reopen", h.ui, { day: MON, slot, remoteTask })).status,
+      409,
+    );
+  } finally {
+    clearMustDoInflightForTests();
+    restoreMove();
+    await h.close();
+  }
+});
+
+test("day-plan must-do: remoteTask refId length is capped", () => {
+  const MON = planTestMonday();
+  const now = new Date();
+  const tooLong = "x".repeat(MUST_DO_REF_ID_MAX_LENGTH + 1);
+  assert.throws(
+    () => parseMustDoActionBody({ day: MON, slot: 0, remoteTask: { source: "board", refId: tooLong } }, PLAN_TEST_TZ, now),
+    ValidationError,
+  );
 });

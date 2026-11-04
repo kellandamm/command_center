@@ -10,6 +10,10 @@ import type { FetchLike } from "../llm/provider";
 import { enrichStoredPlanForRead } from "./service";
 import { gatherDayPlanContext } from "./gather";
 import { inflight } from "./must-do-inflight";
+import {
+  consumeMustDoSyncConflictReopen,
+  rememberMustDoSyncConflict,
+} from "./must-do-sync-conflict";
 import type { DayPlanStore } from "./store";
 import type { DayPlanSnapshot, TaskSource } from "./types";
 import { DayPlanNotFoundError } from "./validate";
@@ -52,6 +56,15 @@ export class MustDoInFlightError extends Error {
   readonly status = 409;
   constructor() {
     super("Must-do action already in progress.");
+  }
+}
+
+/** No server-recorded sync conflict matches this reopen request. */
+export class MustDoConflictReopenError extends MustDoRemoteError {
+  constructor(
+    message = "No active sync conflict to reopen. Reopen the task in Todoist or Board.",
+  ) {
+    super(message, 409);
   }
 }
 
@@ -129,9 +142,11 @@ function assertSlotStillMatches(
   day: string,
   slot: number,
   expected: MustDoConflictRemoteTask,
+  now: Date,
 ): void {
   const must = store.load(day)?.mustDos.find((m) => m.slot === slot);
   if (!must || must.source !== expected.source || must.refId !== expected.refId) {
+    rememberMustDoSyncConflict(day, slot, expected, now.getTime());
     throw new MustDoSlotChangedError(expected);
   }
 }
@@ -177,7 +192,7 @@ export async function completeMustDoOnOwnerClick(opts: {
       fetchFn: opts.fetchFn,
     });
 
-    assertSlotStillMatches(opts.store, opts.day, opts.slot, expected);
+    assertSlotStillMatches(opts.store, opts.day, opts.slot, expected, opts.now);
 
     const completedAt = opts.now.toISOString();
     const patched = opts.store.patchMustDoCompletion(opts.day, opts.slot, {
@@ -214,14 +229,21 @@ export async function reopenMustDoOnOwnerClick(opts: {
     if (!must) throw new ValidationError("Invalid must-do slot.");
 
     if (opts.remoteTask) {
+      const stored = consumeMustDoSyncConflictReopen(
+        opts.day,
+        opts.slot,
+        { source: opts.remoteTask.source, refId: opts.remoteTask.refId },
+        opts.now.getTime(),
+      );
+      if (!stored) throw new MustDoConflictReopenError();
       await reopenRemote({
         cfg: opts.cfg,
         board: opts.board,
         hobieQueue: opts.hobieQueue,
         wins: opts.wins,
-        source: opts.remoteTask.source,
-        refId: opts.remoteTask.refId,
-        boardReopenColumn: opts.remoteTask.boardReopenColumn,
+        source: stored.source,
+        refId: stored.refId,
+        boardReopenColumn: stored.boardReopenColumn,
         fetchFn: opts.fetchFn,
       });
       return enrichAfterPatch(opts, plan);
@@ -245,7 +267,7 @@ export async function reopenMustDoOnOwnerClick(opts: {
       fetchFn: opts.fetchFn,
     });
 
-    assertSlotStillMatches(opts.store, opts.day, opts.slot, expected);
+    assertSlotStillMatches(opts.store, opts.day, opts.slot, expected, opts.now);
 
     const patched = opts.store.patchMustDoCompletion(opts.day, opts.slot, {
       completedAt: null,
