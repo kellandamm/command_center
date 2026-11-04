@@ -94,7 +94,7 @@ export class ConnectionsStore {
           if (!record(entry)) throw new Error("secrets");
           data.secrets = {};
           for (const [name, value] of Object.entries(entry)) {
-            if (!/^(calendar|google|fabric|fastio)\/[a-zA-Z0-9_-]+$/.test(name) || typeof value !== "string" || value.length > 32_000) throw new Error("secret");
+            if (!/^(calendar|google|fabric|fastio|agents)\/[a-zA-Z0-9_-]+$/.test(name) || typeof value !== "string" || value.length > 32_000) throw new Error("secret");
             data.secrets[name] = value;
           }
           continue;
@@ -226,7 +226,7 @@ export class ConnectionsStore {
   }
 
   async setSecret(name: string, value: string | null): Promise<void> {
-    if (!/^(calendar|google|fabric|fastio)\/[a-zA-Z0-9_-]+$/.test(name) || (value !== null && (!value || value.length > 32_000))) {
+    if (!/^(calendar|google|fabric|fastio|agents)\/[a-zA-Z0-9_-]+$/.test(name) || (value !== null && (!value || value.length > 32_000))) {
       throw new ValidationError("Invalid credential reference");
     }
     await this.commit((next) => {

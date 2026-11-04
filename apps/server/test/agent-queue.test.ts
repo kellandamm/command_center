@@ -274,6 +274,41 @@ test("Agent Studio page dispatches tasks through owner-only queue API", async ()
   }
 });
 
+test("Agent Chat exposes persistent chat UI and blocks unsafe or unauthorized connections", async () => {
+  const h = await harness({ CONNECTIONS_MASTER_KEY: "a".repeat(64) }, true);
+  try {
+    const page = await fetch(`${h.base}/agent?view=chat`);
+    assert.equal(page.status, 200);
+    const pageHtml = await page.text();
+    assert.match(pageHtml, /Agent Chat/);
+    assert.match(pageHtml, /agent-chat-form/);
+    const scripts = [...pageHtml.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)];
+    assert.ok(scripts.length);
+    assert.doesNotThrow(() => new Function(scripts[scripts.length - 1]![1]!));
+
+    const list = await (await fetch(`${h.base}/api/agents`, { headers: { "x-ah": "1" } })).json() as {
+      agents: unknown[];
+      canManage: boolean;
+      credentialStorageWritable: boolean;
+    };
+    assert.deepEqual(list.agents, []);
+    assert.equal(list.canManage, true);
+    assert.equal(list.credentialStorageWritable, true);
+
+    const unsafe = await fetch(`${h.base}/api/agents`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-ah": "1" },
+      body: JSON.stringify({
+        name: "Local endpoint", model: "test", baseUrl: "http://127.0.0.1/v1", apiKey: "test-key",
+      }),
+    });
+    assert.equal(unsafe.status, 400);
+    assert.match((await unsafe.json() as { error: string }).error, /HTTPS/);
+  } finally {
+    await h.close();
+  }
+});
+
 test("Agent Studio task dispatch requires owner access", async () => {
   const h = await harness({}, false, true);
   try {
@@ -281,6 +316,22 @@ test("Agent Studio task dispatch requires owner access", async () => {
       method: "POST",
       headers: { "content-type": "application/json", "x-ah": "1" },
       body: JSON.stringify({ text: "Do the task." }),
+    });
+    assert.equal(response.status, 403);
+  } finally {
+    await h.close();
+  }
+});
+
+test("Agent Chat connection management requires owner access", async () => {
+  const h = await harness({ CONNECTIONS_MASTER_KEY: "a".repeat(64) }, false, true);
+  try {
+    const response = await fetch(`${h.base}/api/agents`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-ah": "1" },
+      body: JSON.stringify({
+        name: "Unauthorized", model: "test", baseUrl: "https://api.example.com/v1", apiKey: "test-key",
+      }),
     });
     assert.equal(response.status, 403);
   } finally {

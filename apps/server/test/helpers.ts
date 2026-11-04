@@ -6,6 +6,7 @@ import { panels } from "../src/panels/registry";
 import { HobieQueueStore } from "../src/stores/hobie-queue";
 import { AgentTaskQueueStore } from "../src/stores/agent-task-queue";
 import { AgentApprovalsStore } from "../src/stores/agent-approvals";
+import { AgentHubStore } from "../src/agents/store";
 import { PanelUpdatesStore } from "../src/stores/panel-updates";
 import { WinsStore } from "../src/wins/store";
 import { WinsRollupService } from "../src/wins/rollup-service";
@@ -58,6 +59,7 @@ export async function openIntegrationStores(dataDir: string, cfg?: Config) {
     hobieQueue,
     agentTaskQueue: await AgentTaskQueueStore.open(dataDir),
     agentApprovals: await AgentApprovalsStore.open(dataDir),
+    agentHub: await AgentHubStore.open(dataDir),
     board,
     wins,
     winsRollup,
