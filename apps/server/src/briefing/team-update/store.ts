@@ -1,5 +1,6 @@
 import { join } from "node:path";
-import { readJson, writeFileAtomic } from "../../store";
+import { addDaysIso } from "../../budget/subscriptions/due";
+import { readJson, writeFileAtomic, dayKey } from "../../store";
 import { TEAM_UPDATE_RETAIN_DAYS } from "./constants";
 import type { TeamUpdateAgentRow, TeamUpdateImportBody } from "./schema";
 
@@ -19,14 +20,21 @@ export function setTeamUpdateWriteForTests(fn: typeof writeFileAtomic | null): v
   teamUpdateWriteForTests = fn;
 }
 
-export function teamUpdateRetentionCutoffDate(now = new Date()): string {
-  const cutoff = new Date(now);
-  cutoff.setUTCDate(cutoff.getUTCDate() - TEAM_UPDATE_RETAIN_DAYS);
-  return cutoff.toISOString().slice(0, 10);
+let teamUpdateNowForTests: (() => Date) | null = null;
+export function setTeamUpdateNowForTests(fn: (() => Date) | null): void {
+  teamUpdateNowForTests = fn;
 }
 
-function retainDays(rows: TeamUpdateDayRecord[]): TeamUpdateDayRecord[] {
-  const cutoff = teamUpdateRetentionCutoffDate();
+function currentNow(): Date {
+  return teamUpdateNowForTests?.() ?? new Date();
+}
+
+export function teamUpdateRetentionCutoffDate(now: Date, tz: string): string {
+  return addDaysIso(dayKey(now, tz), -TEAM_UPDATE_RETAIN_DAYS);
+}
+
+function retainDays(rows: TeamUpdateDayRecord[], tz: string, now: Date): TeamUpdateDayRecord[] {
+  const cutoff = teamUpdateRetentionCutoffDate(now, tz);
   return rows
     .filter((row) => row.date >= cutoff)
     .sort((a, b) => b.date.localeCompare(a.date));
@@ -36,13 +44,16 @@ export class TeamUpdateStore {
   private data: TeamUpdateStoreFile = { days: [] };
   private queue: Promise<void> = Promise.resolve();
 
-  private constructor(private path: string) {}
+  private constructor(
+    private path: string,
+    private tz: string,
+  ) {}
 
-  static async open(dataDir: string): Promise<TeamUpdateStore> {
-    const store = new TeamUpdateStore(join(dataDir, "team-update.json"));
+  static async open(dataDir: string, tz: string): Promise<TeamUpdateStore> {
+    const store = new TeamUpdateStore(join(dataDir, "team-update.json"), tz);
     const saved = await readJson<TeamUpdateStoreFile>(store.path);
     if (saved && typeof saved === "object" && Array.isArray(saved.days)) {
-      store.data = { days: retainDays(saved.days) };
+      store.data = { days: retainDays(saved.days, store.tz, currentNow()) };
     }
     return store;
   }
@@ -59,7 +70,7 @@ export class TeamUpdateStore {
     const run = this.queue.then(async () => {
       const next: TeamUpdateStoreFile = { days: structuredClone(this.data.days) };
       const result = change(next);
-      next.days = retainDays(next.days);
+      next.days = retainDays(next.days, this.tz, currentNow());
       const writeFn = teamUpdateWriteForTests ?? writeFileAtomic;
       await writeFn(this.path, JSON.stringify(next, null, 2));
       this.data = next;
@@ -91,6 +102,10 @@ export class TeamUpdateStore {
 }
 
 /** @internal tests */
-export function retainTeamUpdateDaysForTests(rows: TeamUpdateDayRecord[]): TeamUpdateDayRecord[] {
-  return retainDays(rows);
+export function retainTeamUpdateDaysForTests(
+  rows: TeamUpdateDayRecord[],
+  tz: string,
+  now: Date = currentNow(),
+): TeamUpdateDayRecord[] {
+  return retainDays(rows, tz, now);
 }

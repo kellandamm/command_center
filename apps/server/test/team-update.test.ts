@@ -17,18 +17,21 @@ import { OWNER_ACTION_FORBIDDEN } from "../src/owner-auth";
 import { SERVICE_WORKER } from "../src/pwa";
 import { serviceWorkerBypassesFetch } from "../src/pwa-fetch-guard";
 import { dayKey } from "../src/store";
+import { addDaysIso } from "../src/budget/subscriptions/due";
 import {
   retainTeamUpdateDaysForTests,
+  setTeamUpdateNowForTests,
   setTeamUpdateWriteForTests,
   teamUpdateRetentionCutoffDate,
 } from "../src/briefing/team-update/store";
-import { TEAM_UPDATE_IMPORT_MAX_BYTES, TEAM_UPDATE_RETAIN_DAYS } from "../src/briefing/team-update/constants";
+import { TEAM_UPDATE_RETAIN_DAYS } from "../src/briefing/team-update/constants";
 import { dailyBriefingPage } from "../src/ui/daily-briefing-page";
 
 const ADMIN_TOKEN = "a".repeat(32);
 const IMPORT_TOKEN = "t".repeat(32);
 const USAGE_IMPORT_TOKEN = "u".repeat(32);
 const CF_SERVICE = "cf-team-update-test";
+const PINNED_NOW = new Date("2026-11-04T18:00:00.000Z");
 
 const ownerAuthz = { authorization: `Bearer ${ADMIN_TOKEN}`, "content-type": "application/json", "x-ah": "1" };
 const ownerCookie = { ...ownerAuthz, cookie: "CF_Authorization=owner" };
@@ -38,7 +41,12 @@ let cfKeys: Awaited<ReturnType<typeof createTestCfAccessJwt>>;
 afterEach(() => {
   setAgentsUsageCfAccessVerifierForTests(undefined);
   setTeamUpdateWriteForTests(null);
+  setTeamUpdateNowForTests(null);
 });
+
+function pinnedDay(tz: string, now: Date = PINNED_NOW): string {
+  return dayKey(now, tz);
+}
 
 async function importHeaders(bearer = IMPORT_TOKEN) {
   const jwt = await cfKeys.signServiceTokenJwt(CF_SERVICE);
@@ -63,7 +71,8 @@ function samplePayload(date: string) {
   };
 }
 
-async function harness(env: Record<string, string> = {}) {
+async function harness(env: Record<string, string> = {}, now: Date = PINNED_NOW) {
+  setTeamUpdateNowForTests(() => now);
   const audList = (env.CF_ACCESS_AUD ?? TEST_CF_AUD).split(",").map((s) => s.trim()).filter(Boolean);
   cfKeys = await createTestCfAccessJwt(audList.length === 1 ? audList[0]! : audList);
   setAgentsUsageCfAccessVerifierForTests(cfKeys.verifier);
@@ -98,18 +107,19 @@ async function harness(env: Record<string, string> = {}) {
     await closeIntegrationServer(server, integration);
     await rm(dir, { recursive: true, force: true });
   };
-  return { base, close, store: integration.teamUpdate, cfg };
+  return { base, close, store: integration.teamUpdate, cfg, pinnedNow: now };
 }
 
 test("team update import auth matrix", async () => {
   const h = await harness();
+  const importDay = pinnedDay(h.cfg.tz);
   try {
     const unconfigured = await harness({ TEAM_UPDATE_IMPORT_TOKEN: "" });
     try {
       const res = await fetch(`${unconfigured.base}/api/team-update/import`, {
         method: "POST",
         headers: await importHeaders(),
-        body: JSON.stringify(samplePayload("2026-11-04")),
+        body: JSON.stringify(samplePayload(importDay)),
       });
       assert.equal(res.status, 503);
     } finally {
@@ -119,7 +129,7 @@ test("team update import auth matrix", async () => {
     const hdr = await importHeaders();
     const { authorization: _omit, ...jwtOnly } = hdr;
     assert.equal(
-      (await fetch(`${h.base}/api/team-update/import`, { method: "POST", headers: jwtOnly, body: JSON.stringify(samplePayload("2026-11-04")) })).status,
+      (await fetch(`${h.base}/api/team-update/import`, { method: "POST", headers: jwtOnly, body: JSON.stringify(samplePayload(importDay)) })).status,
       401,
     );
 
@@ -127,7 +137,7 @@ test("team update import auth matrix", async () => {
       (await fetch(`${h.base}/api/team-update/import`, {
         method: "POST",
         headers: { authorization: `Bearer ${IMPORT_TOKEN}`, "content-type": "application/json" },
-        body: JSON.stringify(samplePayload("2026-11-04")),
+        body: JSON.stringify(samplePayload(importDay)),
       })).status,
       401,
     );
@@ -137,7 +147,7 @@ test("team update import auth matrix", async () => {
       (await fetch(`${h.base}/api/team-update/import`, {
         method: "POST",
         headers: { authorization: `Bearer ${IMPORT_TOKEN}`, "cf-access-jwt-assertion": emailJwt, "content-type": "application/json" },
-        body: JSON.stringify(samplePayload("2026-11-04")),
+        body: JSON.stringify(samplePayload(importDay)),
       })).status,
       401,
     );
@@ -146,7 +156,7 @@ test("team update import auth matrix", async () => {
       (await fetch(`${h.base}/api/team-update/import`, {
         method: "POST",
         headers: await importHeaders(ADMIN_TOKEN),
-        body: JSON.stringify(samplePayload("2026-11-04")),
+        body: JSON.stringify(samplePayload(importDay)),
       })).status,
       401,
     );
@@ -155,7 +165,7 @@ test("team update import auth matrix", async () => {
       (await fetch(`${h.base}/api/team-update/import`, {
         method: "POST",
         headers: await importHeaders(USAGE_IMPORT_TOKEN),
-        body: JSON.stringify(samplePayload("2026-11-04")),
+        body: JSON.stringify(samplePayload(importDay)),
       })).status,
       401,
     );
@@ -163,7 +173,7 @@ test("team update import auth matrix", async () => {
     const ok = await fetch(`${h.base}/api/team-update/import`, {
       method: "POST",
       headers: await importHeaders(),
-      body: JSON.stringify(samplePayload("2026-11-04")),
+      body: JSON.stringify(samplePayload(importDay)),
     });
     assert.equal(ok.status, 200);
   } finally {
@@ -173,11 +183,12 @@ test("team update import auth matrix", async () => {
 
 test("team update import client id allow-list", async () => {
   const h = await harness({ TEAM_UPDATE_IMPORT_CLIENT_IDS: "other-client" });
+  const importDay = pinnedDay(h.cfg.tz);
   try {
     const res = await fetch(`${h.base}/api/team-update/import`, {
       method: "POST",
       headers: await importHeaders(),
-      body: JSON.stringify(samplePayload("2026-11-04")),
+      body: JSON.stringify(samplePayload(importDay)),
     });
     assert.equal(res.status, 401);
   } finally {
@@ -187,12 +198,13 @@ test("team update import client id allow-list", async () => {
 
 test("team update schema rejects unknown keys and caps", async () => {
   const h = await harness();
+  const importDay = pinnedDay(h.cfg.tz);
   try {
     const headers = await importHeaders();
     const unknown = await fetch(`${h.base}/api/team-update/import`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ ...samplePayload("2026-11-04"), extra: true }),
+      body: JSON.stringify({ ...samplePayload(importDay), extra: true }),
     });
     assert.equal(unknown.status, 400);
 
@@ -201,7 +213,7 @@ test("team update schema rejects unknown keys and caps", async () => {
       method: "POST",
       headers,
       body: JSON.stringify({
-        date: "2026-11-04",
+        date: importDay,
         agents: [{ name: longName, did: [], waitingOnKellan: [], updatedAt: "2026-11-04T12:00:00.000Z" }],
       }),
     });
@@ -212,7 +224,7 @@ test("team update schema rejects unknown keys and caps", async () => {
       method: "POST",
       headers,
       body: JSON.stringify({
-        date: "2026-11-04",
+        date: importDay,
         agents: [{ name: "a", did: [longLine], waitingOnKellan: [], updatedAt: "2026-11-04T12:00:00.000Z" }],
       }),
     });
@@ -227,9 +239,20 @@ test("team update schema rejects unknown keys and caps", async () => {
     const tooMany = await fetch(`${h.base}/api/team-update/import`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ date: "2026-11-04", agents: manyAgents }),
+      body: JSON.stringify({ date: importDay, agents: manyAgents }),
     });
     assert.equal(tooMany.status, 400);
+
+    const tooManyLines = Array.from({ length: 21 }, (_, i) => `line-${i}`);
+    const badLines = await fetch(`${h.base}/api/team-update/import`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        date: importDay,
+        agents: [{ name: "a", did: tooManyLines, waitingOnKellan: [], updatedAt: "2026-11-04T12:00:00.000Z" }],
+      }),
+    });
+    assert.equal(badLines.status, 400);
   } finally {
     await h.close();
   }
@@ -237,13 +260,14 @@ test("team update schema rejects unknown keys and caps", async () => {
 
 test("team update import rejects forbidden budget subscription vault keys", async () => {
   const h = await harness();
+  const importDay = pinnedDay(h.cfg.tz);
   try {
     const headers = await importHeaders();
     for (const key of ["budget", "subscription", "vault"]) {
       const res = await fetch(`${h.base}/api/team-update/import`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ date: "2026-11-04", agents: [], [key]: "nope" }),
+        body: JSON.stringify({ date: importDay, agents: [], [key]: "nope" }),
       });
       assert.equal(res.status, 400);
       const body = (await res.json()) as { error: string };
@@ -256,13 +280,14 @@ test("team update import rejects forbidden budget subscription vault keys", asyn
 
 test("team update import returns 413 above 64 KB", async () => {
   const h = await harness();
+  const importDay = pinnedDay(h.cfg.tz);
   try {
     const headers = await importHeaders();
-    const pad = "a".repeat(TEAM_UPDATE_IMPORT_MAX_BYTES);
+    const pad = "a".repeat(64 * 1024 + 1);
     const res = await fetch(`${h.base}/api/team-update/import`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ date: "2026-11-04", agents: [], note: pad }),
+      body: JSON.stringify({ date: importDay, agents: [], note: pad }),
     });
     assert.equal(res.status, 413);
   } finally {
@@ -274,7 +299,7 @@ test("team update store replaces same day and retains ~30 days", async () => {
   const h = await harness({ TZ: "America/Chicago" });
   try {
     const headers = await importHeaders();
-    const day = dayKey(new Date("2026-11-04T15:00:00.000Z"), h.cfg.tz);
+    const day = pinnedDay(h.cfg.tz, h.pinnedNow);
     assert.equal(
       (await fetch(`${h.base}/api/team-update/import`, { method: "POST", headers, body: JSON.stringify(samplePayload(day)) })).status,
       200,
@@ -291,11 +316,15 @@ test("team update store replaces same day and retains ~30 days", async () => {
     assert.equal(((await replaced.json()) as { replaced: boolean }).replaced, true);
     assert.equal(h.store.getDay(day)?.agents[0]?.name, "Other");
 
-    const cutoff = teamUpdateRetentionCutoffDate(new Date("2026-11-04T12:00:00.000Z"));
-    const kept = retainTeamUpdateDaysForTests([
-      { date: cutoff, agents: [], importedAt: "2026-01-01T00:00:00.000Z" },
-      { date: "1999-01-01", agents: [], importedAt: "1999-01-01T00:00:00.000Z" },
-    ]);
+    const cutoff = teamUpdateRetentionCutoffDate(h.pinnedNow, "America/Chicago");
+    const kept = retainTeamUpdateDaysForTests(
+      [
+        { date: cutoff, agents: [], importedAt: "2026-01-01T00:00:00.000Z" },
+        { date: "1999-01-01", agents: [], importedAt: "1999-01-01T00:00:00.000Z" },
+      ],
+      "America/Chicago",
+      h.pinnedNow,
+    );
     assert.equal(kept.length, 1);
     assert.equal(kept[0]!.date, cutoff);
     assert.equal(TEAM_UPDATE_RETAIN_DAYS, 30);
@@ -306,11 +335,12 @@ test("team update store replaces same day and retains ~30 days", async () => {
 
 test("team update GET is owner-only with no-store", async () => {
   const h = await harness();
+  const importDay = pinnedDay(h.cfg.tz);
   try {
     await fetch(`${h.base}/api/team-update/import`, {
       method: "POST",
       headers: await importHeaders(),
-      body: JSON.stringify(samplePayload("2026-11-04")),
+      body: JSON.stringify(samplePayload(importDay)),
     });
     const reader = await fetch(`${h.base}/api/team-update`, {
       headers: { ...ownerAuthz, cookie: "CF_Authorization=reader" },
@@ -321,7 +351,7 @@ test("team update GET is owner-only with no-store", async () => {
     const admin = await fetch(`${h.base}/api/team-update`, { headers: ownerAuthz });
     assert.equal(admin.status, 403);
 
-    const ok = await fetch(`${h.base}/api/team-update?day=2026-11-04`, { headers: ownerCookie });
+    const ok = await fetch(`${h.base}/api/team-update?day=${encodeURIComponent(importDay)}`, { headers: ownerCookie });
     assert.equal(ok.status, 200);
     assert.match(String(ok.headers.get("cache-control")), /no-store/);
     const body = (await ok.json()) as { update: { agents: { name: string }[] } | null };
@@ -331,8 +361,9 @@ test("team update GET is owner-only with no-store", async () => {
   }
 });
 
-test("team update import does not log payload content", async () => {
+test("team update import does not log payload content on success", async () => {
   const h = await harness();
+  const importDay = pinnedDay(h.cfg.tz);
   const secret = "ULTRA_SECRET_TEAM_UPDATE_LINE_QWERTY";
   const logs: string[] = [];
   const original = { log: console.log, error: console.error, warn: console.warn, info: console.info };
@@ -345,7 +376,7 @@ test("team update import does not log payload content", async () => {
       method: "POST",
       headers: await importHeaders(),
       body: JSON.stringify({
-        date: "2026-11-04",
+        date: importDay,
         agents: [{ name: "Secret Agent", did: [secret], waitingOnKellan: ["Review PR"], updatedAt: "2026-11-04T12:00:00.000Z" }],
       }),
     });
@@ -353,6 +384,42 @@ test("team update import does not log payload content", async () => {
     for (const line of logs) {
       assert.doesNotMatch(line, new RegExp(secret));
       assert.doesNotMatch(line, /Secret Agent/);
+    }
+  } finally {
+    console.log = original.log;
+    console.error = original.error;
+    console.warn = original.warn;
+    console.info = original.info;
+    await h.close();
+  }
+});
+
+test("team update import does not log payload content on 500", async () => {
+  const h = await harness();
+  const importDay = pinnedDay(h.cfg.tz);
+  const secret = "ULTRA_SECRET_TEAM_UPDATE_FAIL_QWERTY";
+  setTeamUpdateWriteForTests(async () => {
+    throw new Error("simulated write failure");
+  });
+  const logs: string[] = [];
+  const original = { log: console.log, error: console.error, warn: console.warn, info: console.info };
+  console.log = (...args: unknown[]) => logs.push(args.map(String).join(" "));
+  console.error = (...args: unknown[]) => logs.push(args.map(String).join(" "));
+  console.warn = (...args: unknown[]) => logs.push(args.map(String).join(" "));
+  console.info = (...args: unknown[]) => logs.push(args.map(String).join(" "));
+  try {
+    const res = await fetch(`${h.base}/api/team-update/import`, {
+      method: "POST",
+      headers: await importHeaders(),
+      body: JSON.stringify({
+        date: importDay,
+        agents: [{ name: "Fail Agent", did: [secret], waitingOnKellan: [], updatedAt: "2026-11-04T12:00:00.000Z" }],
+      }),
+    });
+    assert.equal(res.status, 500);
+    for (const line of logs) {
+      assert.doesNotMatch(line, new RegExp(secret));
+      assert.doesNotMatch(line, /Fail Agent/);
     }
   } finally {
     console.log = original.log;
@@ -375,9 +442,53 @@ test("daily briefing page includes Team update tab", () => {
   assert.match(html, /\/api\/team-update/);
 });
 
-test("team update retention cutoff uses UTC calendar days (TZ-independent)", () => {
+test("team update retention cutoff uses workspace tz", () => {
   const anchor = new Date("2026-06-15T12:00:00.000Z");
-  assert.equal(teamUpdateRetentionCutoffDate(anchor), "2026-05-16");
+  assert.equal(teamUpdateRetentionCutoffDate(anchor, "America/Chicago"), "2026-05-16");
+  const tokyoDay = dayKey(new Date("2026-06-15T14:00:00.000Z"), "Asia/Tokyo");
+  assert.equal(teamUpdateRetentionCutoffDate(new Date("2026-06-15T14:00:00.000Z"), "Asia/Tokyo"), addDaysIso(tokyoDay, -30));
+});
+
+test("team update import and GET survive clock +45 days", async () => {
+  const shifted = new Date(PINNED_NOW.getTime() + 45 * 86_400_000);
+  const h = await harness({ TZ: "America/Chicago" }, shifted);
+  const importDay = pinnedDay(h.cfg.tz, shifted);
+  try {
+    assert.equal(
+      (await fetch(`${h.base}/api/team-update/import`, {
+        method: "POST",
+        headers: await importHeaders(),
+        body: JSON.stringify(samplePayload(importDay)),
+      })).status,
+      200,
+    );
+    const ok = await fetch(`${h.base}/api/team-update?day=${encodeURIComponent(importDay)}`, { headers: ownerCookie });
+    assert.equal(ok.status, 200);
+    const body = (await ok.json()) as { update: { agents: { name: string }[] } | null };
+    assert.equal(body.update?.agents[0]?.name, "Stremmy");
+  } finally {
+    await h.close();
+  }
+});
+
+test("team update import and GET on day before US DST spring forward", async () => {
+  const beforeDst = new Date("2026-03-08T06:30:00.000Z");
+  const h = await harness({ TZ: "America/Chicago" }, beforeDst);
+  const importDay = pinnedDay(h.cfg.tz, beforeDst);
+  try {
+    assert.equal(
+      (await fetch(`${h.base}/api/team-update/import`, {
+        method: "POST",
+        headers: await importHeaders(),
+        body: JSON.stringify(samplePayload(importDay)),
+      })).status,
+      200,
+    );
+    const ok = await fetch(`${h.base}/api/team-update?day=${encodeURIComponent(importDay)}`, { headers: ownerCookie });
+    assert.equal(ok.status, 200);
+  } finally {
+    await h.close();
+  }
 });
 
 test("team update import AUD in CF_ACCESS_AUD does not widen owner or usage import", async () => {
@@ -385,6 +496,7 @@ test("team update import AUD in CF_ACCESS_AUD does not widen owner or usage impo
     CF_ACCESS_AUD: `${TEST_CF_AUD},${TEST_CF_TEAM_UPDATE_AUD}`,
     AGENTS_USAGE_IMPORT_TOKEN: USAGE_IMPORT_TOKEN,
   });
+  const importDay = pinnedDay(h.cfg.tz);
   try {
     const teamUpdateAudJwt = await cfKeys.signServiceTokenJwt(CF_SERVICE, { audience: TEST_CF_TEAM_UPDATE_AUD });
     const importHeadersAud = {
@@ -396,7 +508,7 @@ test("team update import AUD in CF_ACCESS_AUD does not widen owner or usage impo
       (await fetch(`${h.base}/api/team-update/import`, {
         method: "POST",
         headers: importHeadersAud,
-        body: JSON.stringify(samplePayload("2026-11-04")),
+        body: JSON.stringify(samplePayload(importDay)),
       })).status,
       200,
     );
@@ -404,7 +516,7 @@ test("team update import AUD in CF_ACCESS_AUD does not widen owner or usage impo
       (await fetch(`${h.base}/api/team-update/import`, {
         method: "POST",
         headers: { ...importHeadersAud, authorization: "Bearer wrong-token-only" },
-        body: JSON.stringify(samplePayload("2026-11-05")),
+        body: JSON.stringify(samplePayload(addDaysIso(importDay, 1))),
       })).status,
       401,
     );

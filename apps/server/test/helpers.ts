@@ -69,7 +69,7 @@ export async function openIntegrationStores(dataDir: string, cfg?: Config) {
     whiteboard: await WhiteboardStore.open(dataDir),
     voiceCaptures: await VoiceCaptureStore.open(dataDir),
     agentsUsage: await AgentsUsageStore.open(dataDir),
-    teamUpdate: await TeamUpdateStore.open(dataDir),
+    teamUpdate: await TeamUpdateStore.open(dataDir, cfg?.tz ?? "UTC"),
     dayPlan: DayPlanStore.open(dataDir),
   };
 }

@@ -72,7 +72,7 @@ async function main() {
   const whiteboard = await WhiteboardStore.open(cfg.dataDir);
   const voiceCaptures = await VoiceCaptureStore.open(cfg.dataDir);
   const agentsUsage = await AgentsUsageStore.open(cfg.dataDir);
-  const teamUpdate = await TeamUpdateStore.open(cfg.dataDir);
+  const teamUpdate = await TeamUpdateStore.open(cfg.dataDir, cfg.tz);
   const budget = budgetAvailable(cfg) ? BudgetStore.open(cfg.dataDir) : undefined;
   const dayPlan = DayPlanStore.open(cfg.dataDir);
 

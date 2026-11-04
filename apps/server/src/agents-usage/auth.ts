@@ -26,5 +26,6 @@ export async function authenticateAgentsUsageImport(cfg: Config, req: IncomingMe
     cfRequiredReason: "Cloudflare Access is required for agents usage import",
     allowedClientIds: cfg.agentsUsageImportClientIds,
     notAllowedReason: "Access service token is not allowed for usage import",
+    userJwtNotAllowedReason: "User identity JWT not allowed for usage import",
   });
 }

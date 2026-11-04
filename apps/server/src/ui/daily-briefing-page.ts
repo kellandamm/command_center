@@ -220,8 +220,7 @@ function setBriefingMode(mode){
   if(team){
     var dayEl=document.getElementById("db-day");
     var day=dayEl&&dayEl.value?dayEl.value:(teamUpdateDay||"");
-    if(day)loadTeamUpdate(day,false);
-    else loadTeamUpdate(new Date().toISOString().slice(0,10),false);
+    loadTeamUpdate(day||null,false);
   }
 }
 var teamUpdateLoaded=false,teamUpdateDay=null;
@@ -248,11 +247,12 @@ function renderTeamUpdate(payload){
   }).join("");
 }
 function loadTeamUpdate(day,force){
-  if(!force&&teamUpdateLoaded&&teamUpdateDay===day)return Promise.resolve();
+  if(!force&&teamUpdateLoaded&&teamUpdateDay===(day||""))return Promise.resolve();
   teamUpdateError("");
   document.getElementById("db-team-update-body").innerHTML='<p class="dim">Loading…</p>';
-  return api("/api/team-update?day="+encodeURIComponent(day)).then(function(data){
-    teamUpdateLoaded=true;teamUpdateDay=day;
+  var url=day?("/api/team-update?day="+encodeURIComponent(day)):"/api/team-update";
+  return api(url).then(function(data){
+    teamUpdateLoaded=true;teamUpdateDay=day||data.day||"";
     renderTeamUpdate(data);
   }).catch(function(err){teamUpdateError(err.message||"Could not load team update.");});
 }

@@ -19,6 +19,7 @@ export type CfAccessBearerImportOptions = {
   cfRequiredReason?: string;
   allowedClientIds: string[];
   notAllowedReason: string;
+  userJwtNotAllowedReason?: string;
 };
 
 let testVerifierOverride: CfAccessJwtVerifier | null | undefined;
@@ -82,7 +83,11 @@ export async function authenticateCfAccessBearerImport(opts: CfAccessBearerImpor
     return { ok: false, status: 401, reason: "Access service token required" };
   }
   if (typeof payload.email === "string" && payload.email.trim()) {
-    return { ok: false, status: 401, reason: "User identity JWT not allowed for import" };
+    return {
+      ok: false,
+      status: 401,
+      reason: opts.userJwtNotAllowedReason ?? "User identity JWT not allowed for import",
+    };
   }
 
   if (allowedClientIds.length && !allowedClientIds.includes(serviceId)) {
