@@ -44,6 +44,7 @@ import { handleWinsRoutes } from "./wins/routes";
 import type { WinsRollupService } from "./wins/rollup-service";
 import { boardPage } from "./ui/board-page";
 import { agentQueuePage } from "./ui/agent-queue-page";
+import { agentStudioPage } from "./ui/agent-studio-page";
 import { agentsUsagePage } from "./ui/agents-usage-page";
 import { winsPage } from "./ui/wins-page";
 import { noteToolsPage, notesPage } from "./ui/notes-page";
@@ -387,7 +388,7 @@ export function createApp(app: App): Server {
       if (get && /^\/spaces\/[^/]+$/.test(path)) return send(res, 200, spaceDetailPage(nav()), undefined, extra);
       if (get && path === "/agent") {
         const view = url.searchParams.get("view") ?? "board";
-        const render = { board: boardPage, queue: agentQueuePage, wins: winsPage, assistant: assistantPage, activity: activityPage, usage: agentsUsagePage };
+        const render = { studio: agentStudioPage, board: boardPage, queue: agentQueuePage, wins: winsPage, assistant: assistantPage, activity: activityPage, usage: agentsUsagePage };
         if (!Object.hasOwn(render, view)) return json(res, 400, { error: "unknown Agent view" });
         return send(res, 200, render[view as keyof typeof render](nav()), undefined, extra);
       }
@@ -461,7 +462,7 @@ export function createApp(app: App): Server {
       }
 
       if (await handleShareOwnerRoutes(app.cfg, app.notes, app.shareLinks, req, res, path, who.owner === true)) return;
-      if (handleAgentQueueOwnerApi(app.agentTaskQueue, app.agentApprovals, req, res, path, who.owner === true)) return;
+      if (await handleAgentQueueOwnerApi(app.agentTaskQueue, app.agentApprovals, req, res, path, who.owner === true, readBody)) return;
       if (await handleAgentApprovalRoutes(app.cfg, app.agentApprovals, req, res, path, who.owner === true, readBody)) return;
 
       if (get && path === "/api/state") {
