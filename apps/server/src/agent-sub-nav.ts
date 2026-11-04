@@ -1,6 +1,7 @@
 import type { IconName } from "./ui/icons";
 
 export const AGENT_SUB_NAV: Array<{ sectionId: string; href: string; label: string; icon: IconName }> = [
+  { sectionId: "studio", href: "/agent?view=studio", label: "Studio", icon: "bot" },
   { sectionId: "board", href: "/agent?view=board", label: "Board", icon: "listTodo" },
   { sectionId: "queue", href: "/agent?view=queue", label: "Queue", icon: "listTodo" },
   { sectionId: "usage", href: "/agent?view=usage", label: "Usage", icon: "barChart" },

@@ -134,10 +134,10 @@ function spaceOptions(select,spaces,label){select.replaceChildren(new Option(lab
 
 export function workspacePage(opts: {
   title: string; description: string; active: string; nav?: NavLink[];
-  body: string; script: string; tabs?: string; actions?: string;
+  body: string; script: string; tabs?: string; actions?: string; extraCss?: string;
 }): string {
   return page({
-    title: `${opts.title} — Stremmy`, active: opts.active, nav: opts.nav, extraCss: workspaceCss,
+    title: `${opts.title} — Stremmy`, active: opts.active, nav: opts.nav, extraCss: workspaceCss + (opts.extraCss ?? ""),
     body: `<header class="workspace-head"><div><h1>${esc(opts.title)}</h1><p>${esc(opts.description)}</p></div>${opts.actions ?? ""}</header>
 ${opts.tabs ?? ""}${opts.body}<p id="workspace-status" class="workspace-status" role="status" aria-live="polite"></p>`,
     script: `${workspaceScript}\n${opts.script}`,
