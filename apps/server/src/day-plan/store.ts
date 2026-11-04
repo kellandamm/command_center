@@ -94,6 +94,22 @@ export class DayPlanStore {
     }
   }
 
+  /** Patch must-do completion without replanning; returns null when day or slot is missing. */
+  patchMustDoCompletion(day: string, slot: number, completedAt: string | null): DayPlanSnapshot | null {
+    const plan = this.load(day);
+    if (!plan) return null;
+    const must = plan.mustDos.find((m) => m.slot === slot);
+    if (!must) return null;
+    must.completedAt = completedAt;
+    for (const item of plan.items) {
+      if (item.kind === "task" && item.source === must.source && item.refId === must.refId) {
+        item.completedAt = completedAt;
+      }
+    }
+    this.save(plan);
+    return this.load(day);
+  }
+
   load(day: string): DayPlanSnapshot | null {
     const row = this.db.prepare(`SELECT * FROM plan_days WHERE day = ?`).get(day) as Record<string, unknown> | undefined;
     if (!row) return null;

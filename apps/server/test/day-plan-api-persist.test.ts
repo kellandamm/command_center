@@ -25,7 +25,7 @@ async function ownerServer(boardSeed?: (board: BoardStore) => void) {
   const cfg = loadConfig({
     DATA_DIR: dir,
     ADMIN_TOKEN: TOKEN,
-    TZ: "America/Chicago",
+    TZ: PLAN_TEST_TZ,
     OWNER_EMAILS: "owner@example.com",
     CF_ACCESS_TEAM_DOMAIN: TEST_CF_TEAM,
     CF_ACCESS_AUD: TEST_CF_AUD,

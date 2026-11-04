@@ -19,12 +19,14 @@ import {
   dayParamFromQuery,
   parseCalendarDay,
   resolvePlanPrefs,
+  assertValidWorkWindow,
 } from "../src/day-plan/validate";
+import { planTestSaturday, PLAN_TEST_TZ } from "./day-plan-relative-days";
 import { DayPlanStore } from "../src/day-plan/store";
 import { DAY_PLAN_DB } from "../src/day-plan/db";
 import { buildDeterministicPlan } from "../src/day-plan/planner";
 
-const TZ = "America/Chicago";
+const TZ = PLAN_TEST_TZ;
 const shift = (day: string, n: number) => {
   const [y, m, d] = day.split("-").map(Number);
   return new Date(Date.UTC(y!, m! - 1, d! + n)).toISOString().slice(0, 10);
@@ -47,6 +49,10 @@ test("day-plan validate: strict calendar day and resolvePlanPrefs without existi
     workEnd: "17:00",
     weekendOverride: false,
   });
+  assert.throws(
+    () => assertValidWorkWindow("02:30", "03:30", "2026-03-08", "America/Chicago"),
+    (err: Error) => err.message === "Invalid work time.",
+  );
 });
 
 test("day-plan range: today-30..+60 inclusive in cfg.tz, near midnight and across DST", () => {
@@ -131,14 +137,21 @@ test("day-plan API r2: range on every route, strict day, POST override type, wor
     assert.equal(regen.plan.workStart, "10:00");
 
     const save = h.integration.dayPlan.save.bind(h.integration.dayPlan);
+    const errLines: string[] = [];
+    const origErr = console.error;
+    console.error = (...args: unknown[]) => {
+      errLines.push(args.map(String).join(" "));
+    };
     h.integration.dayPlan.save = () => {
       throw new Error("boom TASK_TITLE");
     };
     const res = await h.call("PUT", "/api/day-plan", { day: today, workStart: "09:00" });
+    console.error = origErr;
     assert.equal(res.status, 500);
     const errBody = (await res.json()) as { error: string };
     assert.deepEqual(errBody, { error: "internal error" });
     assert.ok(!JSON.stringify(errBody).includes("TASK_TITLE"));
+    assert.ok(errLines.every((line) => !line.includes("TASK_TITLE") && !line.includes("boom")));
     h.integration.dayPlan.save = save;
   } finally {
     await h.close();

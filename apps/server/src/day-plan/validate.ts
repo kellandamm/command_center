@@ -1,6 +1,6 @@
 import { ValidationError } from "../settings";
 import { dayKey } from "../store";
-import { workWindowBoundsMs } from "./capacity";
+import { calendarLocalInstant } from "../calendar/store";
 import { DEFAULT_WORK_END, DEFAULT_WORK_START } from "./planner";
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -59,8 +59,20 @@ export function parseWorkTime(value: string): boolean {
 
 export function assertValidWorkWindow(workStart: string, workEnd: string, day: string, tz: string): void {
   if (!parseWorkTime(workStart) || !parseWorkTime(workEnd)) throw new ValidationError("Invalid work time.");
-  const win = workWindowBoundsMs(day, tz, workStart, workEnd);
-  if (!win) throw new ValidationError("Work window end must be after start.");
+  const start = calendarLocalInstant(day, workStart, tz);
+  const end = calendarLocalInstant(day, workEnd, tz);
+  if (!start || !end) throw new ValidationError("Invalid work time.");
+  if (end.getTime() <= start.getTime()) throw new ValidationError("Work window end must be after start.");
+}
+
+export function parseMustDoSlotBody(body: unknown, tz: string, now: Date): { day: string; slot: number } {
+  if (typeof body !== "object" || body === null) throw new ValidationError("Invalid must-do payload.");
+  const o = body as Record<string, unknown>;
+  const day = dayFromBodyField(o.day, tz, now);
+  if (typeof o.slot !== "number" || !Number.isInteger(o.slot) || o.slot < 0 || o.slot > 2) {
+    throw new ValidationError("Invalid must-do slot.");
+  }
+  return { day, slot: o.slot };
 }
 
 export interface DayPlanPutPatch {
