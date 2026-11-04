@@ -19,7 +19,7 @@ import { planTestMonday, PLAN_TEST_TZ } from "./day-plan-relative-days";
 import { dayKey } from "../src/store";
 import { DatabaseSync } from "node:sqlite";
 import { DAY_PLAN_DB } from "../src/day-plan/db";
-import { __clearMustDoInflightForTests, __setBoardMoveDelayMs } from "../src/day-plan/must-do";
+import { clearMustDoInflightForTests, setBoardMoveDelayMsForTests } from "../src/day-plan/test-support";
 import { WAITING } from "../src/board/types";
 
 const TOKEN = "t".repeat(32);
@@ -233,8 +233,8 @@ test("day-plan must-do: parallel complete while in-flight returns 409", async ()
     cardId = board.create({ title: "Slow", dueDate: MON, estimatedMinutes: 10 }).id;
   });
   try {
-    __clearMustDoInflightForTests();
-    __setBoardMoveDelayMs(120);
+    clearMustDoInflightForTests();
+    setBoardMoveDelayMsForTests(120);
     await h.call("GET", `/api/day-plan?day=${MON}`, h.owner);
     const slot = (
       (await (await h.call("GET", `/api/day-plan?day=${MON}`, h.owner)).json()) as {
@@ -248,20 +248,20 @@ test("day-plan must-do: parallel complete while in-flight returns 409", async ()
     const statuses = [r1.status, r2.status].sort();
     assert.deepEqual(statuses, [200, 409]);
   } finally {
-    __clearMustDoInflightForTests();
+    clearMustDoInflightForTests();
     await h.close();
   }
 });
 
-test("day-plan must-do: slot ref change after remote refuses local completion", async () => {
+test("day-plan must-do: slot ref change during remote refuses local completion", async () => {
   const MON = planTestMonday();
   let cardId = "";
   const h = await ownerHarness((board) => {
     cardId = board.create({ title: "Swap", dueDate: MON, estimatedMinutes: 10 }).id;
   });
   try {
-    __clearMustDoInflightForTests();
-    __setBoardMoveDelayMs(100);
+    clearMustDoInflightForTests();
+    setBoardMoveDelayMsForTests(150);
     await h.call("GET", `/api/day-plan?day=${MON}`, h.owner);
     const slot = (
       (await (await h.call("GET", `/api/day-plan?day=${MON}`, h.owner)).json()) as {
@@ -269,15 +269,18 @@ test("day-plan must-do: slot ref change after remote refuses local completion", 
       }
     ).plan.mustDos.find((m) => m.refId === cardId)!.slot;
     const completeReq = h.call("POST", "/api/day-plan/must-do/complete", h.ui, { day: MON, slot });
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 30));
     const db = new DatabaseSync(join(h.dir, DAY_PLAN_DB));
     db.prepare("UPDATE plan_must_dos SET ref_id = ? WHERE day = ? AND slot = ?").run("stale-ref", MON, slot);
     db.close();
     const res = await completeReq;
+    const body = (await res.json()) as { error: string; mustDoSyncConflict?: boolean };
     assert.equal(res.status, 409);
+    assert.equal(body.mustDoSyncConflict, true);
     assert.equal(h.integration.dayPlan.load(MON)?.mustDos.find((m) => m.slot === slot)?.completedAt, null);
+    assert.equal(h.integration.board.get(cardId)?.column, DONE);
   } finally {
-    __clearMustDoInflightForTests();
+    clearMustDoInflightForTests();
     await h.close();
   }
 });

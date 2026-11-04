@@ -9,6 +9,7 @@ import { completeTask, reopenTask } from "../todoist/client";
 import type { FetchLike } from "../llm/provider";
 import { enrichStoredPlanForRead } from "./service";
 import { gatherDayPlanContext } from "./gather";
+import { inflight, testHooks } from "./must-do-limits";
 import type { DayPlanStore } from "./store";
 import type { DayPlanSnapshot, TaskSource } from "./types";
 import { DayPlanNotFoundError } from "./validate";
@@ -28,6 +29,17 @@ export class MustDoRemoteError extends Error {
   }
 }
 
+/** Plan row changed during remote sync; remote may already reflect completion. */
+export class MustDoSlotChangedError extends MustDoRemoteError {
+  readonly mustDoSyncConflict = true;
+  constructor() {
+    super(
+      "This must-do changed while syncing. The task may already be completed in Todoist or Board. Reopen it here if needed.",
+      409,
+    );
+  }
+}
+
 export class MustDoInFlightError extends Error {
   readonly status = 409;
   constructor() {
@@ -35,24 +47,17 @@ export class MustDoInFlightError extends Error {
   }
 }
 
-const inflight = new Set<string>();
-let boardMoveDelayMs: number | null = null;
-
-export function __clearMustDoInflightForTests(): void {
-  inflight.clear();
-  boardMoveDelayMs = null;
-}
-
-export function __setBoardMoveDelayMs(ms: number | null): void {
-  boardMoveDelayMs = ms;
-}
-
-function inflightKey(day: string, slot: number, op: "complete" | "reopen"): string {
-  return `${day}:${slot}:${op}`;
+function inflightKey(day: string, slot: number): string {
+  return `${day}:${slot}`;
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function boardMoveDelayMs(): number | null {
+  if (process.env.ALLOW_DAY_PLAN_TEST_HOOKS !== "1") return null;
+  return testHooks.boardMoveDelayMs;
 }
 
 function boardColumnOrBacklog(value: string | null | undefined): BoardColumn {
@@ -70,7 +75,8 @@ async function completeRemote(opts: {
   fetchFn?: FetchLike;
 }): Promise<void> {
   if (opts.source === "board") {
-    if (boardMoveDelayMs) await sleep(boardMoveDelayMs);
+    const delay = boardMoveDelayMs();
+    if (delay) await sleep(delay);
     const card = opts.board.get(opts.refId);
     if (!card) throw new MustDoRemoteError("Linked board card is unavailable.", 409);
     if (card.column === DONE) return;
@@ -129,7 +135,7 @@ function assertSlotStillMatches(
 ): void {
   const must = store.load(day)?.mustDos.find((m) => m.slot === slot);
   if (!must || must.source !== expected.source || must.refId !== expected.refId) {
-    throw new MustDoRemoteError("Must-do slot changed.", 409);
+    throw new MustDoSlotChangedError();
   }
 }
 
@@ -145,7 +151,7 @@ export async function completeMustDoOnOwnerClick(opts: {
   slot: number;
   fetchFn?: FetchLike;
 }): Promise<DayPlanSnapshot> {
-  const key = inflightKey(opts.day, opts.slot, "complete");
+  const key = inflightKey(opts.day, opts.slot);
   if (inflight.has(key)) throw new MustDoInFlightError();
   inflight.add(key);
   try {
@@ -180,10 +186,9 @@ export async function completeMustDoOnOwnerClick(opts: {
     const completedAt = opts.now.toISOString();
     const patched = opts.store.patchMustDoCompletion(opts.day, opts.slot, {
       completedAt,
-      match: expected,
       boardReopenColumn: must.source === "board" ? boardReopenColumn : undefined,
     });
-    if (!patched) throw new MustDoRemoteError("Must-do slot changed.", 409);
+    if (!patched) throw new DayPlanNotFoundError();
     return enrichAfterPatch(opts, patched);
   } finally {
     inflight.delete(key);
@@ -202,7 +207,7 @@ export async function reopenMustDoOnOwnerClick(opts: {
   slot: number;
   fetchFn?: FetchLike;
 }): Promise<DayPlanSnapshot> {
-  const key = inflightKey(opts.day, opts.slot, "reopen");
+  const key = inflightKey(opts.day, opts.slot);
   if (inflight.has(key)) throw new MustDoInFlightError();
   inflight.add(key);
   try {
@@ -233,10 +238,9 @@ export async function reopenMustDoOnOwnerClick(opts: {
 
     const patched = opts.store.patchMustDoCompletion(opts.day, opts.slot, {
       completedAt: null,
-      match: expected,
       boardReopenColumn: null,
     });
-    if (!patched) throw new MustDoRemoteError("Must-do slot changed.", 409);
+    if (!patched) throw new DayPlanNotFoundError();
     return enrichAfterPatch(opts, patched);
   } finally {
     inflight.delete(key);

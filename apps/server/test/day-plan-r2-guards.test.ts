@@ -152,6 +152,7 @@ test("day-plan API r2: range on every route, strict day, POST override type, wor
     assert.deepEqual(errBody, { error: "internal error" });
     assert.ok(!JSON.stringify(errBody).includes("TASK_TITLE"));
     assert.ok(errLines.every((line) => !line.includes("TASK_TITLE") && !line.includes("boom")));
+    assert.ok(errLines.every((line) => line === "day-plan PUT failed"));
     h.integration.dayPlan.save = save;
   } finally {
     await h.close();

@@ -103,20 +103,19 @@ export class DayPlanStore {
     }
   }
 
-  /** Patch must-do completion without replanning; returns null when day, slot, or task ref no longer matches. */
+  /** Patch must-do completion without replanning; caller must verify source/refId before calling. */
   patchMustDoCompletion(
     day: string,
     slot: number,
     patch: {
       completedAt: string | null;
-      match: { source: string; refId: string };
       boardReopenColumn?: string | null;
     },
   ): DayPlanSnapshot | null {
     const plan = this.load(day);
     if (!plan) return null;
     const must = plan.mustDos.find((m) => m.slot === slot);
-    if (!must || must.source !== patch.match.source || must.refId !== patch.match.refId) return null;
+    if (!must) return null;
     must.completedAt = patch.completedAt;
     if (patch.boardReopenColumn !== undefined) must.boardReopenColumn = patch.boardReopenColumn;
     for (const item of plan.items) {

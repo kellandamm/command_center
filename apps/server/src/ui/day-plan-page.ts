@@ -53,6 +53,10 @@ export function dayPlanPage(nav?: NavLink[], opts?: { owner: boolean }): string 
   </div>
 </header>
 <div id="dp-banner" class="day-plan-banner" role="alert" hidden></div>
+<div id="dp-sync-conflict" class="day-plan-banner" role="alert" hidden>
+  <p id="dp-sync-conflict-text"></p>
+  <button type="button" class="ghost" id="dp-sync-conflict-reopen">Reopen linked task</button>
+</div>
 <section class="day-plan-capacity card" aria-label="Capacity">
   <div class="row" style="justify-content:space-between;align-items:center">
     <strong id="dp-cap-title">Capacity</strong>
@@ -83,12 +87,26 @@ export function dayPlanPage(nav?: NavLink[], opts?: { owner: boolean }): string 
 
 function dayPlanScript(): string {
   return `
-var dpState={day:"",plan:null,undo:null,toastTimer:null,busy:false};
+var dpState={day:"",plan:null,undo:null,toastTimer:null,busy:false,syncConflictSlot:null};
 function dpApi(path,method,body){
   return fetch(path,{method:method||"GET",headers:{"x-ah":"1","x-day-plan-ui":"1","content-type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)})
-    .then(function(r){return r.json().catch(function(){return{}}).then(function(j){if(!r.ok)throw new Error(j.error||("HTTP "+r.status));return j;});});
+    .then(function(r){return r.json().catch(function(){return{}}).then(function(j){
+      if(!r.ok){
+        var err=new Error(j.error||("HTTP "+r.status));
+        if(j.mustDoSyncConflict)err.mustDoSyncConflict=true;
+        throw err;
+      }
+      return j;
+    });});
 }
-function showBanner(text){var el=document.getElementById("dp-banner");el.textContent=text;el.hidden=!text;}
+function showBanner(text){var el=document.getElementById("dp-banner");el.textContent=text;el.hidden=!text;hideSyncConflict();}
+function hideSyncConflict(){var box=document.getElementById("dp-sync-conflict");box.hidden=true;dpState.syncConflictSlot=null;}
+function showSyncConflict(message,slot){
+  hideToast();
+  dpState.syncConflictSlot=slot;
+  document.getElementById("dp-sync-conflict-text").textContent=message;
+  document.getElementById("dp-sync-conflict").hidden=false;
+}
 function hideToast(){var t=document.getElementById("dp-toast");t.hidden=true;if(dpState.toastTimer){clearTimeout(dpState.toastTimer);dpState.toastTimer=null;}}
 function showToast(text,undo){
   hideToast();dpState.undo=undo||null;
@@ -165,7 +183,8 @@ function completeMustDo(slot){
     applyPlan(r);
     showToast("Must-do completed.",{slot:slot});
   }).catch(function(err){
-    showBanner(err.message||"Could not complete must-do.");
+    if(err.mustDoSyncConflict){showSyncConflict(err.message||"Task may already be completed in Todoist or Board.",slot);}
+    else showBanner(err.message||"Could not complete must-do.");
     loadPlan(dpState.day);
   }).finally(function(){dpState.busy=false;});
 }
@@ -179,6 +198,10 @@ function reopenMustDo(slot){
   }).catch(function(err){showBanner(err.message||"Could not undo completion.");})
   .finally(function(){dpState.busy=false;});
 }
+document.getElementById("dp-sync-conflict-reopen").onclick=function(){
+  if(dpState.syncConflictSlot==null)return;
+  reopenMustDo(dpState.syncConflictSlot);
+};
 document.getElementById("dp-toast-undo").onclick=function(){
   if(!dpState.undo)return;
   var slot=dpState.undo.slot;

@@ -20,6 +20,7 @@ import {
   DAY_PLAN_UI_HEADER,
   MustDoInFlightError,
   MustDoRemoteError,
+  MustDoSlotChangedError,
   completeMustDoOnOwnerClick,
   reopenMustDoOnOwnerClick,
 } from "./must-do";
@@ -180,8 +181,7 @@ export async function handleDayPlanRoutes(
         return true;
       }
       if (err instanceof ValidationError) throw err;
-      const fail = err as Error & { code?: string };
-      console.error("day-plan PUT failed:", fail.message);
+      console.error("day-plan PUT failed");
       json(res, 500, { error: "internal error" });
     }
     return true;
@@ -214,6 +214,10 @@ export async function handleDayPlanRoutes(
         return true;
       }
       if (err instanceof ValidationError) throw err;
+      if (err instanceof MustDoSlotChangedError) {
+        json(res, err.status, { error: err.message, mustDoSyncConflict: true });
+        return true;
+      }
       if (err instanceof MustDoRemoteError) {
         json(res, err.status, { error: err.message });
         return true;
@@ -255,6 +259,10 @@ export async function handleDayPlanRoutes(
         return true;
       }
       if (err instanceof ValidationError) throw err;
+      if (err instanceof MustDoSlotChangedError) {
+        json(res, err.status, { error: err.message, mustDoSyncConflict: true });
+        return true;
+      }
       if (err instanceof MustDoRemoteError) {
         json(res, err.status, { error: err.message });
         return true;
