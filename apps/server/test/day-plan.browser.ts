@@ -62,7 +62,6 @@ test("day-plan page: sync conflict banner stays visible after plan reload", { ti
       { name: "CF_Authorization", value: app.ownerJwt, domain: "127.0.0.1", path: "/" },
     ]);
     const page = await context.newPage();
-    let planLoads = 0;
     await page.route("**/api/day-plan/must-do/complete", async (route) => {
       await route.fulfill({
         status: 409,
@@ -74,10 +73,6 @@ test("day-plan page: sync conflict banner stays visible after plan reload", { ti
         }),
       });
     });
-    await page.route("**/api/day-plan?day=*", async (route) => {
-      planLoads += 1;
-      await route.continue();
-    });
     await page.goto(`${app.base}/day-plan`);
     await page.waitForSelector("#dp-timeline");
     await page.waitForFunction(() => {
@@ -85,9 +80,12 @@ test("day-plan page: sync conflict banner stays visible after plan reload", { ti
       return !!box;
     }, { timeout: 45_000 });
     const box = page.locator("#dp-must-dos input[type=checkbox]:not(:disabled)").first();
+    const reloadAfterConflict = page.waitForResponse(
+      (r) => r.url().includes("/api/day-plan?day=") && r.request().method() === "GET" && r.status() === 200,
+    );
     await box.check();
     await page.waitForSelector("#dp-sync-conflict:not([hidden])");
-    await page.waitForFunction(() => planLoads >= 1, { timeout: 45_000 });
+    await reloadAfterConflict;
     assert.equal(await page.locator("#dp-sync-conflict:not([hidden])").count(), 1);
   } finally {
     await browser.close();
