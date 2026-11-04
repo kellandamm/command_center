@@ -20,6 +20,7 @@ import { XBookmarksService } from "../src/read-later/x-bookmarks-service";
 import { ShareLinksStore } from "../src/share-links/store";
 import { VoiceCaptureStore } from "../src/voice-capture/store";
 import { AgentsUsageStore } from "../src/agents-usage/store";
+import { TeamUpdateStore } from "../src/briefing/team-update/store";
 import { DayPlanStore } from "../src/day-plan/store";
 
 export async function closeIntegrationServer(
@@ -68,6 +69,7 @@ export async function openIntegrationStores(dataDir: string, cfg?: Config) {
     whiteboard: await WhiteboardStore.open(dataDir),
     voiceCaptures: await VoiceCaptureStore.open(dataDir),
     agentsUsage: await AgentsUsageStore.open(dataDir),
+    teamUpdate: await TeamUpdateStore.open(dataDir, cfg?.tz ?? "UTC"),
     dayPlan: DayPlanStore.open(dataDir),
   };
 }

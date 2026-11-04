@@ -46,6 +46,8 @@ The app listens on **8080 inside the container**; compose binds `127.0.0.1:${HOS
 | `BOOKMARKS_IMPORT_ALLOWED_CLIENT_IDS` | Optional comma-separated Access service-token client IDs (JWT **`common_name`**). When set, import also requires the verified JWT’s service token id to be in the list; when unset, any verified service token is accepted. The raw `CF-Access-Client-Id` header is not trusted. |
 | `HOBIE_POLL_TOKEN` | Optional bearer for Hobie to `GET /api/hobie/tasks` and `POST /api/hobie/claim`. Admin or MCP tokens also work. |
 | `MCP_MAX_HOBIE_PENDING` | Max pending Hobie tasks (default 20). |
+| `TEAM_UPDATE_IMPORT_TOKEN` | Optional (≥ 24 chars). Enables **`POST /api/team-update/import`** for an external daily routine: verified **`Cf-Access-Jwt-Assertion`** (Access service token, not a user email JWT) **and** `Authorization: Bearer …` with this value. When unset, import returns **503**. Owner-only **`GET /api/team-update`** reads stored updates in the Daily briefing **Team update** tab. |
+| `TEAM_UPDATE_IMPORT_CLIENT_IDS` | Optional comma-separated Access service-token client IDs (JWT **`common_name`**). When set, team update import also requires the verified JWT’s service token id to be in the list. |
 
 `/healthz` is unauthenticated and returns `{ ok, version }` only.
 

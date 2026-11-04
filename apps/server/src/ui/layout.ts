@@ -225,6 +225,9 @@ html.dark .morning-briefing{--paper-ink:#f0ede3;--paper-muted:#b2aea3;--paper-ru
 .morning-mode button{border:1px solid var(--paper-rule);background:transparent;color:var(--paper-muted);padding:.35rem .75rem;min-height:2rem;font-size:.8rem;letter-spacing:.04em}
 .morning-mode button[aria-selected=true]{border-color:var(--paper-ink);color:var(--paper-ink);font-weight:600}
 .shutdown-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:1rem 1.25rem;margin-top:.5rem}
+.team-update-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(18rem,1fr));gap:1rem 1.25rem;margin-top:.5rem}
+.team-update-card{border:1px solid var(--paper-rule);padding:.85rem 1rem;background:color-mix(in srgb,var(--paper-ink) 3%,transparent)}
+.team-update-card h2{font-size:1rem;margin:0}
 .shutdown-section{border-top:1px solid var(--paper-ink);padding-top:.65rem}
 .shutdown-section h2{margin:0 0 .5rem;font-family:Georgia,"Times New Roman",serif;font-size:1.15rem}
 .shutdown-section ul{list-style:none;padding:0;margin:0}
