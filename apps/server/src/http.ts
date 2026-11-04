@@ -109,6 +109,7 @@ import { notify, ntfyStatus, resolveNtfyConfig } from "./notify/ntfy";
 import type { AgentHubStore } from "./agents/store";
 import { handleAgentRoutes } from "./agents/routes";
 import { agentChatPage } from "./ui/agent-chat-page";
+import { agentOverviewPage } from "./ui/agent-overview-page";
 
 export interface App {
   cfg: Config;
@@ -412,8 +413,8 @@ export function createApp(app: App): Server {
       if (get && path === "/spaces") return send(res, 200, spacesPage(nav()), undefined, extra);
       if (get && /^\/spaces\/[^/]+$/.test(path)) return send(res, 200, spaceDetailPage(nav()), undefined, extra);
       if (get && path === "/agent") {
-        const view = url.searchParams.get("view") ?? "board";
-        const render = { studio: agentStudioPage, chat: agentChatPage, board: boardPage, queue: agentQueuePage, wins: winsPage, assistant: assistantPage, activity: activityPage, usage: agentsUsagePage };
+        const view = url.searchParams.get("view") ?? "overview";
+        const render = { overview: agentOverviewPage, studio: agentStudioPage, chat: agentChatPage, board: boardPage, queue: agentQueuePage, wins: winsPage, assistant: assistantPage, activity: activityPage, usage: agentsUsagePage };
         if (!Object.hasOwn(render, view)) return json(res, 400, { error: "unknown Agent view" });
         return send(res, 200, render[view as keyof typeof render](nav()), undefined, extra);
       }
