@@ -74,6 +74,8 @@ export const MUST_DO_REF_ID_MAX_LENGTH = 128;
 export interface MustDoRemoteTaskBody {
   source: "board" | "todoist";
   refId: string;
+  /** Echoed from 409 JSON; ignored on reopen — server uses stored column only. */
+  boardReopenColumn?: string | null;
 }
 
 export function parseMustDoActionBody(
@@ -96,6 +98,12 @@ export function parseMustDoActionBody(
     const refId = rt.refId.trim();
     if (refId.length > MUST_DO_REF_ID_MAX_LENGTH) throw new ValidationError("Invalid remote task.");
     remoteTask = { source: rt.source, refId };
+    if ("boardReopenColumn" in rt) {
+      if (rt.boardReopenColumn !== null && typeof rt.boardReopenColumn !== "string") {
+        throw new ValidationError("Invalid remote task.");
+      }
+      remoteTask.boardReopenColumn = rt.boardReopenColumn as string | null;
+    }
   }
   return { day, slot: o.slot, remoteTask };
 }

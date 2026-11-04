@@ -11,7 +11,8 @@ import { enrichStoredPlanForRead } from "./service";
 import { gatherDayPlanContext } from "./gather";
 import { inflight } from "./must-do-inflight";
 import {
-  consumeMustDoSyncConflictReopen,
+  forgetMustDoSyncConflictReopen,
+  matchMustDoSyncConflictReopen,
   rememberMustDoSyncConflict,
 } from "./must-do-sync-conflict";
 import type { DayPlanStore } from "./store";
@@ -229,7 +230,7 @@ export async function reopenMustDoOnOwnerClick(opts: {
     if (!must) throw new ValidationError("Invalid must-do slot.");
 
     if (opts.remoteTask) {
-      const stored = consumeMustDoSyncConflictReopen(
+      const stored = matchMustDoSyncConflictReopen(
         opts.day,
         opts.slot,
         { source: opts.remoteTask.source, refId: opts.remoteTask.refId },
@@ -246,6 +247,7 @@ export async function reopenMustDoOnOwnerClick(opts: {
         boardReopenColumn: stored.boardReopenColumn,
         fetchFn: opts.fetchFn,
       });
+      forgetMustDoSyncConflictReopen(opts.day, opts.slot);
       return enrichAfterPatch(opts, plan);
     }
 

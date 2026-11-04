@@ -570,6 +570,77 @@ test("day-plan must-do: expired conflict reopen record is rejected", async () =>
   }
 });
 
+test("day-plan must-do: conflict reopen keeps record when remote fails then succeeds on retry", async () => {
+  const MON = planTestMonday();
+  let cardId = "";
+  const h = await ownerHarness(async (board) => {
+    cardId = board.create({ title: "Retry", dueDate: MON, estimatedMinutes: 10 }).id;
+    await board.move(cardId, WAITING);
+  });
+  let restoreMove = () => {};
+  let failReopenOnce = true;
+  try {
+    clearMustDoInflightForTests();
+    const triggered = await triggerBoardSlotSyncConflict(h, MON, cardId);
+    restoreMove = triggered.restoreMove;
+    const { slot, remoteTask } = triggered;
+    const origMove = h.integration.board.move.bind(h.integration.board);
+    h.integration.board.move = async (id, column, opts) => {
+      if (id === cardId && column !== DONE && failReopenOnce) {
+        failReopenOnce = false;
+        return undefined;
+      }
+      return origMove(id, column, opts);
+    };
+    assert.equal(h.integration.board.get(cardId)?.column, DONE);
+    assert.equal(
+      (await h.call("POST", "/api/day-plan/must-do/reopen", h.ui, { day: MON, slot, remoteTask })).status,
+      502,
+    );
+    assert.equal(h.integration.board.get(cardId)?.column, DONE);
+    assert.equal(
+      (await h.call("POST", "/api/day-plan/must-do/reopen", h.ui, { day: MON, slot, remoteTask })).status,
+      200,
+    );
+    assert.equal(h.integration.board.get(cardId)?.column, WAITING);
+    assert.equal(
+      (await h.call("POST", "/api/day-plan/must-do/reopen", h.ui, { day: MON, slot, remoteTask })).status,
+      409,
+    );
+  } finally {
+    clearMustDoInflightForTests();
+    restoreMove();
+    await h.close();
+  }
+});
+
+test("day-plan must-do: conflict reopen uses stored board column not client body", async () => {
+  const MON = planTestMonday();
+  let cardId = "";
+  const h = await ownerHarness(async (board) => {
+    cardId = board.create({ title: "Column", dueDate: MON, estimatedMinutes: 10 }).id;
+    await board.move(cardId, WAITING);
+  });
+  let restoreMove = () => {};
+  try {
+    clearMustDoInflightForTests();
+    const { slot, remoteTask, restoreMove: rm } = await triggerBoardSlotSyncConflict(h, MON, cardId);
+    restoreMove = rm;
+    assert.equal(h.integration.board.get(cardId)?.column, DONE);
+    const reopenRes = await h.call("POST", "/api/day-plan/must-do/reopen", h.ui, {
+      day: MON,
+      slot,
+      remoteTask: { ...remoteTask, boardReopenColumn: "Backlog" },
+    });
+    assert.equal(reopenRes.status, 200);
+    assert.equal(h.integration.board.get(cardId)?.column, WAITING);
+  } finally {
+    clearMustDoInflightForTests();
+    restoreMove();
+    await h.close();
+  }
+});
+
 test("day-plan must-do: remoteTask refId length is capped", () => {
   const MON = planTestMonday();
   const now = new Date();

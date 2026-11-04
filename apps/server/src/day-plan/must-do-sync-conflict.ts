@@ -22,6 +22,7 @@ export function rememberMustDoSyncConflict(
   task: StoredMustDoConflictTask,
   nowMs: number = Date.now(),
 ): void {
+  sweepExpiredConflicts(nowMs);
   conflicts.set(key(day, slot), {
     task: {
       source: task.source,
@@ -32,8 +33,14 @@ export function rememberMustDoSyncConflict(
   });
 }
 
-/** Returns stored task and removes the record when client source/refId match and entry is valid. */
-export function consumeMustDoSyncConflictReopen(
+function sweepExpiredConflicts(nowMs: number): void {
+  for (const [k, entry] of conflicts) {
+    if (nowMs >= entry.expiresAt) conflicts.delete(k);
+  }
+}
+
+/** Returns stored task when client source/refId match and entry is valid (record kept until forget). */
+export function matchMustDoSyncConflictReopen(
   day: string,
   slot: number,
   client: { source: TaskSource; refId: string },
@@ -47,8 +54,11 @@ export function consumeMustDoSyncConflictReopen(
     return null;
   }
   if (entry.task.source !== client.source || entry.task.refId !== client.refId) return null;
-  conflicts.delete(k);
   return entry.task;
+}
+
+export function forgetMustDoSyncConflictReopen(day: string, slot: number): void {
+  conflicts.delete(key(day, slot));
 }
 
 export function clearMustDoSyncConflictsForTests(): void {
