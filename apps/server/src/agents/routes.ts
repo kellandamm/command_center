@@ -68,15 +68,16 @@ export async function handleAgentRoutes(
   userId: string,
   readBody: ReadBody,
 ): Promise<boolean> {
-  if (!path.startsWith("/api/agents")) return false;
-  if (!connections) {
-    json(res, 503, { error: "Encrypted agent connection storage is unavailable." });
-    return true;
-  }
+  // Only claim agent-chat paths; /api/agents/usage* belongs to the agents-usage routes.
+  if (path !== "/api/agents" && !/^\/api\/agents\/[0-9a-f-]{36}(\/|$)/i.test(path)) return false;
   const managesAgent = (path === "/api/agents" && req.method === "POST")
     || (/^\/api\/agents\/[0-9a-f-]{36}$/i.test(path) && ["PUT", "DELETE"].includes(req.method ?? ""));
   if (managesAgent && !owner) {
     json(res, 403, { error: "owner login required" });
+    return true;
+  }
+  if (!connections) {
+    json(res, 503, { error: "Encrypted agent connection storage is unavailable." });
     return true;
   }
   if (managesAgent && !connections.status().writable) {

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentHubStore, type AgentConnection } from "../src/agents/store";
 import { createOpenAICompatibleAdapter } from "../src/agents/adapters";
-import { validateAgentBaseUrl } from "../src/agents/routes";
+import { handleAgentRoutes, validateAgentBaseUrl } from "../src/agents/routes";
 import { ConnectionsStore } from "../src/connections";
 import { loadConfig } from "../src/config";
 
@@ -121,4 +121,14 @@ test("agent credentials use the encrypted connections vault", async () => {
 test("agent registration validation requires HTTPS and rejects private endpoints", async () => {
   await assert.rejects(validateAgentBaseUrl("http://api.example.com"), /must use HTTPS/);
   await assert.rejects(validateAgentBaseUrl("https://127.0.0.1"), /public internet address/);
+});
+
+test("agent chat routes leave /api/agents/usage to the usage routes", async () => {
+  const hub = await AgentHubStore.open(await tempDir("cc-agent-paths-"));
+  const req = { method: "GET" } as never;
+  const res = {} as never;
+  const readBody = (async () => ({})) as never;
+  for (const path of ["/api/agents/usage", "/api/agents/usage/history", "/api/agents/usage/checkins"]) {
+    assert.equal(await handleAgentRoutes(hub, undefined, req, res, path, false, "reader", readBody), false);
+  }
 });
