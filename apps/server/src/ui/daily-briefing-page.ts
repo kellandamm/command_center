@@ -14,6 +14,7 @@ export function dailyBriefingPage(nav?: NavLink[]): string {
   <div class="morning-mode" role="tablist" aria-label="Briefing mode">
     <button type="button" id="db-mode-morning" role="tab" aria-selected="true" aria-controls="db-morning-view">Morning</button>
     <button type="button" id="db-mode-shutdown" role="tab" aria-selected="false" aria-controls="db-shutdown-view">Shutdown</button>
+    <button type="button" id="db-mode-team-update" role="tab" aria-selected="false" aria-controls="db-team-update-view">Team update</button>
   </div>
   <div class="morning-edition" id="db-morning-edition">
     <label><span class="visually-hidden">Briefing day</span><select id="db-day" aria-label="Briefing day"></select></label>
@@ -38,6 +39,11 @@ export function dailyBriefingPage(nav?: NavLink[]): string {
       <button type="button" id="db-shutdown-reflect" class="ghost" hidden>Generate reflection</button>
     </div>
     <p class="dim" id="db-shutdown-reflection" hidden></p>
+  </div>
+  <div id="db-team-update-view" role="tabpanel" hidden>
+    <p class="dim" id="db-team-update-meta">Agent activity imported from your daily routine.</p>
+    <div id="db-team-update-error" class="morning-error" role="status" hidden></div>
+    <div class="team-update-grid" id="db-team-update-body" aria-live="polite"></div>
   </div>
 </main>`,
     script: `
@@ -198,18 +204,66 @@ function loadShutdown(force){
   }).catch(function(err){shutdownError(err.message||"Could not load shutdown review.");});
 }
 function setBriefingMode(mode){
-  var morning=mode==="morning";
+  var morning=mode==="morning",shutdown=mode==="shutdown",team=mode==="team-update";
   document.getElementById("db-mode-morning").setAttribute("aria-selected",morning?"true":"false");
-  document.getElementById("db-mode-shutdown").setAttribute("aria-selected",morning?"false":"true");
+  document.getElementById("db-mode-shutdown").setAttribute("aria-selected",shutdown?"true":"false");
+  document.getElementById("db-mode-team-update").setAttribute("aria-selected",team?"true":"false");
   document.getElementById("db-morning-view").hidden=!morning;
   document.getElementById("db-morning-edition").hidden=!morning;
-  document.getElementById("db-shutdown-view").hidden=morning;
-  document.getElementById("db-page-title").textContent=morning?"The Morning Briefing":"Shutdown review";
-  document.getElementById("db-page-deck").textContent=morning?"Your topics, weather, and schedule for the day ahead.":"What you finished, what slipped, and a look at tomorrow.";
-  if(!morning)loadShutdown(false);
+  document.getElementById("db-shutdown-view").hidden=!shutdown;
+  document.getElementById("db-team-update-view").hidden=!team;
+  document.getElementById("db-page-title").textContent=morning?"The Morning Briefing":team?"Team update":"Shutdown review";
+  document.getElementById("db-page-deck").textContent=morning?"Your topics, weather, and schedule for the day ahead."
+    :team?"What each agent did today and what is waiting on you."
+    :"What you finished, what slipped, and a look at tomorrow.";
+  if(shutdown)loadShutdown(false);
+  if(team){
+    var dayEl=document.getElementById("db-day");
+    var day=dayEl&&dayEl.value?dayEl.value:(teamUpdateDay||"");
+    if(day)loadTeamUpdate(day,false);
+    else loadTeamUpdate(new Date().toISOString().slice(0,10),false);
+  }
+}
+var teamUpdateLoaded=false,teamUpdateDay=null;
+function teamUpdateError(message){
+  var el=document.getElementById("db-team-update-error");el.textContent=message;el.hidden=!message;
+}
+function renderTeamUpdate(payload){
+  var body=document.getElementById("db-team-update-body");
+  var meta=document.getElementById("db-team-update-meta");
+  teamUpdateError("");
+  if(!payload||!payload.update){
+    meta.textContent="No team update for "+esc(payload&&payload.day?payload.day:"this day")+".";
+    body.innerHTML='<div class="ui-empty" role="status"><p class="ui-empty-title">Nothing posted yet for this day.</p></div>';
+    return;
+  }
+  var u=payload.update;
+  meta.textContent="Team update for "+esc(payload.day)+" · imported "+new Date(u.importedAt).toLocaleString();
+  body.innerHTML=u.agents.map(function(agent){
+    var did=(agent.did||[]).map(function(line){return '<li>'+esc(line)+'</li>';}).join("")||'<li class="dim">Nothing logged.</li>';
+    var wait=(agent.waitingOnKellan||[]).map(function(line){return '<li>'+esc(line)+'</li>';}).join("")||'<li class="dim">Nothing waiting.</li>';
+    return '<article class="team-update-card"><header class="section-head"><h2>'+esc(agent.name)+'</h2><span class="dim">Updated '+esc(new Date(agent.updatedAt).toLocaleString())+'</span></header>'
+      +'<h3 class="dim" style="font-size:.85rem;margin:.5rem 0 0">Did</h3><ul>'+did+'</ul>'
+      +'<h3 class="dim" style="font-size:.85rem;margin:.75rem 0 0">Waiting on Kellan</h3><ul>'+wait+'</ul></article>';
+  }).join("");
+}
+function loadTeamUpdate(day,force){
+  if(!force&&teamUpdateLoaded&&teamUpdateDay===day)return Promise.resolve();
+  teamUpdateError("");
+  document.getElementById("db-team-update-body").innerHTML='<p class="dim">Loading…</p>';
+  return api("/api/team-update?day="+encodeURIComponent(day)).then(function(data){
+    teamUpdateLoaded=true;teamUpdateDay=day;
+    renderTeamUpdate(data);
+  }).catch(function(err){teamUpdateError(err.message||"Could not load team update.");});
 }
 document.getElementById("db-mode-morning").onclick=function(){setBriefingMode("morning")};
 document.getElementById("db-mode-shutdown").onclick=function(){setBriefingMode("shutdown")};
+document.getElementById("db-mode-team-update").onclick=function(){setBriefingMode("team-update")};
+var _dbDayOnchange=document.getElementById("db-day").onchange;
+document.getElementById("db-day").onchange=function(){
+  if(_dbDayOnchange)_dbDayOnchange.call(this);
+  if(!document.getElementById("db-team-update-view").hidden&&this.value)loadTeamUpdate(this.value,true);
+};
 document.getElementById("db-shutdown-refresh").onclick=function(){loadShutdown(true)};
 document.getElementById("db-shutdown-reflect").onclick=function(){
   var btn=this,box=document.getElementById("db-shutdown-reflection");
