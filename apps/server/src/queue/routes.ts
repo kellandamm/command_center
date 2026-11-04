@@ -165,15 +165,16 @@ export async function handleAgentApprovalRoutes(
   return true;
 }
 
-/** Owner UI: list agent queue tasks and pending approvals (session auth). */
-export function handleAgentQueueOwnerApi(
+/** Owner UI: manage agent queue tasks and pending approvals (session auth). */
+export async function handleAgentQueueOwnerApi(
   tasks: AgentTaskQueueStore,
   approvals: AgentApprovalsStore,
   req: IncomingMessage,
   res: ServerResponse,
   path: string,
   owner: boolean,
-): boolean {
+  readBody: (req: IncomingMessage) => Promise<unknown>,
+): Promise<boolean> {
   if (path === "/api/agent-queue/overview" && req.method === "GET") {
     if (!owner) {
       json(res, 403, { error: "owner login required" });
@@ -183,6 +184,51 @@ export function handleAgentQueueOwnerApi(
       tasks: tasks.list(),
       approvals: approvals.list({ status: "pending" }),
     });
+    return true;
+  }
+
+  if (path === "/api/agent-queue/tasks" && req.method === "POST") {
+    if (!owner) {
+      json(res, 403, { error: "owner login required" });
+      return true;
+    }
+    const body = await readBody(req);
+    const text = body && typeof body === "object" ? (body as { text?: unknown }).text : undefined;
+    if (typeof text !== "string" || !text.trim()) {
+      json(res, 400, { error: "text is required" });
+      return true;
+    }
+    try {
+      const task = await tasks.enqueue(text);
+      json(res, 201, { task });
+    } catch (err) {
+      json(res, 400, { error: err instanceof Error ? err.message : "task could not be queued" });
+    }
+    return true;
+  }
+
+  if (path === "/api/agent-queue/missions" && req.method === "POST") {
+    if (!owner) {
+      json(res, 403, { error: "owner login required" });
+      return true;
+    }
+    const body = await readBody(req);
+    const parsed = body && typeof body === "object" ? body as { title?: unknown; tasks?: unknown } : {};
+    if (typeof parsed.title !== "string" || !Array.isArray(parsed.tasks)) {
+      json(res, 400, { error: "title and tasks[] are required" });
+      return true;
+    }
+    const taskTexts = parsed.tasks.filter((task): task is string => typeof task === "string");
+    if (taskTexts.length !== parsed.tasks.length) {
+      json(res, 400, { error: "tasks[] must contain only strings" });
+      return true;
+    }
+    try {
+      const queuedTasks = await tasks.enqueueMission(parsed.title, taskTexts);
+      json(res, 201, { missionId: queuedTasks[0]!.missionId, tasks: queuedTasks });
+    } catch (err) {
+      json(res, 400, { error: err instanceof Error ? err.message : "mission could not be queued" });
+    }
     return true;
   }
   return false;

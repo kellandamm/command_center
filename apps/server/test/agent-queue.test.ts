@@ -53,7 +53,7 @@ function queueHeaders(key: string, rawBody: string, extra: Record<string, string
   };
 }
 
-async function harness(env: Record<string, string> = {}, owner = false) {
+async function harness(env: Record<string, string> = {}, owner = false, member = false) {
   const dir = await mkdtemp(join(tmpdir(), "agent-q-"));
   const deployment = loadConfig({
     DATA_DIR: dir,
@@ -71,8 +71,8 @@ async function harness(env: Record<string, string> = {}, owner = false) {
   const integration = await openIntegrationStores(dir, cfg);
   const server = createApp({
     cfg,
-    auth: owner
-      ? async () => ({ ok: true, who: "owner@example.com", owner: true })
+    auth: owner || member
+      ? async () => ({ ok: true, who: owner ? "owner@example.com" : "member@example.com", owner })
       : makeAuthenticator(cfg),
     settings,
     dailyBriefing,
@@ -225,6 +225,64 @@ test("lease claim, result, proposals and owner approve/deny", async () => {
       body: "{}",
     });
     assert.equal(deny.status, 200);
+  } finally {
+    await h.close();
+  }
+});
+
+test("Agent Studio page dispatches tasks through owner-only queue API", async () => {
+  const h = await harness({}, true);
+  try {
+    const page = await fetch(`${h.base}/agent?view=studio`);
+    assert.equal(page.status, 200);
+    const pageHtml = await page.text();
+    assert.match(pageHtml, /Agent Studio/);
+    assert.match(pageHtml, /studio-mission-title/);
+    assert.match(pageHtml, /class="sidebar-sub on"[^>]*>.*Studio/);
+    const scripts = [...pageHtml.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)];
+    assert.ok(scripts.length);
+    assert.doesNotThrow(() => new Function(scripts[scripts.length - 1]![1]!));
+
+    const invalid = await fetch(`${h.base}/api/agent-queue/tasks`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-ah": "1" },
+      body: JSON.stringify({ text: "  " }),
+    });
+    assert.equal(invalid.status, 400);
+
+    const created = await fetch(`${h.base}/api/agent-queue/missions`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-ah": "1" },
+      body: JSON.stringify({ title: "Prepare a launch recommendation", tasks: ["Research the options.", "Compare the trade-offs."] }),
+    });
+    assert.equal(created.status, 201);
+    const mission = await created.json() as { missionId: string; tasks: Array<{ text: string; status: string; missionId?: string; missionTitle?: string }> };
+    assert.equal(mission.tasks.length, 2);
+    assert.equal(mission.tasks[0]?.text, "Research the options.");
+    assert.equal(mission.tasks[0]?.status, "pending");
+    assert.equal(mission.tasks[0]?.missionId, mission.missionId);
+    assert.equal(mission.tasks[1]?.missionId, mission.missionId);
+    assert.equal(mission.tasks[0]?.missionTitle, "Prepare a launch recommendation");
+
+    const overview = await (await fetch(`${h.base}/api/agent-queue/overview`)).json() as {
+      tasks: Array<{ text: string }>;
+    };
+    assert.equal(overview.tasks.length, 2);
+    assert.deepEqual(overview.tasks.map((task) => task.text), ["Research the options.", "Compare the trade-offs."]);
+  } finally {
+    await h.close();
+  }
+});
+
+test("Agent Studio task dispatch requires owner access", async () => {
+  const h = await harness({}, false, true);
+  try {
+    const response = await fetch(`${h.base}/api/agent-queue/tasks`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-ah": "1" },
+      body: JSON.stringify({ text: "Do the task." }),
+    });
+    assert.equal(response.status, 403);
   } finally {
     await h.close();
   }

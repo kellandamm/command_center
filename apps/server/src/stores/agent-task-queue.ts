@@ -15,6 +15,8 @@ export interface AgentTaskResult {
 export interface AgentTask {
   id: string;
   text: string;
+  missionId?: string;
+  missionTitle?: string;
   status: AgentTaskStatus;
   createdAt: string;
   leaseUntil?: string;
@@ -24,6 +26,7 @@ export interface AgentTask {
 
 const MAX_TASKS = 500;
 const MAX_TEXT = 16_000;
+const MAX_MISSION_TASKS = 20;
 const DEFAULT_LEASE_MS = 5 * 60 * 1000;
 const DEFAULT_RETAIN_DAYS = 14;
 
@@ -62,6 +65,32 @@ export class AgentTaskQueueStore {
       this.tasks.push(task);
       this.prune();
       return structuredClone(task);
+    });
+  }
+
+  async enqueueMission(title: string, taskTexts: string[]): Promise<AgentTask[]> {
+    const missionTitle = String(title ?? "").trim();
+    const cleanTasks = taskTexts.map((text) => String(text ?? "").trim()).filter(Boolean);
+    if (!missionTitle) throw new Error("mission title is required");
+    if (!cleanTasks.length) throw new Error("at least one task is required");
+    if (cleanTasks.length > MAX_MISSION_TASKS) throw new Error(`a mission can include up to ${MAX_MISSION_TASKS} tasks`);
+    if (missionTitle.length > 200) throw new Error("mission title must be 200 characters or fewer");
+    if (cleanTasks.some((text) => text.length > MAX_TEXT)) throw new Error(`each task must be ${MAX_TEXT} characters or fewer`);
+
+    const missionId = randomUUID();
+    const createdAt = new Date().toISOString();
+    const tasks: AgentTask[] = cleanTasks.map((text) => ({
+      id: randomUUID(),
+      missionId,
+      missionTitle,
+      text,
+      status: "pending",
+      createdAt,
+    }));
+    return this.mutate(() => {
+      this.tasks.push(...tasks);
+      this.prune();
+      return structuredClone(tasks);
     });
   }
 
