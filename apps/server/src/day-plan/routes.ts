@@ -1,6 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { App } from "../http";
-import { dayKey } from "../store";
 import { OWNER_ACTION_FORBIDDEN } from "../owner-auth";
 import { ValidationError } from "../settings";
 import { isDayPlanOwner } from "./owner";
@@ -9,20 +8,17 @@ import {
   applyDayPlanEdits,
   enrichStoredPlanForRead,
   generateAndPersistDeterministicPlan,
-  parseDayPlanPutBody,
 } from "./service";
-
-const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+import {
+  DayPlanNotFoundError,
+  dayFromBodyField,
+  dayParamFromQuery,
+  parseDayPlanPutBody,
+} from "./validate";
 
 function json(res: ServerResponse, status: number, data: unknown) {
   res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
   res.end(JSON.stringify(data));
-}
-
-function parseDayParam(url: URL, tz: string): string {
-  const param = url.searchParams.get("day");
-  if (param && DAY_RE.test(param)) return param;
-  return dayKey(new Date(), tz);
 }
 
 function denyUnlessOwner(
@@ -36,6 +32,17 @@ function denyUnlessOwner(
   return true;
 }
 
+function parseGenerateBody(body: unknown, tz: string, now: Date): { day: string; weekendOverride?: boolean } {
+  const parsed = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+  const day = dayFromBodyField(parsed.day, tz, now);
+  let weekendOverride: boolean | undefined;
+  if ("weekendOverride" in parsed) {
+    if (typeof parsed.weekendOverride !== "boolean") throw new ValidationError("weekendOverride must be a boolean.");
+    weekendOverride = parsed.weekendOverride;
+  }
+  return { day, weekendOverride };
+}
+
 export async function handleDayPlanRoutes(
   app: App,
   req: IncomingMessage,
@@ -47,11 +54,11 @@ export async function handleDayPlanRoutes(
   if (!path.startsWith("/api/day-plan")) return false;
 
   const url = new URL(req.url ?? "/", "http://local");
+  const now = new Date();
 
   if (path === "/api/day-plan" && req.method === "GET") {
     if (!denyUnlessOwner(res, principal)) return true;
-    const day = parseDayParam(url, app.cfg.tz);
-    const now = new Date();
+    const day = dayParamFromQuery(url.searchParams.get("day"), app.cfg.tz, now);
     let plan = app.dayPlan.load(day);
     if (!plan) {
       plan = await generateAndPersistDeterministicPlan({
@@ -88,16 +95,13 @@ export async function handleDayPlanRoutes(
       }
       throw err;
     }
-    const parsed = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
-    const day =
-      typeof parsed.day === "string" && DAY_RE.test(parsed.day) ? parsed.day : dayKey(new Date(), app.cfg.tz);
-    const weekendOverride = parsed.weekendOverride === true;
+    const { day, weekendOverride } = parseGenerateBody(body, app.cfg.tz, now);
     const plan = await generateAndPersistDeterministicPlan({
       cfg: app.cfg,
       board: app.board,
       calendar: app.calendar,
       store: app.dayPlan,
-      now: new Date(),
+      now,
       day,
       weekendOverride,
     });
@@ -117,11 +121,7 @@ export async function handleDayPlanRoutes(
       }
       throw err;
     }
-    const edits = parseDayPlanPutBody(body);
-    if (!edits) {
-      json(res, 400, { error: "Invalid day plan payload." });
-      return true;
-    }
+    const edits = parseDayPlanPutBody(body, app.cfg.tz, now);
     if (!app.dayPlan.load(edits.day)) {
       json(res, 404, { error: "No plan for that day." });
       return true;
@@ -132,15 +132,21 @@ export async function handleDayPlanRoutes(
         board: app.board,
         calendar: app.calendar,
         store: app.dayPlan,
-        now: new Date(),
+        now,
         day: edits.day,
         workStart: edits.workStart,
         workEnd: edits.workEnd,
         weekendOverride: edits.weekendOverride,
       });
       json(res, 200, { day: edits.day, plan });
-    } catch {
-      json(res, 404, { error: "No plan for that day." });
+    } catch (err) {
+      if (err instanceof DayPlanNotFoundError) {
+        json(res, 404, { error: "No plan for that day." });
+        return true;
+      }
+      if (err instanceof ValidationError) throw err;
+      console.error("day-plan PUT failed:", err);
+      json(res, 500, { error: "Internal error." });
     }
     return true;
   }

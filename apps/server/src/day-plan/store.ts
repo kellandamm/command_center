@@ -43,14 +43,15 @@ export class DayPlanStore {
       this.db.prepare(`DELETE FROM plan_days WHERE day = ?`).run(snapshot.day);
       this.db
         .prepare(
-          `INSERT INTO plan_days (day, timezone, work_start, work_end, generated_at, generated_by, theme, capacity_json, sources_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO plan_days (day, timezone, work_start, work_end, weekend_override, generated_at, generated_by, theme, capacity_json, sources_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           snapshot.day,
           snapshot.timezone,
           snapshot.workStart,
           snapshot.workEnd,
+          snapshot.weekendOverride ? 1 : 0,
           snapshot.generatedAt,
           snapshot.generatedBy,
           snapshot.theme,
@@ -117,6 +118,7 @@ export class DayPlanStore {
       timezone: String(row.timezone),
       workStart: String(row.work_start),
       workEnd: String(row.work_end),
+      weekendOverride: Boolean(row.weekend_override),
       generatedAt: String(row.generated_at),
       generatedBy: String(row.generated_by) as DayPlanSnapshot["generatedBy"],
       theme: row.theme == null ? null : String(row.theme),

@@ -7,14 +7,18 @@ import { buildDeterministicPlan, computeRolledAtRead, rollBoostForToday } from "
 import { rankTasks } from "./score";
 import { DayPlanStore } from "./store";
 import type { DayPlanSnapshot, DayPlanTaskRef } from "./types";
-
-const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
-const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+import { DayPlanNotFoundError, assertValidWorkWindow, resolvePlanPrefs } from "./validate";
 
 function previousDayKey(day: string): string {
   const d = new Date(`${day}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() - 1);
   return d.toISOString().slice(0, 10);
+}
+
+function storedPrefs(existing: DayPlanSnapshot | null) {
+  return existing
+    ? { workStart: existing.workStart, workEnd: existing.workEnd, weekendOverride: existing.weekendOverride }
+    : null;
 }
 
 export async function generateAndPersistDeterministicPlan(opts: {
@@ -24,9 +28,18 @@ export async function generateAndPersistDeterministicPlan(opts: {
   store: DayPlanStore;
   now: Date;
   day?: string;
+  workStart?: string;
+  workEnd?: string;
   weekendOverride?: boolean;
 }): Promise<DayPlanSnapshot> {
   const day = opts.day ?? dayKey(opts.now, opts.cfg.tz);
+  const existing = opts.store.load(day);
+  const prefs = resolvePlanPrefs(storedPrefs(existing), {
+    workStart: opts.workStart,
+    workEnd: opts.workEnd,
+    weekendOverride: opts.weekendOverride,
+  });
+  assertValidWorkWindow(prefs.workStart, prefs.workEnd, day, opts.cfg.tz);
   const context = await gatherDayPlanContext({
     cfg: opts.cfg,
     board: opts.board,
@@ -43,7 +56,9 @@ export async function generateAndPersistDeterministicPlan(opts: {
     context,
     rollBoost,
     now: opts.now,
-    weekendOverride: opts.weekendOverride,
+    workStart: prefs.workStart,
+    workEnd: prefs.workEnd,
+    weekendOverride: prefs.weekendOverride,
   });
   plan.rolledToTomorrow = computeRolledAtRead(plan.mustDos, context.tasks);
   opts.store.save(plan);
@@ -72,20 +87,6 @@ export function enrichStoredPlanForRead(
   };
 }
 
-export function parseDayPlanPutBody(
-  body: unknown,
-): { day: string; workStart?: string; workEnd?: string; weekendOverride?: boolean } | null {
-  if (typeof body !== "object" || body === null) return null;
-  const o = body as Record<string, unknown>;
-  if (typeof o.day !== "string" || !DAY_RE.test(o.day)) return null;
-  const out: { day: string; workStart?: string; workEnd?: string; weekendOverride?: boolean } = { day: o.day };
-  if (typeof o.workStart === "string" && TIME.test(o.workStart)) out.workStart = o.workStart;
-  if (typeof o.workEnd === "string" && TIME.test(o.workEnd)) out.workEnd = o.workEnd;
-  if (o.weekendOverride === true) out.weekendOverride = true;
-  if (o.weekendOverride === false) out.weekendOverride = false;
-  return out;
-}
-
 export async function applyDayPlanEdits(opts: {
   cfg: Config;
   board: BoardStore;
@@ -98,7 +99,13 @@ export async function applyDayPlanEdits(opts: {
   weekendOverride?: boolean;
 }): Promise<DayPlanSnapshot> {
   const existing = opts.store.load(opts.day);
-  if (!existing) throw new Error("missing plan");
+  if (!existing) throw new DayPlanNotFoundError();
+  const prefs = resolvePlanPrefs(storedPrefs(existing), {
+    workStart: opts.workStart,
+    workEnd: opts.workEnd,
+    weekendOverride: opts.weekendOverride,
+  });
+  assertValidWorkWindow(prefs.workStart, prefs.workEnd, opts.day, opts.cfg.tz);
   const context = await gatherDayPlanContext({
     cfg: opts.cfg,
     board: opts.board,
@@ -111,9 +118,9 @@ export async function applyDayPlanEdits(opts: {
     context,
     rollBoost,
     now: opts.now,
-    workStart: opts.workStart ?? existing.workStart,
-    workEnd: opts.workEnd ?? existing.workEnd,
-    weekendOverride: opts.weekendOverride ?? false,
+    workStart: prefs.workStart,
+    workEnd: prefs.workEnd,
+    weekendOverride: prefs.weekendOverride,
   });
   plan.rolledToTomorrow = computeRolledAtRead(plan.mustDos, context.tasks);
   opts.store.save(plan);
