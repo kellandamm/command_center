@@ -99,12 +99,16 @@ export function capacityFromOccurrences(opts: {
   const blockedTaskMinutes = mergeIntervalMinutes(blockClips);
   const occupiedMinutes = mergeIntervalMinutes(allClips);
   const planned = occupiedMinutes + opts.unscheduledEstimateMinutes;
+  const zeroHourNoOverride = availableMinutes === 0 && !opts.weekendOverride;
+  const overByMinutes = zeroHourNoOverride
+    ? opts.unscheduledEstimateMinutes
+    : Math.max(0, planned - availableMinutes);
   return {
     availableMinutes,
     meetingMinutes,
     blockedTaskMinutes,
     unscheduledTaskMinutes: opts.unscheduledEstimateMinutes,
-    overByMinutes: Math.max(0, planned - availableMinutes),
+    overByMinutes,
   };
 }
 

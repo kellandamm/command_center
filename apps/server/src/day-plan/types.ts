@@ -49,6 +49,8 @@ export interface DayPlanSnapshot {
   timezone: string;
   workStart: string;
   workEnd: string;
+  /** When true, weekend days use the configured work window instead of 0h capacity. */
+  weekendOverride: boolean;
   generatedAt: string;
   generatedBy: "deterministic" | "llm";
   theme: string | null;

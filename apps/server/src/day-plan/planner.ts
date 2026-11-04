@@ -91,6 +91,7 @@ export function buildDeterministicPlan(opts: {
     timezone: tz,
     workStart,
     workEnd,
+    weekendOverride,
     generatedAt: (opts.now ?? new Date()).toISOString(),
     generatedBy: "deterministic",
     theme: null,

@@ -23,6 +23,7 @@ import { XBookmarksService } from "./read-later/x-bookmarks-service";
 import { FileKV, ensureDirs } from "./store";
 import { ConnectionsStore } from "./connections";
 import { CalendarWorkspace } from "./calendar/workspace";
+import { DayPlanStore } from "./day-plan/store";
 import { AttentionStore } from "./attention/store";
 import { LaunchpadStore } from "./launchpad/store";
 import { FocusSessionsStore } from "./focus/store";
@@ -71,6 +72,7 @@ async function main() {
   const voiceCaptures = await VoiceCaptureStore.open(cfg.dataDir);
   const agentsUsage = await AgentsUsageStore.open(cfg.dataDir);
   const budget = budgetAvailable(cfg) ? BudgetStore.open(cfg.dataDir) : undefined;
+  const dayPlan = DayPlanStore.open(cfg.dataDir);
 
   const ntfySent = await NtfySentSet.open(cfg.dataDir);
   const scheduler = new Scheduler({
@@ -114,6 +116,7 @@ async function main() {
     voiceCaptures,
     agentsUsage,
     budget,
+    dayPlan,
   });
   server.listen(cfg.port, cfg.host, () => {
     console.log(`command-center ${cfg.version} listening on ${cfg.host}:${cfg.port} (tz ${cfg.tz})`);
@@ -125,6 +128,7 @@ async function main() {
     scheduler.stop();
     await getMeetingSummaryQueue().shutdown();
     budget?.close();
+    dayPlan.close();
     board.close();
     wins.close();
     server.close();
