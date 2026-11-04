@@ -19,11 +19,26 @@ import { planTestMonday, PLAN_TEST_TZ } from "./day-plan-relative-days";
 import { dayKey } from "../src/store";
 import { DatabaseSync } from "node:sqlite";
 import { DAY_PLAN_DB } from "../src/day-plan/db";
-import { clearMustDoInflightForTests, setBoardMoveDelayMsForTests } from "../src/day-plan/test-support";
+import { inflight } from "../src/day-plan/must-do-inflight";
 import { WAITING } from "../src/board/types";
 
 const TOKEN = "t".repeat(32);
 const SECRET_TITLE = "SECRET_MUST_DO_TITLE_XYZ";
+
+function clearMustDoInflightForTests(): void {
+  inflight.clear();
+}
+
+function delayBoardMove(board: BoardStore, ms: number): () => void {
+  const orig = board.move.bind(board);
+  board.move = async (...args: Parameters<BoardStore["move"]>) => {
+    await new Promise((r) => setTimeout(r, ms));
+    return orig(...args);
+  };
+  return () => {
+    board.move = orig;
+  };
+}
 
 async function ownerHarness(boardSeed?: (board: BoardStore) => void | Promise<void>) {
   const keys = await createTestCfAccessJwt();
@@ -232,9 +247,10 @@ test("day-plan must-do: parallel complete while in-flight returns 409", async ()
   const h = await ownerHarness((board) => {
     cardId = board.create({ title: "Slow", dueDate: MON, estimatedMinutes: 10 }).id;
   });
+  let restoreMove = () => {};
   try {
     clearMustDoInflightForTests();
-    setBoardMoveDelayMsForTests(120);
+    restoreMove = delayBoardMove(h.integration.board, 120);
     await h.call("GET", `/api/day-plan?day=${MON}`, h.owner);
     const slot = (
       (await (await h.call("GET", `/api/day-plan?day=${MON}`, h.owner)).json()) as {
@@ -249,6 +265,7 @@ test("day-plan must-do: parallel complete while in-flight returns 409", async ()
     assert.deepEqual(statuses, [200, 409]);
   } finally {
     clearMustDoInflightForTests();
+    restoreMove();
     await h.close();
   }
 });
@@ -259,9 +276,10 @@ test("day-plan must-do: slot ref change during remote refuses local completion",
   const h = await ownerHarness((board) => {
     cardId = board.create({ title: "Swap", dueDate: MON, estimatedMinutes: 10 }).id;
   });
+  let restoreMove = () => {};
   try {
     clearMustDoInflightForTests();
-    setBoardMoveDelayMsForTests(150);
+    restoreMove = delayBoardMove(h.integration.board, 150);
     await h.call("GET", `/api/day-plan?day=${MON}`, h.owner);
     const slot = (
       (await (await h.call("GET", `/api/day-plan?day=${MON}`, h.owner)).json()) as {
@@ -274,13 +292,94 @@ test("day-plan must-do: slot ref change during remote refuses local completion",
     db.prepare("UPDATE plan_must_dos SET ref_id = ? WHERE day = ? AND slot = ?").run("stale-ref", MON, slot);
     db.close();
     const res = await completeReq;
-    const body = (await res.json()) as { error: string; mustDoSyncConflict?: boolean };
+    const body = (await res.json()) as {
+      error: string;
+      mustDoSyncConflict?: boolean;
+      remoteTask?: { source: string; refId: string };
+    };
     assert.equal(res.status, 409);
     assert.equal(body.mustDoSyncConflict, true);
+    assert.equal(body.remoteTask?.source, "board");
+    assert.equal(body.remoteTask?.refId, cardId);
     assert.equal(h.integration.dayPlan.load(MON)?.mustDos.find((m) => m.slot === slot)?.completedAt, null);
     assert.equal(h.integration.board.get(cardId)?.column, DONE);
   } finally {
     clearMustDoInflightForTests();
+    restoreMove();
+    await h.close();
+  }
+});
+
+test("day-plan must-do: reopen during in-flight complete on same slot returns 409", async () => {
+  const MON = planTestMonday();
+  let cardId = "";
+  const h = await ownerHarness((board) => {
+    cardId = board.create({ title: "Block reopen", dueDate: MON, estimatedMinutes: 10 }).id;
+  });
+  let restoreMove = () => {};
+  try {
+    clearMustDoInflightForTests();
+    restoreMove = delayBoardMove(h.integration.board, 120);
+    await h.call("GET", `/api/day-plan?day=${MON}`, h.owner);
+    const slot = (
+      (await (await h.call("GET", `/api/day-plan?day=${MON}`, h.owner)).json()) as {
+        plan: { mustDos: Array<{ slot: number; refId: string }> };
+      }
+    ).plan.mustDos.find((m) => m.refId === cardId)!.slot;
+    const completeReq = h.call("POST", "/api/day-plan/must-do/complete", h.ui, { day: MON, slot });
+    await new Promise((r) => setTimeout(r, 20));
+    const reopenRes = await h.call("POST", "/api/day-plan/must-do/reopen", h.ui, { day: MON, slot });
+    assert.equal(reopenRes.status, 409);
+    await completeReq;
+  } finally {
+    clearMustDoInflightForTests();
+    restoreMove();
+    await h.close();
+  }
+});
+
+test("day-plan must-do: conflict reopen uses remoteTask ref not current slot task", async () => {
+  const MON = planTestMonday();
+  let cardA = "";
+  let cardB = "";
+  const h = await ownerHarness((board) => {
+    cardA = board.create({ title: "Original", dueDate: MON, estimatedMinutes: 10 }).id;
+    cardB = board.create({ title: "Replacement", dueDate: MON, estimatedMinutes: 10 }).id;
+  });
+  let restoreMove = () => {};
+  try {
+    clearMustDoInflightForTests();
+    restoreMove = delayBoardMove(h.integration.board, 150);
+    await h.call("GET", `/api/day-plan?day=${MON}`, h.owner);
+    const slot = (
+      (await (await h.call("GET", `/api/day-plan?day=${MON}`, h.owner)).json()) as {
+        plan: { mustDos: Array<{ slot: number; refId: string }> };
+      }
+    ).plan.mustDos.find((m) => m.refId === cardA)!.slot;
+    const completeReq = h.call("POST", "/api/day-plan/must-do/complete", h.ui, { day: MON, slot });
+    await new Promise((r) => setTimeout(r, 30));
+    const db = new DatabaseSync(join(h.dir, DAY_PLAN_DB));
+    db.prepare("UPDATE plan_must_dos SET ref_id = ? WHERE day = ? AND slot = ?").run(cardB, MON, slot);
+    db.close();
+    const conflictRes = await completeReq;
+    const body = (await conflictRes.json()) as {
+      remoteTask: { source: string; refId: string; boardReopenColumn?: string | null };
+    };
+    assert.equal(conflictRes.status, 409);
+    assert.equal(body.remoteTask.refId, cardA);
+    assert.equal(h.integration.board.get(cardA)?.column, DONE);
+    assert.equal(h.integration.board.get(cardB)?.column, "Backlog");
+    const reopenRes = await h.call("POST", "/api/day-plan/must-do/reopen", h.ui, {
+      day: MON,
+      slot,
+      remoteTask: body.remoteTask,
+    });
+    assert.equal(reopenRes.status, 200);
+    assert.notEqual(h.integration.board.get(cardA)?.column, DONE);
+    assert.equal(h.integration.board.get(cardB)?.column, "Backlog");
+  } finally {
+    clearMustDoInflightForTests();
+    restoreMove();
     await h.close();
   }
 });

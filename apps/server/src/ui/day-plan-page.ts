@@ -87,25 +87,38 @@ export function dayPlanPage(nav?: NavLink[], opts?: { owner: boolean }): string 
 
 function dayPlanScript(): string {
   return `
-var dpState={day:"",plan:null,undo:null,toastTimer:null,busy:false,syncConflictSlot:null};
+var dpState={day:"",plan:null,undo:null,toastTimer:null,busy:false,syncConflictSlot:null,syncConflictRemote:null,syncConflictMessage:""};
 function dpApi(path,method,body){
   return fetch(path,{method:method||"GET",headers:{"x-ah":"1","x-day-plan-ui":"1","content-type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)})
     .then(function(r){return r.json().catch(function(){return{}}).then(function(j){
       if(!r.ok){
         var err=new Error(j.error||("HTTP "+r.status));
         if(j.mustDoSyncConflict)err.mustDoSyncConflict=true;
+        if(j.remoteTask)err.remoteTask=j.remoteTask;
         throw err;
       }
       return j;
     });});
 }
-function showBanner(text){var el=document.getElementById("dp-banner");el.textContent=text;el.hidden=!text;hideSyncConflict();}
-function hideSyncConflict(){var box=document.getElementById("dp-sync-conflict");box.hidden=true;dpState.syncConflictSlot=null;}
-function showSyncConflict(message,slot){
+function showBanner(text){var el=document.getElementById("dp-banner");el.textContent=text;el.hidden=!text;}
+function hideSyncConflict(){
+  var box=document.getElementById("dp-sync-conflict");
+  box.hidden=true;
+  dpState.syncConflictSlot=null;
+  dpState.syncConflictRemote=null;
+  dpState.syncConflictMessage="";
+}
+function showSyncConflict(message,slot,remoteTask){
   hideToast();
   dpState.syncConflictSlot=slot;
-  document.getElementById("dp-sync-conflict-text").textContent=message;
+  dpState.syncConflictMessage=message||"";
+  dpState.syncConflictRemote=remoteTask||null;
+  document.getElementById("dp-sync-conflict-text").textContent=dpState.syncConflictMessage;
   document.getElementById("dp-sync-conflict").hidden=false;
+}
+function restoreSyncConflictIfNeeded(){
+  if(dpState.syncConflictSlot==null)return;
+  showSyncConflict(dpState.syncConflictMessage,dpState.syncConflictSlot,dpState.syncConflictRemote);
 }
 function hideToast(){var t=document.getElementById("dp-toast");t.hidden=true;if(dpState.toastTimer){clearTimeout(dpState.toastTimer);dpState.toastTimer=null;}}
 function showToast(text,undo){
@@ -170,6 +183,7 @@ function applyPlan(payload){
   renderCapacity(payload.plan);
   renderTimeline(payload.plan);
   renderMustDos(payload.plan);
+  restoreSyncConflictIfNeeded();
 }
 function loadPlan(day){
   showBanner("");
@@ -180,11 +194,13 @@ function completeMustDo(slot){
   dpState.busy=true;
   showBanner("");
   dpApi("/api/day-plan/must-do/complete","POST",{day:dpState.day,slot:slot}).then(function(r){
+    hideSyncConflict();
     applyPlan(r);
     showToast("Must-do completed.",{slot:slot});
   }).catch(function(err){
-    if(err.mustDoSyncConflict){showSyncConflict(err.message||"Task may already be completed in Todoist or Board.",slot);}
-    else showBanner(err.message||"Could not complete must-do.");
+    if(err.mustDoSyncConflict){
+      showSyncConflict(err.message||"Task may already be completed in Todoist or Board.",slot,err.remoteTask);
+    }else showBanner(err.message||"Could not complete must-do.");
     loadPlan(dpState.day);
   }).finally(function(){dpState.busy=false;});
 }
@@ -193,14 +209,27 @@ function reopenMustDo(slot){
   dpState.busy=true;
   showBanner("");
   dpApi("/api/day-plan/must-do/reopen","POST",{day:dpState.day,slot:slot}).then(function(r){
+    hideSyncConflict();
     applyPlan(r);
     showToast("Must-do reopened.");
   }).catch(function(err){showBanner(err.message||"Could not undo completion.");})
   .finally(function(){dpState.busy=false;});
 }
+function reopenSyncConflictRemote(){
+  if(dpState.busy||dpState.syncConflictSlot==null||!dpState.syncConflictRemote)return;
+  dpState.busy=true;
+  showBanner("");
+  var slot=dpState.syncConflictSlot;
+  var remoteTask=dpState.syncConflictRemote;
+  dpApi("/api/day-plan/must-do/reopen","POST",{day:dpState.day,slot:slot,remoteTask:remoteTask}).then(function(r){
+    hideSyncConflict();
+    applyPlan(r);
+    showToast("Linked task reopened.");
+  }).catch(function(err){showBanner(err.message||"Could not reopen linked task.");})
+  .finally(function(){dpState.busy=false;});
+}
 document.getElementById("dp-sync-conflict-reopen").onclick=function(){
-  if(dpState.syncConflictSlot==null)return;
-  reopenMustDo(dpState.syncConflictSlot);
+  reopenSyncConflictRemote();
 };
 document.getElementById("dp-toast-undo").onclick=function(){
   if(!dpState.undo)return;

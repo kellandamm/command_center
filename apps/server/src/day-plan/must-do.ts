@@ -9,7 +9,7 @@ import { completeTask, reopenTask } from "../todoist/client";
 import type { FetchLike } from "../llm/provider";
 import { enrichStoredPlanForRead } from "./service";
 import { gatherDayPlanContext } from "./gather";
-import { inflight, testHooks } from "./must-do-limits";
+import { inflight } from "./must-do-inflight";
 import type { DayPlanStore } from "./store";
 import type { DayPlanSnapshot, TaskSource } from "./types";
 import { DayPlanNotFoundError } from "./validate";
@@ -29,14 +29,22 @@ export class MustDoRemoteError extends Error {
   }
 }
 
+export interface MustDoConflictRemoteTask {
+  source: TaskSource;
+  refId: string;
+  boardReopenColumn?: string | null;
+}
+
 /** Plan row changed during remote sync; remote may already reflect completion. */
 export class MustDoSlotChangedError extends MustDoRemoteError {
   readonly mustDoSyncConflict = true;
-  constructor() {
+  readonly remoteTask: MustDoConflictRemoteTask;
+  constructor(remoteTask: MustDoConflictRemoteTask) {
     super(
       "This must-do changed while syncing. The task may already be completed in Todoist or Board. Reopen it here if needed.",
       409,
     );
+    this.remoteTask = remoteTask;
   }
 }
 
@@ -49,15 +57,6 @@ export class MustDoInFlightError extends Error {
 
 function inflightKey(day: string, slot: number): string {
   return `${day}:${slot}`;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-function boardMoveDelayMs(): number | null {
-  if (process.env.ALLOW_DAY_PLAN_TEST_HOOKS !== "1") return null;
-  return testHooks.boardMoveDelayMs;
 }
 
 function boardColumnOrBacklog(value: string | null | undefined): BoardColumn {
@@ -75,8 +74,6 @@ async function completeRemote(opts: {
   fetchFn?: FetchLike;
 }): Promise<void> {
   if (opts.source === "board") {
-    const delay = boardMoveDelayMs();
-    if (delay) await sleep(delay);
     const card = opts.board.get(opts.refId);
     if (!card) throw new MustDoRemoteError("Linked board card is unavailable.", 409);
     if (card.column === DONE) return;
@@ -131,11 +128,11 @@ function assertSlotStillMatches(
   store: DayPlanStore,
   day: string,
   slot: number,
-  expected: { source: TaskSource; refId: string },
+  expected: MustDoConflictRemoteTask,
 ): void {
   const must = store.load(day)?.mustDos.find((m) => m.slot === slot);
   if (!must || must.source !== expected.source || must.refId !== expected.refId) {
-    throw new MustDoSlotChangedError();
+    throw new MustDoSlotChangedError(expected);
   }
 }
 
@@ -164,11 +161,10 @@ export async function completeMustDoOnOwnerClick(opts: {
       return enrichAfterPatch(opts, plan);
     }
 
-    const expected = { source: must.source, refId: must.refId };
-    let boardReopenColumn: string | null = null;
+    const expected: MustDoConflictRemoteTask = { source: must.source, refId: must.refId };
     if (must.source === "board") {
       const card = opts.board.get(must.refId);
-      if (card && card.column !== DONE) boardReopenColumn = card.column;
+      if (card && card.column !== DONE) expected.boardReopenColumn = card.column;
     }
 
     await completeRemote({
@@ -186,7 +182,7 @@ export async function completeMustDoOnOwnerClick(opts: {
     const completedAt = opts.now.toISOString();
     const patched = opts.store.patchMustDoCompletion(opts.day, opts.slot, {
       completedAt,
-      boardReopenColumn: must.source === "board" ? boardReopenColumn : undefined,
+      boardReopenColumn: must.source === "board" ? (expected.boardReopenColumn ?? null) : undefined,
     });
     if (!patched) throw new DayPlanNotFoundError();
     return enrichAfterPatch(opts, patched);
@@ -205,6 +201,7 @@ export async function reopenMustDoOnOwnerClick(opts: {
   now: Date;
   day: string;
   slot: number;
+  remoteTask?: MustDoConflictRemoteTask;
   fetchFn?: FetchLike;
 }): Promise<DayPlanSnapshot> {
   const key = inflightKey(opts.day, opts.slot);
@@ -216,11 +213,25 @@ export async function reopenMustDoOnOwnerClick(opts: {
     const must = plan.mustDos.find((m) => m.slot === opts.slot);
     if (!must) throw new ValidationError("Invalid must-do slot.");
 
+    if (opts.remoteTask) {
+      await reopenRemote({
+        cfg: opts.cfg,
+        board: opts.board,
+        hobieQueue: opts.hobieQueue,
+        wins: opts.wins,
+        source: opts.remoteTask.source,
+        refId: opts.remoteTask.refId,
+        boardReopenColumn: opts.remoteTask.boardReopenColumn,
+        fetchFn: opts.fetchFn,
+      });
+      return enrichAfterPatch(opts, plan);
+    }
+
     if (!must.completedAt) {
       return enrichAfterPatch(opts, plan);
     }
 
-    const expected = { source: must.source, refId: must.refId };
+    const expected: MustDoConflictRemoteTask = { source: must.source, refId: must.refId };
     const boardReopenColumn = must.boardReopenColumn;
 
     await reopenRemote({

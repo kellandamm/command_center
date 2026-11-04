@@ -14,7 +14,8 @@ import {
   dayFromBodyField,
   dayParamFromQuery,
   parseDayPlanPutBody,
-  parseMustDoSlotBody,
+  parseMustDoActionBody,
+  type MustDoRemoteTaskBody,
 } from "./validate";
 import {
   DAY_PLAN_UI_HEADER,
@@ -66,7 +67,7 @@ async function readMustDoBody(
   readBody: (req: IncomingMessage, limit?: number) => Promise<unknown>,
   tz: string,
   now: Date,
-): Promise<{ day: string; slot: number }> {
+): Promise<{ day: string; slot: number; remoteTask?: MustDoRemoteTaskBody }> {
   let body: unknown = {};
   try {
     body = await readBody(req, 8 * 1024);
@@ -76,7 +77,7 @@ async function readMustDoBody(
     }
     throw err;
   }
-  return parseMustDoSlotBody(body, tz, now);
+  return parseMustDoActionBody(body, tz, now);
 }
 
 export async function handleDayPlanRoutes(
@@ -215,7 +216,11 @@ export async function handleDayPlanRoutes(
       }
       if (err instanceof ValidationError) throw err;
       if (err instanceof MustDoSlotChangedError) {
-        json(res, err.status, { error: err.message, mustDoSyncConflict: true });
+        json(res, err.status, {
+          error: err.message,
+          mustDoSyncConflict: true,
+          remoteTask: err.remoteTask,
+        });
         return true;
       }
       if (err instanceof MustDoRemoteError) {
@@ -236,7 +241,7 @@ export async function handleDayPlanRoutes(
     if (!denyUnlessOwner(res, principal)) return true;
     if (!denyUnlessOwnerUiClick(req, res)) return true;
     try {
-      const { day, slot } = await readMustDoBody(req, readBody, app.cfg.tz, now);
+      const { day, slot, remoteTask } = await readMustDoBody(req, readBody, app.cfg.tz, now);
       const plan = await reopenMustDoOnOwnerClick({
         cfg: app.cfg,
         board: app.board,
@@ -247,6 +252,7 @@ export async function handleDayPlanRoutes(
         now,
         day,
         slot,
+        remoteTask,
       });
       json(res, 200, { day, plan });
     } catch (err) {
@@ -260,7 +266,11 @@ export async function handleDayPlanRoutes(
       }
       if (err instanceof ValidationError) throw err;
       if (err instanceof MustDoSlotChangedError) {
-        json(res, err.status, { error: err.message, mustDoSyncConflict: true });
+        json(res, err.status, {
+          error: err.message,
+          mustDoSyncConflict: true,
+          remoteTask: err.remoteTask,
+        });
         return true;
       }
       if (err instanceof MustDoRemoteError) {

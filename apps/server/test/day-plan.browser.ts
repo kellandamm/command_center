@@ -52,6 +52,50 @@ async function openDayPlanBrowser(dataDir: string) {
   return { base, ownerJwt, close, today };
 }
 
+test("day-plan page: sync conflict banner stays visible after plan reload", { timeout: 120_000 }, async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "cc-day-plan-conflict-"));
+  const app = await openDayPlanBrowser(dataDir);
+  const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
+  try {
+    const context = await browser.newContext();
+    await context.addCookies([
+      { name: "CF_Authorization", value: app.ownerJwt, domain: "127.0.0.1", path: "/" },
+    ]);
+    const page = await context.newPage();
+    let planLoads = 0;
+    await page.route("**/api/day-plan/must-do/complete", async (route) => {
+      await route.fulfill({
+        status: 409,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "Sync conflict for test.",
+          mustDoSyncConflict: true,
+          remoteTask: { source: "board", refId: "card-test" },
+        }),
+      });
+    });
+    await page.route("**/api/day-plan?day=*", async (route) => {
+      planLoads += 1;
+      await route.continue();
+    });
+    await page.goto(`${app.base}/day-plan`);
+    await page.waitForSelector("#dp-timeline");
+    await page.waitForFunction(() => {
+      const box = document.querySelector("#dp-must-dos input[type=checkbox]:not(:disabled)");
+      return !!box;
+    }, { timeout: 45_000 });
+    const box = page.locator("#dp-must-dos input[type=checkbox]:not(:disabled)").first();
+    await box.check();
+    await page.waitForSelector("#dp-sync-conflict:not([hidden])");
+    await page.waitForFunction(() => planLoads >= 1, { timeout: 45_000 });
+    assert.equal(await page.locator("#dp-sync-conflict:not([hidden])").count(), 1);
+  } finally {
+    await browser.close();
+    await app.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("day-plan page: loads plan and completes must-do with undo", { timeout: 120_000 }, async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "cc-day-plan-browser-"));
   const app = await openDayPlanBrowser(dataDir);

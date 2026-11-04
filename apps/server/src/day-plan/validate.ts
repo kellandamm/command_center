@@ -66,13 +66,41 @@ export function assertValidWorkWindow(workStart: string, workEnd: string, day: s
 }
 
 export function parseMustDoSlotBody(body: unknown, tz: string, now: Date): { day: string; slot: number } {
+  return parseMustDoActionBody(body, tz, now);
+}
+
+export interface MustDoRemoteTaskBody {
+  source: "board" | "todoist";
+  refId: string;
+  boardReopenColumn?: string | null;
+}
+
+export function parseMustDoActionBody(
+  body: unknown,
+  tz: string,
+  now: Date,
+): { day: string; slot: number; remoteTask?: MustDoRemoteTaskBody } {
   if (typeof body !== "object" || body === null) throw new ValidationError("Invalid must-do payload.");
   const o = body as Record<string, unknown>;
   const day = dayFromBodyField(o.day, tz, now);
   if (typeof o.slot !== "number" || !Number.isInteger(o.slot) || o.slot < 0 || o.slot > 2) {
     throw new ValidationError("Invalid must-do slot.");
   }
-  return { day, slot: o.slot };
+  let remoteTask: MustDoRemoteTaskBody | undefined;
+  if ("remoteTask" in o && o.remoteTask !== undefined) {
+    if (typeof o.remoteTask !== "object" || o.remoteTask === null) throw new ValidationError("Invalid remote task.");
+    const rt = o.remoteTask as Record<string, unknown>;
+    if (rt.source !== "board" && rt.source !== "todoist") throw new ValidationError("Invalid remote task.");
+    if (typeof rt.refId !== "string" || !rt.refId.trim()) throw new ValidationError("Invalid remote task.");
+    remoteTask = { source: rt.source, refId: rt.refId.trim() };
+    if ("boardReopenColumn" in rt) {
+      if (rt.boardReopenColumn !== null && typeof rt.boardReopenColumn !== "string") {
+        throw new ValidationError("Invalid remote task.");
+      }
+      remoteTask.boardReopenColumn = rt.boardReopenColumn as string | null;
+    }
+  }
+  return { day, slot: o.slot, remoteTask };
 }
 
 export interface DayPlanPutPatch {
