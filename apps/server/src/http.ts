@@ -95,6 +95,8 @@ import { handleWhiteboardRoutes } from "./whiteboard/routes";
 import { excalidrawAssetContentType, readExcalidrawAsset } from "./whiteboard/assets";
 import { whiteboardPage } from "./ui/whiteboard-page";
 import { whiteboardEditorScript } from "./ui/whiteboard-editor-asset";
+import { handleDayPlanRoutes } from "./day-plan/routes";
+import type { DayPlanStore } from "./day-plan/store";
 import { readBody, readRawBody } from "./request-body";
 import { notify, ntfyStatus, resolveNtfyConfig } from "./notify/ntfy";
 
@@ -127,6 +129,7 @@ export interface App {
   voiceCaptures: VoiceCaptureStore;
   agentsUsage: AgentsUsageStore;
   budget?: BudgetStore;
+  dayPlan: DayPlanStore;
 }
 
 const SECURITY: Record<string, string> = {
@@ -655,6 +658,23 @@ export function createApp(app: App): Server {
         email: who.email,
         serviceToken: who.serviceToken,
       }, readBody)) return;
+      if (
+        await handleDayPlanRoutes(
+          app,
+          req,
+          res,
+          path,
+          {
+            owner: who.owner === true,
+            who: who.who,
+            email: who.email,
+            serviceToken: who.serviceToken,
+          },
+          readBody,
+        )
+      ) {
+        return;
+      }
       if (handleAgentsUsageGetRoutes(app.agentsUsage, req, res, path, who.owner === true)) return;
 
       if (path.startsWith("/api/board") || path.startsWith("/api/wins")) {

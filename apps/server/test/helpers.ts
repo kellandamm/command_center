@@ -20,10 +20,11 @@ import { XBookmarksService } from "../src/read-later/x-bookmarks-service";
 import { ShareLinksStore } from "../src/share-links/store";
 import { VoiceCaptureStore } from "../src/voice-capture/store";
 import { AgentsUsageStore } from "../src/agents-usage/store";
+import { DayPlanStore } from "../src/day-plan/store";
 
 export async function closeIntegrationServer(
   server: Server,
-  integration: { board: BoardStore; wins: WinsStore; xBookmarksService: XBookmarksService },
+  integration: { board: BoardStore; wins: WinsStore; xBookmarksService: XBookmarksService; dayPlan: DayPlanStore },
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     server.close((err) => err ? reject(err) : resolve());
@@ -31,6 +32,7 @@ export async function closeIntegrationServer(
   await integration.xBookmarksService.drain();
   integration.board.close();
   integration.wins.close();
+  integration.dayPlan.close();
 }
 
 export async function openIntegrationStores(dataDir: string, cfg?: Config) {
@@ -66,5 +68,6 @@ export async function openIntegrationStores(dataDir: string, cfg?: Config) {
     whiteboard: await WhiteboardStore.open(dataDir),
     voiceCaptures: await VoiceCaptureStore.open(dataDir),
     agentsUsage: await AgentsUsageStore.open(dataDir),
+    dayPlan: DayPlanStore.open(dataDir),
   };
 }

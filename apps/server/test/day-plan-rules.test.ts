@@ -342,22 +342,68 @@ test("weekend empty plan: no over-capacity and no break", () => {
   assert.ok(!plan.items.some((i) => i.kind === "break"));
 });
 
-test("weekend 0h available: keeps meetings, no break, over-capacity when tasks exist", () => {
+test("weekend 0h: event only counts zero over-capacity", () => {
   const day = "2026-11-07";
   const tz = "America/Chicago";
   const win = workWindowBoundsMs(day, tz, "09:00", "17:00")!;
+  const cap = capacityFromOccurrences({
+    day,
+    tz,
+    workStart: "09:00",
+    workEnd: "17:00",
+    weekendOverride: false,
+    occurrences: [{ startMs: win.startMs + 60_000, endMs: win.startMs + 61 * 60_000, isBlock: false }],
+    unscheduledEstimateMinutes: 0,
+  });
+  assert.equal(cap.availableMinutes, 0);
+  assert.equal(cap.meetingMinutes, 60);
+  assert.equal(cap.overByMinutes, 0);
+});
+
+test("weekend 0h: event plus 30-min task over-capacity is tasks only", () => {
+  const day = "2026-11-07";
+  const tz = "America/Chicago";
+  const win = workWindowBoundsMs(day, tz, "09:00", "17:00")!;
+  const cap = capacityFromOccurrences({
+    day,
+    tz,
+    workStart: "09:00",
+    workEnd: "17:00",
+    weekendOverride: false,
+    occurrences: [{ startMs: win.startMs + 60_000, endMs: win.startMs + 61 * 60_000, isBlock: false }],
+    unscheduledEstimateMinutes: 30,
+  });
+  assert.equal(cap.meetingMinutes, 60);
+  assert.equal(cap.overByMinutes, 30);
   const plan = buildDeterministicPlan({
     context: {
       day,
       tz,
       occurrences: [{ startMs: win.startMs + 60_000, endMs: win.startMs + 61 * 60_000, isBlock: false }],
-      tasks: [{ source: "board", id: "t1", title: "Sat task", priority: 1, dueDay: day, estimateMinutes: 60, scheduled: false }],
+      tasks: [{ source: "board", id: "t1", title: "Sat task", priority: 1, dueDay: day, estimateMinutes: 30, scheduled: false }],
       allDayLabels: [],
       sources: { calendarUnavailable: false, todoistUnavailable: false },
     },
   });
-  assert.equal(plan.capacity.availableMinutes, 0);
+  assert.equal(plan.capacity.overByMinutes, 30);
+  assert.equal(plan.capacity.meetingMinutes, 60);
   assert.ok(plan.items.some((i) => i.kind === "meeting"));
   assert.ok(!plan.items.some((i) => i.kind === "break"));
-  assert.ok(plan.capacity.overByMinutes >= 60);
+});
+
+test("weekend override: over-capacity uses full window math", () => {
+  const day = "2026-11-07";
+  const tz = "America/Chicago";
+  const win = workWindowBoundsMs(day, tz, "09:00", "17:00")!;
+  const cap = capacityFromOccurrences({
+    day,
+    tz,
+    workStart: "09:00",
+    workEnd: "17:00",
+    weekendOverride: true,
+    occurrences: [{ startMs: win.startMs + 60_000, endMs: win.startMs + 61 * 60_000, isBlock: false }],
+    unscheduledEstimateMinutes: 30,
+  });
+  assert.equal(cap.availableMinutes, 480);
+  assert.equal(cap.overByMinutes, 0);
 });
