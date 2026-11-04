@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { createHmac, randomBytes } from "node:crypto";
 import { normalizeSidebarTabs, type SidebarTab } from "./nav-tabs";
 import { readJson, writeFileAtomic } from "./store";
 
@@ -35,6 +36,9 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export class ValidationError extends Error {}
+export class SettingsConflictError extends Error {
+  constructor() { super("Settings changed elsewhere. Review the current settings before saving again. Your draft has not been saved."); }
+}
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -123,6 +127,7 @@ export class SettingsStore {
   private current: Settings = structuredClone(DEFAULT_SETTINGS);
   private queue: Promise<void> = Promise.resolve();
   private path: string;
+  private revisionKey = randomBytes(32);
 
   constructor(dir: string) {
     this.path = join(dir, "settings.json");
@@ -141,9 +146,17 @@ export class SettingsStore {
     return this.current;
   }
 
+  revision(settings = this.current): string {
+    return createHmac("sha256", this.revisionKey).update(JSON.stringify(settings)).digest("hex");
+  }
+
   async update(input: unknown): Promise<Settings> {
     const patch = structuredClone(input);
     const run = this.queue.then(async () => {
+      if (patch && typeof patch === "object" && "expectedRevision" in patch) {
+        if (typeof patch.expectedRevision !== "string") throw new ValidationError("expectedRevision must be a string");
+        if (patch.expectedRevision !== this.revision()) throw new SettingsConflictError();
+      }
       const next = applySettings(this.current, patch);
       await writeFileAtomic(this.path, JSON.stringify(next, null, 2));
       this.current = next;

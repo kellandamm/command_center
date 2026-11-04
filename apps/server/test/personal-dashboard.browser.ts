@@ -109,35 +109,32 @@ test("personal dashboard, settings and briefing work without retired integration
     t.diagnostic("Settings opened");
     await page.locator("#settings-load-status").getByText("Settings temporarily unavailable", { exact: true }).waitFor();
     assert.equal(await page.locator("#views-save").isDisabled(), true);
-    assert.equal(await page.locator("#f-schedule button").isDisabled(), true);
+    assert.equal(await page.locator("#schedule-save").isDisabled(), true);
     failSettingsLoad = false;
     await page.locator("#settings-retry").click();
     await page.waitForFunction(() => (document.querySelector("#briefingTime") as HTMLInputElement)?.value === "06:00");
-    assert.match(await page.locator("#settings-overview").innerText(), /06:00 in America\/Chicago/);
-    assert.match(await page.locator("#settings-overview").innerText(), /Open-Meteo at 41.8781, -87.6298/);
-    assert.match(await page.locator("#settings-overview").innerText(), /1 enabled native \/ 2 enabled subscriptions \/ 3 deployment feeds/);
-    assert.equal(await page.locator("#views-save").isEnabled(), true);
-    await page.locator('[data-section="views"]').click();
-    await page.locator('[data-subtab="schedule"]').click();
+    assert.match(await page.locator("#settings-general-summary").innerText(), /06:00 in America\/Chicago/);
+    assert.match(await page.locator("#settings-overview").textContent() || "", /Open-Meteo · 41.8781, -87.6298/);
+    assert.match(await page.locator("#settings-overview").textContent() || "", /1 native \/ 2 subscriptions \/ 3 deployment feeds/);
+    assert.equal(await page.locator("#views-save").isDisabled(), true);
+    await page.locator('.settings-category-links [data-settings-category="briefing"]').click();
     assert.match(await page.locator("#schedule-timezone").innerText(), /America\/Chicago/);
     await page.locator("#briefingTime").fill("08:30");
-    await Promise.all([
-      page.waitForEvent("domcontentloaded"),
-      page.getByRole("button", { name: "Save schedule", exact: true }).click(),
-    ]);
+    await page.locator("#schedule-save").click();
+    await page.locator("#saved-schedule").getByText("Saved.", { exact: true }).waitFor();
     assert.equal(settings.briefingTime, "08:30");
     await page.reload();
     await page.waitForFunction(() => (document.querySelector("#briefingTime") as HTMLInputElement)?.value === "08:30");
     await page.goto("http://personal.test/settings#topics");
     t.diagnostic("Topic settings opened");
-    await page.waitForFunction(() => !(document.querySelector("#topics-save") as HTMLButtonElement)?.disabled);
-    assert.equal(await page.locator("#tab-topics").isVisible(), true);
-    assert.match(await page.locator("#topics-providers").innerText(), /BRAVE_SEARCH_API_KEY/);
+    await page.waitForFunction(() => !(document.querySelector("#settings-editor") as HTMLFieldSetElement)?.disabled);
+    assert.equal(await page.locator("#f-topics").isVisible(), true);
+    assert.match(await page.locator("#topics-providers").innerText(), /Brave Search/);
     await page.locator("#briefingTopics").fill("Microsoft Fabric\nAI security");
     await page.locator("#topics-save").click();
-    await page.getByText("Topics saved.", { exact: true }).waitFor();
+    await page.locator("#saved-topics").getByText("Saved.", { exact: true }).waitFor();
     assert.deepEqual(settings.briefingTopics, ["Microsoft Fabric", "AI security"]);
-    assert.match(await page.locator("#settings-overview").innerText(), /Microsoft Fabric, AI security/);
+    assert.match(await page.locator("#settings-general-summary").textContent() || "", /Microsoft Fabric, AI security/);
     await page.reload();
     await page.waitForFunction(() => (document.querySelector("#briefingTopics") as HTMLTextAreaElement)?.value === "Microsoft Fabric\nAI security");
     failTopicsSave = true;
@@ -150,8 +147,7 @@ test("personal dashboard, settings and briefing work without retired integration
     await page.locator("#topics-save").click();
     assert.match(await page.locator("#saved-topics").innerText(), /up to 10 topics/);
     await page.locator("#briefingTopics").fill("Microsoft Fabric\nAI security");
-    await page.locator("#topics-save").click();
-    await page.getByText("Topics saved.", { exact: true }).waitFor();
+    assert.equal(await page.locator("#topics-save").isDisabled(), true);
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 1000 });
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
@@ -162,7 +158,7 @@ test("personal dashboard, settings and briefing work without retired integration
     }
     await page.locator("#briefingTopics").fill("");
     await page.locator("#topics-save").click();
-    await page.getByText("Topics saved.", { exact: true }).waitFor();
+    await page.locator("#saved-topics").getByText("Saved.", { exact: true }).waitFor();
     assert.deepEqual(settings.briefingTopics, []);
     await page.goto("http://personal.test/briefing");
     t.diagnostic("Briefing opened");

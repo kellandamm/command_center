@@ -144,18 +144,16 @@ test("ui: spaces, assistant and capture pages render", () => {
 
 test("ui: settings page has schedule and tabs sections", () => {
   const html = settingsPage();
-  assert.match(html, /ui-page-header/);
-  assert.match(html, /settings-link-row/);
-  assert.match(html, /settings-sub-panel/);
-  assert.match(html, /role="tab"/);
-  assert.match(html, /aria-controls="settings-panel-general"/);
+  assert.match(html, /settings-workspace/);
+  assert.match(html, /aria-label="Settings categories"/);
+  assert.doesNotMatch(html, /role="tablist"/);
   assert.match(html, /href="\/settings" class="on"/);
-  assert.match(html, /id="tab-schedule"/);
-  assert.match(html, /id="tab-views"/);
+  assert.match(html, /id="f-schedule"/);
+  assert.match(html, /id="f-views"/);
   assert.match(html, /id="settings-features-list"/);
-  assert.match(html, /WHITEBOARD_ENABLED/);
-  assert.match(html, /SHARE_LINKS_ENABLED/);
-  assert.match(html, /id="tab-tabs"/);
+  assert.match(html, /Deployment features/);
+  assert.match(html, /Share links/);
+  assert.match(html, /id="f-tabs"/);
   assert.doesNotMatch(html, /scope-all|fetchInterval|data-pref="(?:news|summaries|aiSecurity|briefing\.news|briefing\.ai)/);
   assert.doesNotMatch(html, /data-pref="dashboard\./);
   assert.match(html, /data-pref="briefing.topics"/);
@@ -164,31 +162,29 @@ test("ui: settings page has schedule and tabs sections", () => {
   assert.match(html, /id="views-save"/);
 });
 
-test("ui: settings tab panels sit directly under the tablist", () => {
+test("ui: settings exposes all eight flat categories and draft protection", () => {
   const html = settingsPage();
-  assert.match(
-    html,
-    /<div class="settings-tabs" role="tablist"[\s\S]*?<\/div>\s*<div class="settings-tab-panels">/,
-  );
-  assert.doesNotMatch(html, /settings-section-title/);
+  for (const id of ["general", "appearance", "briefing", "connections", "calendars", "notifications", "capture", "advanced"]) assert.match(html, new RegExp('data-settings-category="'+id+'"'));
+  assert.match(html, /id="settings-leave-dialog"/);
+  assert.match(html, /id="settings-search"/);
+  assert.doesNotMatch(html, /location.reload\\(\\)/);
 });
 
 test("ui: settings script maps legacy view hashes", () => {
   const html = settingsPage();
   const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)].map((m) => m[1]!);
   const settingsScript = scripts[scripts.length - 1]!;
-  assert.match(settingsScript, /VIEW_SUBTABS=\["views","topics","schedule","tabs"\]/);
-  assert.match(settingsScript, /setSettingsSection\("views",name,false\)/);
-  assert.match(settingsScript, /bindSettingsTablist/);
+  assert.match(settingsScript, /overview:"general",views:"appearance",tabs:"appearance",topics:"briefing",schedule:"briefing"/);
+  assert.match(settingsScript, /hashchange/);
 });
 
 test("ui: settings connection rows are accessible links", () => {
   const html = settingsPage();
   for (const [href, label] of [
-    ["/settings/connections", "Manage service connections and keys"],
-    ["/settings/calendars", "Manage calendars and subscriptions"],
+    ["/settings/connections", "Connections"],
+    ["/settings/calendars", "Calendars"],
   ] as const) {
-    const linkStart = html.indexOf(`<a class="settings-link-row" href="${href}"`);
+    const linkStart = html.indexOf(`<a href="${href}" data-settings-category=`);
     assert.notEqual(linkStart, -1, `expected link row for ${href}`);
     const linkEnd = html.indexOf("</a>", linkStart);
     assert.notEqual(linkEnd, -1, `expected link row closing tag for ${href}`);
