@@ -193,6 +193,7 @@ test("budget privacy: service worker fetch bypass behaviour", () => {
   assert.equal(serviceWorkerBypassesFetch("GET", "/api/panels/budget"), true);
   assert.equal(serviceWorkerBypassesFetch("GET", "/api/budget/export.csv"), true);
   assert.equal(serviceWorkerBypassesFetch("GET", "/extension.zip"), true);
+  assert.equal(serviceWorkerBypassesFetch("GET", "/day-plan"), true);
   assert.equal(serviceWorkerBypassesFetch("GET", "/budgeting"), false);
   assert.equal(serviceWorkerBypassesFetch("GET", "/"), false);
 });

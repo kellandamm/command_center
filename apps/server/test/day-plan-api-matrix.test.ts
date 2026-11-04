@@ -13,7 +13,7 @@ import { SettingsStore } from "../src/settings";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 import { CalendarWorkspace } from "../src/calendar/workspace";
 import { createTestCfAccessJwt, TEST_CF_AUD, TEST_CF_TEAM } from "./cf-access-jwt";
-import { planTestSaturday } from "./day-plan-relative-days";
+import { planTestSaturday, PLAN_TEST_TZ } from "./day-plan-relative-days";
 
 const TOKEN = "t".repeat(32);
 
@@ -24,7 +24,7 @@ test("day-plan API: every route 403s for admin-token/service/non-owner and 200s 
   const cfg = loadConfig({
     DATA_DIR: dir,
     ADMIN_TOKEN: TOKEN,
-    TZ: "America/Chicago",
+    TZ: PLAN_TEST_TZ,
     OWNER_EMAILS: "owner@example.com",
     CF_ACCESS_TEAM_DOMAIN: TEST_CF_TEAM,
     CF_ACCESS_AUD: TEST_CF_AUD,
@@ -64,6 +64,8 @@ test("day-plan API: every route 403s for admin-token/service/non-owner and 200s 
       ["GET", `/api/day-plan?day=${SAT}`, undefined],
       ["POST", "/api/day-plan/generate", { day: SAT }],
       ["PUT", "/api/day-plan", { day: SAT, workStart: "10:00" }],
+      ["POST", "/api/day-plan/must-do/complete", { day: SAT, slot: 0 }],
+      ["POST", "/api/day-plan/must-do/reopen", { day: SAT, slot: 0 }],
       ["GET", "/api/day-plan/anything", undefined],
     ];
     for (const [method, path, body] of routes) {

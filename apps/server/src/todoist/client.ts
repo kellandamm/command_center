@@ -185,6 +185,14 @@ export async function completeTask(token: string, id: string, fetchFn: TodoistFe
   if (!res.ok) throw new Error(await readError(res));
 }
 
+export async function reopenTask(token: string, id: string, fetchFn: TodoistFetch = fetch): Promise<void> {
+  const res = await fetchFn(`${API}/tasks/${encodeURIComponent(id)}/reopen`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+}
+
 /** Due calendar day in `tz` (YYYY-MM-DD), or null when the task has no due date. */
 export function taskDueDay(task: TodoistTask, tz: string): string | null {
   const due = task.due;

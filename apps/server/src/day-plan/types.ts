@@ -25,6 +25,8 @@ export interface DayPlanMustDo {
   title: string;
   userLocked: boolean;
   completedAt: string | null;
+  /** Board column to restore on reopen after must-do complete; server-only metadata. */
+  boardReopenColumn?: string | null;
 }
 
 export interface DayPlanItem {

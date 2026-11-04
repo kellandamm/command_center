@@ -82,16 +82,49 @@ export class DayPlanStore {
         itemIndex++;
       }
       const insMust = this.db.prepare(
-        `INSERT INTO plan_must_dos (day, slot, source, ref_id, title, user_locked, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO plan_must_dos (day, slot, source, ref_id, title, user_locked, completed_at, board_reopen_column) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       for (const m of snapshot.mustDos) {
-        insMust.run(snapshot.day, m.slot, m.source, m.refId, m.title, m.userLocked ? 1 : 0, m.completedAt);
+        insMust.run(
+          snapshot.day,
+          m.slot,
+          m.source,
+          m.refId,
+          m.title,
+          m.userLocked ? 1 : 0,
+          m.completedAt,
+          m.boardReopenColumn ?? null,
+        );
       }
       this.db.exec("COMMIT");
     } catch (err) {
       this.db.exec("ROLLBACK");
       throw err;
     }
+  }
+
+  /** Patch must-do completion without replanning; caller must verify source/refId before calling. */
+  patchMustDoCompletion(
+    day: string,
+    slot: number,
+    patch: {
+      completedAt: string | null;
+      boardReopenColumn?: string | null;
+    },
+  ): DayPlanSnapshot | null {
+    const plan = this.load(day);
+    if (!plan) return null;
+    const must = plan.mustDos.find((m) => m.slot === slot);
+    if (!must) return null;
+    must.completedAt = patch.completedAt;
+    if (patch.boardReopenColumn !== undefined) must.boardReopenColumn = patch.boardReopenColumn;
+    for (const item of plan.items) {
+      if (item.kind === "task" && item.source === must.source && item.refId === must.refId) {
+        item.completedAt = patch.completedAt;
+      }
+    }
+    this.save(plan);
+    return this.load(day);
   }
 
   load(day: string): DayPlanSnapshot | null {
@@ -110,6 +143,7 @@ export class DayPlanStore {
       title: String(m.title),
       userLocked: Boolean(m.user_locked),
       completedAt: m.completed_at ? String(m.completed_at) : null,
+      boardReopenColumn: m.board_reopen_column == null ? null : String(m.board_reopen_column),
     }));
     const capacity = JSON.parse(String(row.capacity_json)) as DayPlanSnapshot["capacity"];
     const sources = JSON.parse(String(row.sources_json ?? "{}")) as DayPlanSnapshot["sources"];

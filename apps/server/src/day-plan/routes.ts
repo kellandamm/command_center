@@ -14,7 +14,18 @@ import {
   dayFromBodyField,
   dayParamFromQuery,
   parseDayPlanPutBody,
+  parseMustDoActionBody,
+  type MustDoRemoteTaskBody,
 } from "./validate";
+import {
+  DAY_PLAN_UI_HEADER,
+  MustDoConflictReopenError,
+  MustDoInFlightError,
+  MustDoRemoteError,
+  MustDoSlotChangedError,
+  completeMustDoOnOwnerClick,
+  reopenMustDoOnOwnerClick,
+} from "./must-do";
 
 function json(res: ServerResponse, status: number, data: unknown) {
   res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
@@ -41,6 +52,33 @@ function parseGenerateBody(body: unknown, tz: string, now: Date): { day: string;
     weekendOverride = parsed.weekendOverride;
   }
   return { day, weekendOverride };
+}
+
+function denyUnlessOwnerUiClick(req: IncomingMessage, res: ServerResponse): boolean {
+  // Defense-in-depth with x-ah; owner gate is CF-verified email in OWNER_EMAILS.
+  if (req.headers[DAY_PLAN_UI_HEADER] !== "1") {
+    json(res, 403, { error: OWNER_ACTION_FORBIDDEN });
+    return false;
+  }
+  return true;
+}
+
+async function readMustDoBody(
+  req: IncomingMessage,
+  readBody: (req: IncomingMessage, limit?: number) => Promise<unknown>,
+  tz: string,
+  now: Date,
+): Promise<{ day: string; slot: number; remoteTask?: MustDoRemoteTaskBody }> {
+  let body: unknown = {};
+  try {
+    body = await readBody(req, 8 * 1024);
+  } catch (err) {
+    if (err instanceof ValidationError && err.message === "request body too large") {
+      throw new ValidationError("request body too large");
+    }
+    throw err;
+  }
+  return parseMustDoActionBody(body, tz, now);
 }
 
 export async function handleDayPlanRoutes(
@@ -145,8 +183,106 @@ export async function handleDayPlanRoutes(
         return true;
       }
       if (err instanceof ValidationError) throw err;
-      const fail = err as Error & { code?: string };
-      console.error("day-plan PUT failed:", fail.message, fail.code ?? "");
+      console.error("day-plan PUT failed");
+      json(res, 500, { error: "internal error" });
+    }
+    return true;
+  }
+
+  if (path === "/api/day-plan/must-do/complete" && req.method === "POST") {
+    if (!denyUnlessOwner(res, principal)) return true;
+    if (!denyUnlessOwnerUiClick(req, res)) return true;
+    try {
+      const { day, slot } = await readMustDoBody(req, readBody, app.cfg.tz, now);
+      const plan = await completeMustDoOnOwnerClick({
+        cfg: app.cfg,
+        board: app.board,
+        hobieQueue: app.hobieQueue,
+        wins: app.wins,
+        calendar: app.calendar,
+        store: app.dayPlan,
+        now,
+        day,
+        slot,
+      });
+      json(res, 200, { day, plan });
+    } catch (err) {
+      if (err instanceof ValidationError && err.message === "request body too large") {
+        json(res, 413, { error: "Request body too large." });
+        return true;
+      }
+      if (err instanceof DayPlanNotFoundError) {
+        json(res, 404, { error: "No plan for that day." });
+        return true;
+      }
+      if (err instanceof ValidationError) throw err;
+      if (err instanceof MustDoSlotChangedError) {
+        json(res, err.status, {
+          error: err.message,
+          mustDoSyncConflict: true,
+          remoteTask: err.remoteTask,
+        });
+        return true;
+      }
+      if (err instanceof MustDoRemoteError) {
+        json(res, err.status, { error: err.message });
+        return true;
+      }
+      if (err instanceof MustDoInFlightError) {
+        json(res, err.status, { error: err.message });
+        return true;
+      }
+      console.error("day-plan must-do complete failed");
+      json(res, 500, { error: "internal error" });
+    }
+    return true;
+  }
+
+  if (path === "/api/day-plan/must-do/reopen" && req.method === "POST") {
+    if (!denyUnlessOwner(res, principal)) return true;
+    if (!denyUnlessOwnerUiClick(req, res)) return true;
+    try {
+      const { day, slot, remoteTask } = await readMustDoBody(req, readBody, app.cfg.tz, now);
+      const plan = await reopenMustDoOnOwnerClick({
+        cfg: app.cfg,
+        board: app.board,
+        hobieQueue: app.hobieQueue,
+        wins: app.wins,
+        calendar: app.calendar,
+        store: app.dayPlan,
+        now,
+        day,
+        slot,
+        remoteTask,
+      });
+      json(res, 200, { day, plan });
+    } catch (err) {
+      if (err instanceof ValidationError && err.message === "request body too large") {
+        json(res, 413, { error: "Request body too large." });
+        return true;
+      }
+      if (err instanceof DayPlanNotFoundError) {
+        json(res, 404, { error: "No plan for that day." });
+        return true;
+      }
+      if (err instanceof ValidationError) throw err;
+      if (err instanceof MustDoSlotChangedError) {
+        json(res, err.status, {
+          error: err.message,
+          mustDoSyncConflict: true,
+          remoteTask: err.remoteTask,
+        });
+        return true;
+      }
+      if (err instanceof MustDoRemoteError) {
+        json(res, err.status, { error: err.message });
+        return true;
+      }
+      if (err instanceof MustDoInFlightError) {
+        json(res, err.status, { error: err.message });
+        return true;
+      }
+      console.error("day-plan must-do reopen failed");
       json(res, 500, { error: "internal error" });
     }
     return true;

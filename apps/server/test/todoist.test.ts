@@ -13,6 +13,7 @@ import { SettingsStore } from "../src/settings";
 import { closeIntegrationServer, openIntegrationStores } from "./helpers";
 import {
   completeTask,
+  reopenTask,
   createTask,
   listTasks,
   partitionTodayAndOverdue,
@@ -88,6 +89,9 @@ test("todoist: createTask and completeTask hit v1 endpoints", async () => {
     if (url.includes("/tasks/new1/close")) {
       return new Response(null, { status: 204 });
     }
+    if (url.includes("/tasks/new1/reopen")) {
+      return new Response(null, { status: 204 });
+    }
     return new Response("not found", { status: 404 });
   };
   const created = await createTask("tok", "Inbox task", fetchFn as typeof fetch);
@@ -97,6 +101,9 @@ test("todoist: createTask and completeTask hit v1 endpoints", async () => {
   await completeTask("tok", "new1", fetchFn as typeof fetch);
   assert.match(urls[1].url, /^https:\/\/api\.todoist\.com\/api\/v1\/tasks\/new1\/close$/);
   assert.equal(urls[1].method, "POST");
+  await reopenTask("tok", "new1", fetchFn as typeof fetch);
+  assert.match(urls[2].url, /^https:\/\/api\.todoist\.com\/api\/v1\/tasks\/new1\/reopen$/);
+  assert.equal(urls[2].method, "POST");
 });
 
 test("todoist: partition overdue and today by configured zone", () => {

@@ -1,6 +1,6 @@
 import { ValidationError } from "../settings";
 import { dayKey } from "../store";
-import { workWindowBoundsMs } from "./capacity";
+import { calendarLocalInstant } from "../calendar/store";
 import { DEFAULT_WORK_END, DEFAULT_WORK_START } from "./planner";
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -59,8 +59,53 @@ export function parseWorkTime(value: string): boolean {
 
 export function assertValidWorkWindow(workStart: string, workEnd: string, day: string, tz: string): void {
   if (!parseWorkTime(workStart) || !parseWorkTime(workEnd)) throw new ValidationError("Invalid work time.");
-  const win = workWindowBoundsMs(day, tz, workStart, workEnd);
-  if (!win) throw new ValidationError("Work window end must be after start.");
+  const start = calendarLocalInstant(day, workStart, tz);
+  const end = calendarLocalInstant(day, workEnd, tz);
+  if (!start || !end) throw new ValidationError("Invalid work time.");
+  if (end.getTime() <= start.getTime()) throw new ValidationError("Work window end must be after start.");
+}
+
+export function parseMustDoSlotBody(body: unknown, tz: string, now: Date): { day: string; slot: number } {
+  return parseMustDoActionBody(body, tz, now);
+}
+
+export const MUST_DO_REF_ID_MAX_LENGTH = 128;
+
+export interface MustDoRemoteTaskBody {
+  source: "board" | "todoist";
+  refId: string;
+  /** Echoed from 409 JSON; ignored on reopen — server uses stored column only. */
+  boardReopenColumn?: string | null;
+}
+
+export function parseMustDoActionBody(
+  body: unknown,
+  tz: string,
+  now: Date,
+): { day: string; slot: number; remoteTask?: MustDoRemoteTaskBody } {
+  if (typeof body !== "object" || body === null) throw new ValidationError("Invalid must-do payload.");
+  const o = body as Record<string, unknown>;
+  const day = dayFromBodyField(o.day, tz, now);
+  if (typeof o.slot !== "number" || !Number.isInteger(o.slot) || o.slot < 0 || o.slot > 2) {
+    throw new ValidationError("Invalid must-do slot.");
+  }
+  let remoteTask: MustDoRemoteTaskBody | undefined;
+  if ("remoteTask" in o && o.remoteTask !== undefined) {
+    if (typeof o.remoteTask !== "object" || o.remoteTask === null) throw new ValidationError("Invalid remote task.");
+    const rt = o.remoteTask as Record<string, unknown>;
+    if (rt.source !== "board" && rt.source !== "todoist") throw new ValidationError("Invalid remote task.");
+    if (typeof rt.refId !== "string" || !rt.refId.trim()) throw new ValidationError("Invalid remote task.");
+    const refId = rt.refId.trim();
+    if (refId.length > MUST_DO_REF_ID_MAX_LENGTH) throw new ValidationError("Invalid remote task.");
+    remoteTask = { source: rt.source, refId };
+    if ("boardReopenColumn" in rt) {
+      if (rt.boardReopenColumn !== null && typeof rt.boardReopenColumn !== "string") {
+        throw new ValidationError("Invalid remote task.");
+      }
+      remoteTask.boardReopenColumn = rt.boardReopenColumn as string | null;
+    }
+  }
+  return { day, slot: o.slot, remoteTask };
 }
 
 export interface DayPlanPutPatch {

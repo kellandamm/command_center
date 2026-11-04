@@ -2,7 +2,7 @@
 export const SERVICE_WORKER_BYPASS_PREFIXES = ["/api/", "/budget/"] as const;
 
 /** Exact paths that bypass the service worker cache handler. */
-export const SERVICE_WORKER_BYPASS_EXACT = ["/extension.zip", "/budget"] as const;
+export const SERVICE_WORKER_BYPASS_EXACT = ["/extension.zip", "/budget", "/day-plan"] as const;
 
 /** JS expression used inside the shipped service worker fetch listener (single source of truth). */
 export function serviceWorkerFetchBypassConditionJs(): string {

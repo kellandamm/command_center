@@ -69,6 +69,7 @@ import { handleBudgetRoutes } from "./budget/routes";
 import { handleCommandPaletteRoutes } from "./command-palette/routes";
 import { TodoistOpenTaskCache } from "./command-palette/todoist-cache";
 import { budgetPage } from "./ui/budget-page";
+import { dayPlanPage } from "./ui/day-plan-page";
 import { getMeetingSummaryQueue } from "./meetings/summary-queue";
 import { handleXBookmarkApiRoutes, handleXBookmarkImport, isXBookmarkImportPayload } from "./read-later/x-bookmarks-routes";
 import type { XBookmarksService } from "./read-later/x-bookmarks-service";
@@ -359,11 +360,17 @@ export function createApp(app: App): Server {
       if (get && path === "/icon-512.png") return send(res, 200, icon("512", 512), "image/png", extra);
       if (get && path === "/icon-maskable-512.png") return send(res, 200, icon("m512", 512, true), "image/png", extra);
 
-      const nav = () =>
-        visibleNavTabs(app.settings.get().sidebarTabs, {
+      const nav = () => {
+        const links = visibleNavTabs(app.settings.get().sidebarTabs, {
           whiteboard: app.cfg.whiteboardEnabled,
           budget: budgetAvailable(app.cfg) && who.owner === true,
         });
+        if (who.owner === true) {
+          const settingsIdx = links.findIndex((l) => l.href === "/settings");
+          links.splice(settingsIdx >= 0 ? settingsIdx : links.length, 0, { href: "/day-plan", label: "Day plan" });
+        }
+        return links;
+      };
 
       if (get && path === "/") {
         const showBudget = budgetPanelVisible(app.cfg, who.owner === true);
@@ -438,6 +445,9 @@ export function createApp(app: App): Server {
           undefined,
           extra,
         );
+      }
+      if (get && path === "/day-plan") {
+        return send(res, 200, dayPlanPage(nav(), { owner: who.owner === true }), undefined, extra);
       }
       if (get && path === "/whiteboard") {
         if (!app.cfg.whiteboardEnabled) return json(res, 404, { error: "not found" });
