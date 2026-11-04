@@ -106,6 +106,9 @@ import { handleDayPlanRoutes } from "./day-plan/routes";
 import type { DayPlanStore } from "./day-plan/store";
 import { readBody, readRawBody } from "./request-body";
 import { notify, ntfyStatus, resolveNtfyConfig } from "./notify/ntfy";
+import type { AgentHubStore } from "./agents/store";
+import { handleAgentRoutes } from "./agents/routes";
+import { agentChatPage } from "./ui/agent-chat-page";
 
 export interface App {
   cfg: Config;
@@ -122,6 +125,7 @@ export interface App {
   hobieQueue: HobieQueueStore;
   agentTaskQueue: AgentTaskQueueStore;
   agentApprovals: AgentApprovalsStore;
+  agentHub?: AgentHubStore;
   board: BoardStore;
   wins: WinsStore;
   winsRollup: WinsRollupService;
@@ -409,7 +413,7 @@ export function createApp(app: App): Server {
       if (get && /^\/spaces\/[^/]+$/.test(path)) return send(res, 200, spaceDetailPage(nav()), undefined, extra);
       if (get && path === "/agent") {
         const view = url.searchParams.get("view") ?? "board";
-        const render = { studio: agentStudioPage, board: boardPage, queue: agentQueuePage, wins: winsPage, assistant: assistantPage, activity: activityPage, usage: agentsUsagePage };
+        const render = { studio: agentStudioPage, chat: agentChatPage, board: boardPage, queue: agentQueuePage, wins: winsPage, assistant: assistantPage, activity: activityPage, usage: agentsUsagePage };
         if (!Object.hasOwn(render, view)) return json(res, 400, { error: "unknown Agent view" });
         return send(res, 200, render[view as keyof typeof render](nav()), undefined, extra);
       }
@@ -488,6 +492,7 @@ export function createApp(app: App): Server {
       if (await handleShareOwnerRoutes(app.cfg, app.notes, app.shareLinks, req, res, path, who.owner === true)) return;
       if (await handleAgentQueueOwnerApi(app.agentTaskQueue, app.agentApprovals, req, res, path, who.owner === true, readBody)) return;
       if (await handleAgentApprovalRoutes(app.cfg, app.agentApprovals, req, res, path, who.owner === true, readBody)) return;
+      if (app.agentHub && await handleAgentRoutes(app.agentHub, app.connections, req, res, path, who.owner === true, who.who, readBody)) return;
 
       if (get && path === "/api/state") {
         return json(res, 200, {
