@@ -57,6 +57,11 @@ import { CaptureAccess } from "./read-later/capture-access";
 import { handleMeetingImportRoute } from "./meetings/routes";
 import { handleAgentsUsageImportRoute, handleAgentsUsageGetRoutes } from "./agents-usage/routes";
 import type { AgentsUsageStore } from "./agents-usage/store";
+import {
+  handleTeamUpdateGetRoute,
+  handleTeamUpdateImportRoute,
+} from "./briefing/team-update/routes";
+import type { TeamUpdateStore } from "./briefing/team-update/store";
 import { budgetAvailable, budgetPanelVisible } from "./budget/gate";
 import type { BudgetStore } from "./budget/store";
 import { handleBudgetRoutes } from "./budget/routes";
@@ -129,6 +134,7 @@ export interface App {
   shareLinks: ShareLinksStore;
   voiceCaptures: VoiceCaptureStore;
   agentsUsage: AgentsUsageStore;
+  teamUpdate: TeamUpdateStore;
   budget?: BudgetStore;
   dayPlan: DayPlanStore;
 }
@@ -268,6 +274,11 @@ export function createApp(app: App): Server {
 
       if (method === "POST" && path === "/api/agents/usage/import") {
         await handleAgentsUsageImportRoute(app.cfg, app.agentsUsage, req, res);
+        return;
+      }
+
+      if (method === "POST" && path === "/api/team-update/import") {
+        await handleTeamUpdateImportRoute(app.cfg, app.teamUpdate, req, res);
         return;
       }
 
@@ -668,6 +679,7 @@ export function createApp(app: App): Server {
         email: who.email,
         serviceToken: who.serviceToken,
       }, readBody)) return;
+      if (handleTeamUpdateGetRoute(app.cfg, app.teamUpdate, req, res, path, who.owner === true, url)) return;
       if (
         await handleDayPlanRoutes(
           app,
