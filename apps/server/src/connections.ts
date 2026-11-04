@@ -1,8 +1,8 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHmac, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Config } from "./config";
-import { ValidationError } from "./settings";
+import { SettingsConflictError, ValidationError } from "./settings";
 import { writeFileAtomic } from "./store";
 import { assertPublicUrl, safeFetch } from "./ssrf";
 import { notify, resolveNtfyConfig } from "./notify/ntfy";
@@ -48,6 +48,7 @@ export class ConnectionsStore {
   private data: Data = {};
   private queue: Promise<void> = Promise.resolve();
   private checks: Partial<Record<Provider, AccessCheck>> = {};
+  private revisionKey = randomBytes(32);
   readonly config: Config;
   private constructor(private env: Config, private path: string) {
     // Existing long-lived consumers keep this reference, so replacements and
@@ -126,7 +127,7 @@ export class ConnectionsStore {
           id, label: descriptor.label, disabled: provider === "ntfy" ? !resolveNtfyConfig(this.env, this.config).enabled && (saved?.disabled ?? false) : saved?.disabled ?? false, updatedAt: saved?.updatedAt ?? null,
           usage: descriptor.usage, fallback: descriptor.fallback,
           configured: missingFields.length === 0, missingFields,
-          hasSavedSettings: !!saved,
+          hasSavedSettings: !!saved, revision: this.revision(provider),
           lastCheck: this.checks[provider] ?? null,
           fields: descriptor.fields.map((field) => ({
             name: field, secret: !urls.includes(field) && field !== "llmModel",
@@ -139,6 +140,18 @@ export class ConnectionsStore {
         };
       }),
     };
+  }
+
+  private revision(id: Provider): string {
+    return createHmac("sha256", this.revisionKey).update(JSON.stringify([
+      this.data[id] ?? null, providers[id].fields.map((field) => this.env[field]),
+    ])).digest("hex");
+  }
+
+  private assertRevision(id: Provider, expected: unknown) {
+    if (expected === undefined) return; // Older API clients remain compatible.
+    if (typeof expected !== "string") throw new ValidationError("expectedRevision must be a string");
+    if (expected !== this.revision(id)) throw new SettingsConflictError();
   }
 
   private requiredFields(id: Provider): readonly Field[] {
@@ -172,7 +185,7 @@ export class ConnectionsStore {
   async update(id: Provider, input: unknown): Promise<void> {
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new ValidationError("Connection must be an object");
     const body = input as Record<string, unknown>;
-    if (Object.keys(body).some((key) => !["values", "disabled"].includes(key))) throw new ValidationError("Unknown connection property");
+    if (Object.keys(body).some((key) => !["values", "disabled", "expectedRevision"].includes(key))) throw new ValidationError("Unknown connection property");
     if (body.disabled !== undefined && typeof body.disabled !== "boolean") throw new ValidationError("disabled must be a boolean");
     const disabled = body.disabled;
     const supplied = body.values ?? {};
@@ -193,6 +206,7 @@ export class ConnectionsStore {
       values[field] = urls.includes(field) ? value.trim().replace(/\/+$/, "") : value.trim();
     }
     await this.commit((next) => {
+      this.assertRevision(id, body.expectedRevision);
       next[id] = {
         disabled: disabled === undefined ? next[id]?.disabled ?? false : disabled,
         values: { ...next[id]?.values, ...values }, updatedAt: new Date().toISOString(),
@@ -201,8 +215,8 @@ export class ConnectionsStore {
     delete this.checks[id];
   }
 
-  async remove(id: Provider): Promise<void> {
-    await this.commit((next) => { delete next[id]; });
+  async remove(id: Provider, expectedRevision?: unknown): Promise<void> {
+    await this.commit((next) => { this.assertRevision(id, expectedRevision); delete next[id]; });
     delete this.checks[id];
   }
 

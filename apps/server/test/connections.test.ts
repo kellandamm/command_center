@@ -8,6 +8,34 @@ import { ConnectionsStore } from "../src/connections";
 import { makeAuthenticator } from "../src/auth";
 import { IncomingMessage } from "node:http";
 import { Socket } from "node:net";
+import { SettingsConflictError } from "../src/settings";
+
+test("provider revisions are independent, opaque and checked inside queued writes and removal", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "connection-revisions-"));
+  try {
+    const env = loadConfig({ DATA_DIR: dir, CONNECTIONS_MASTER_KEY: "a".repeat(64), BRAVE_SEARCH_API_KEY: "deployment-secret" });
+    const store = await ConnectionsStore.open(env);
+    const revision = (id: string) => store.status().connections.find((item) => item.id === id)!.revision;
+    const brave = revision("brave"), github = revision("github");
+    const results = await Promise.allSettled([
+      store.update("brave", { values: { braveSearchApiKey: "new-secret" }, expectedRevision: brave }),
+      store.update("brave", { disabled: true, expectedRevision: brave }),
+    ]);
+    assert.equal(results[0]!.status, "fulfilled");
+    assert.equal(results[1]!.status, "rejected");
+    if (results[1]!.status === "rejected") assert.ok(results[1]!.reason instanceof SettingsConflictError);
+    assert.equal(store.config.braveSearchApiKey, "new-secret");
+    assert.equal(revision("github"), github);
+    await assert.rejects(store.remove("brave", brave), SettingsConflictError);
+    await store.update("github", { values: { githubToken: "github-secret" }, expectedRevision: github });
+    await store.remove("brave", revision("brave"));
+    assert.equal(store.config.braveSearchApiKey, "deployment-secret");
+    const raw = JSON.stringify(store.status());
+    for (const secret of ["new-secret", "deployment-secret", "github-secret"]) assert.ok(!raw.includes(secret));
+    const reopened = await ConnectionsStore.open(env);
+    assert.notEqual(reopened.status().connections[0]!.revision, store.status().connections[0]!.revision);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
 
 test("encrypted connections survive restart without revealing values and resolve live overrides", async () => {
   const dir = await mkdtemp(join(tmpdir(), "connections-"));

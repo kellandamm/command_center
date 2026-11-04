@@ -1,218 +1,149 @@
 import type { NavLink } from "./layout";
-import { page } from "./layout";
-import { PHASE2_PAGE_CSS } from "./phase2-pages-css";
+import { settingsWorkspace } from "./settings-workspace";
 import { settingsPageBody, SETTINGS_PAGE_TAB_SCRIPT } from "./pages-settings-body";
 
 export { dashboardPage } from "./dashboard-page";
 
 export function settingsPage(nav?: NavLink[]): string {
-  return page({
-    title: "Settings",
-    active: "/settings",
-    nav,
-    extraCss: PHASE2_PAGE_CSS,
+  return settingsWorkspace({
+    category: "general", title: "General", description: "Workspace scope, timezone, and setup.", nav,
     body: settingsPageBody(),
     script: SETTINGS_PAGE_TAB_SCRIPT + `
-function getPref(path){
-  return path.split(".").reduce(function(obj,key){return obj&&obj[key]},settingsState.viewPreferences);
+var savedSettings=null,settingsRevision=null,settingsCanManage=false,settingsSections={},settingsConflict=null;
+function clone(value){return JSON.parse(JSON.stringify(value));}
+function readPref(path){return path.split(".").reduce(function(value,key){return value[key];},settingsState.viewPreferences);}
+function writePref(path,value){var keys=path.split("."),target=settingsState.viewPreferences;keys.slice(0,-1).forEach(function(key){target=target[key];});target[keys[keys.length-1]]=value;}
+function sectionPatch(id){
+ if(id==="schedule")return {briefingTime:$("briefingTime").value};
+ if(id==="topics")return {briefingTopics:$("briefingTopics").value.split(/\\r?\\n/).map(function(v){return v.trim();}).filter(Boolean)};
+ if(id==="tabs")return {sidebarTabs:clone(settingsState.sidebarTabs)};
+ if(id==="briefing")return {viewPreferences:{briefing:clone(settingsState.viewPreferences.briefing)}};
+ if(id==="calendar")return {viewPreferences:{calendar:clone(settingsState.viewPreferences.calendar)}};
+ return {viewPreferences:{density:settingsState.viewPreferences.density,notes:clone(settingsState.viewPreferences.notes),hobie:clone(settingsState.viewPreferences.hobie),activity:clone(settingsState.viewPreferences.activity)}};
 }
-function setPref(path,value){
-  var keys=path.split("."),target=settingsState.viewPreferences;
-  keys.slice(0,-1).forEach(function(key){target=target[key]});
-  target[keys[keys.length-1]]=value;
+function savedPatch(id){
+ var draft=sectionPatch(id);
+ if(draft.viewPreferences){Object.keys(draft.viewPreferences).forEach(function(key){draft.viewPreferences[key]=clone(savedSettings.viewPreferences[key]);});}
+ else Object.keys(draft).forEach(function(key){draft[key]=clone(savedSettings[key]);});
+ return draft;
 }
-function bindViewPreferences(){
-  document.querySelectorAll("[data-pref]").forEach(function(el){
-    var path=el.dataset.pref,value=getPref(path);
-    if(el.type==="checkbox")el.checked=!!value;
-    else el.value=String(value);
-    el.onchange=function(){
-      var numeric=path==="activity.limit";
-      setPref(path,el.type==="checkbox"?el.checked:(numeric?Number(el.value):el.value));
-    };
-  });
+function sectionDirty(id){return savedSettings&&JSON.stringify(sectionPatch(id))!==JSON.stringify(savedPatch(id));}
+function updateSectionActions(id){
+ var section=settingsSections[id],dirty=sectionDirty(id),actions=$("actions-"+id);
+ actions.hidden=!dirty&&!section.pending&&!$("saved-"+id).textContent;
+ $("f-"+id).querySelectorAll("input,select,textarea,button").forEach(function(el){el.disabled=!settingsCanManage||section.pending||!!settingsConflict||(el.dataset.locked==="true");});
+ $(id+"-save").disabled=!settingsCanManage||!dirty||section.pending||!!settingsConflict;
+ document.querySelector('[data-cancel="'+id+'"]').disabled=!settingsCanManage||!dirty||section.pending;
+}
+function bindPreferences(){
+ document.querySelectorAll("[data-pref]").forEach(function(input){
+   var value=readPref(input.dataset.pref);if(input.type==="checkbox")input.checked=!!value;else input.value=String(value);
+   input.onchange=function(){writePref(input.dataset.pref,input.type==="checkbox"?input.checked:input.dataset.pref==="activity.limit"?Number(input.value):input.value);};
+ });
 }
 function renderTabsEditor(){
-  var el=document.getElementById("tabs-editor");
-  var rows=settingsState.sidebarTabs.slice().sort(function(a,b){return a.order-b.order});
-  el.innerHTML=rows.map(function(t,idx){
-    var lock=t.locked?" disabled":"";
-    var vis=t.locked?"":'<label class="row choice-row" style="margin:0;font-size:.8125rem"><input type="checkbox" class="tab-vis" data-id="'+esc(t.id)+'"'+(t.visible?" checked":"")+'/> Visible</label>';
-    return '<div class="row" style="align-items:center;margin-bottom:.5rem;gap:.5rem" data-id="'+esc(t.id)+'">'
-      +'<span class="dim" style="width:1.5rem">'+String(idx+1)+'</span>'
-      +'<input type="text" class="tab-label" data-id="'+esc(t.id)+'" value="'+esc(t.label)+'" style="flex:1"'+lock+'/>'
-      +vis
-      +'<button type="button" class="ghost tab-up" data-id="'+esc(t.id)+'"'+lock+'>↑</button>'
-      +'<button type="button" class="ghost tab-down" data-id="'+esc(t.id)+'"'+lock+'>↓</button></div>';
-  }).join("");
-  el.querySelectorAll(".tab-vis").forEach(function(cb){cb.onchange=function(){
-    var t=settingsState.sidebarTabs.find(function(x){return x.id===cb.dataset.id});if(t&&!t.locked)t.visible=cb.checked;
-  }});
-  el.querySelectorAll(".tab-label").forEach(function(inp){inp.onchange=function(){
-    var t=settingsState.sidebarTabs.find(function(x){return x.id===inp.dataset.id});if(t)t.label=inp.value;
-  }});
-  function swap(id,dir){
-    var sorted=settingsState.sidebarTabs.slice().sort(function(a,b){return a.order-b.order});
-    var i=sorted.findIndex(function(x){return x.id===id});if(i<0)return;
-    var j=i+dir;if(j<0||j>=sorted.length)return;
-    var a=sorted[i],b=sorted[j];var oa=a.order,ob=b.order;a.order=ob;b.order=oa;
-    renderTabsEditor();
+ var box=$("tabs-editor");box.replaceChildren();
+ settingsState.sidebarTabs.slice().sort(function(a,b){return a.order-b.order;}).forEach(function(tab,index,rows){
+  var row=element("div",undefined,"settings-row"),labelBox=element("div"),input=element("input");
+  input.type="text";input.value=tab.label;input.maxLength=48;input.required=true;input.setAttribute("aria-label","Label for "+tab.id);input.disabled=tab.locked;input.dataset.locked=String(!!tab.locked);
+  input.oninput=function(){tab.label=input.value;};labelBox.appendChild(input);
+  var controls=element("div",undefined,"row");
+  if(!tab.locked){var label=element("label",undefined,"row"),visible=element("input");visible.type="checkbox";visible.checked=tab.visible;visible.onchange=function(){tab.visible=visible.checked;};label.append(visible,document.createTextNode("Visible"));controls.appendChild(label);}
+  else controls.appendChild(element("span","Always visible","dim"));
+  ["up","down"].forEach(function(direction){
+   var button=element("button",direction==="up"?"↑":"↓","ghost"),other=index+(direction==="up"?-1:1);
+   button.type="button";button.setAttribute("aria-label","Move "+tab.label+" "+direction);button.dataset.locked=String(other<0||other>=rows.length);
+   button.onclick=function(){if(other<0||other>=rows.length)return;var order=tab.order;tab.order=rows[other].order;rows[other].order=order;renderTabsEditor();updateSectionActions("tabs");var focus=$("tabs-editor").querySelector('[aria-label="Move '+CSS.escape(tab.label)+" "+direction+'"]');if(focus)focus.focus();};
+   controls.appendChild(button);
+  });row.append(labelBox,controls);box.appendChild(row);
+ });
+}
+function restoreSection(id){
+ var patch=savedPatch(id);
+ if(patch.viewPreferences)Object.keys(patch.viewPreferences).forEach(function(key){settingsState.viewPreferences[key]=clone(patch.viewPreferences[key]);});
+ if(id==="schedule")$("briefingTime").value=patch.briefingTime;
+ if(id==="topics")$("briefingTopics").value=patch.briefingTopics.join("\\n");
+ if(id==="tabs"){settingsState.sidebarTabs=clone(patch.sidebarTabs);renderTabsEditor();}
+ bindPreferences();$("saved-"+id).textContent="";updateSectionActions(id);
+}
+function renderRows(box,rows){box.replaceChildren();var dl=element("dl");rows.forEach(function(row){dl.append(element("dt",row[0]),element("dd",String(row[1])));});box.appendChild(dl);}
+function renderSummary(response){
+ var runtime=response.runtime,providers=response.briefingProviders||{},ntfy=response.ntfy||{},meta=response.meta||{};
+ $("schedule-timezone").textContent=runtime?"Server timezone: "+runtime.timezone+". Not your browser timezone.":"Server timezone unavailable. Review deployment before changing the schedule.";
+ renderRows($("settings-general-summary"),[["Server timezone",runtime?runtime.timezone:"Unavailable"],["Preference scope","Shared on this server"],["Daily briefing",savedSettings.briefingTime+(runtime?" in "+runtime.timezone:"")],["Followed topics",savedSettings.briefingTopics.length?savedSettings.briefingTopics.join(", "):"None - keyword searches are off"]]);
+ $("settings-setup-status").textContent=providers.search&&providers.summarizer?"Briefing search and AI are configured. Access has not been verified by this page.":"Briefing setup needs attention: "+[!providers.search?"Brave Search":"",!providers.summarizer?"AI summarizer":""].filter(Boolean).join(" and ")+".";
+ $("topics-providers").textContent=providers.search&&providers.summarizer?"Search and AI are configured. Verify provider access in Connections.":$("settings-setup-status").textContent;
+ $("ntfy-status").textContent=ntfy.enabled?"Configured · topic "+(ntfy.topicMasked||"(hidden)"):"Not configured · add a topic in Connections or deployment configuration.";
+ $("ntfy-test").disabled=!(ntfy.enabled&&ntfy.canTest);$("ntfy-owner-hint").hidden=!(ntfy.enabled&&!ntfy.canTest);
+ renderRows($("ntfy-details"),[["Timezone",runtime?runtime.timezone:"Unavailable"],["Quiet hours",ntfy.quietHours===undefined?"Unavailable":ntfy.quietHours||"Not configured"],["Reminder lead time",ntfy.reminderMinutes===undefined?"Unavailable":ntfy.reminderMinutes+" minutes"],["Coaching notifications",ntfy.coachEnabled===undefined?"Unavailable":ntfy.coachEnabled?"Enabled":"Disabled"],["Daily briefing","Bypasses quiet hours"]]);
+ var rows=[];
+ if(runtime){var access=runtime.access||{},agents=runtime.agents||{},calendar=runtime.calendar||{},integrations=runtime.integrations||{};
+  rows=[["Server version",runtime.version],["Timezone",runtime.timezone],["Weather",runtime.weather.provider+" · "+runtime.weather.latitude+", "+runtime.weather.longitude],["GitHub author",runtime.githubUsername],["Calendars",calendar.native+" native / "+calendar.subscriptions+" subscriptions / "+calendar.environmentFeeds+" deployment feeds"],["Authentication",[access.cloudflare?"Cloudflare Access":"",access.adminToken?"Admin token":"",access.insecureNoAuth?"WARNING: unauthenticated access allowed":""].filter(Boolean).join("; ")||"Not configured"],["Provider management",access.canManageConnections?"Verified owner":"Requires verified owner login"],["Encrypted credential storage",access.encryptedStorage?"Enabled":"Disabled"],["Agent access",agents.mcpClients+" bearer clients / "+agents.cloudflareClients+" Cloudflare mappings"],["Agent queue limit",agents.maxPendingTasks+" pending tasks"],["Hobie polling / webhook",(agents.hobiePoll?"Configured":"Off")+" / "+(agents.webhook?"Configured":"Off")],["Todoist",integrations.todoist?"Configured for agent task creation, not board sync":"Not configured"],["Recallio",integrations.recallio?"Configured for memory search":"Not configured"],["Docker",integrations.docker?"Socket configured - access checked when loaded":"Disabled"]];
+ }else rows=[["Deployment configuration","Unavailable. Retry loading Settings."]];
+ renderRows($("settings-overview"),rows);
+ var features=meta.features||{};
+ renderRows($("settings-features-list"),[["Whiteboard",features.whiteboardEnabled?"On":"Off"],["Share links",features.shareLinksEnabled?"On":"Off"],["Encrypted API key storage",meta.connectionsStorage?"On":"Off"],["Owner-only shared settings",meta.ownerEmailsConfigured?"On":"Off - any signed-in session including ADMIN_TOKEN can edit shared preferences"]]);
+}
+var loadedResponse=null;
+async function refreshSettingsNavigation(){
+ var response=await fetch("/settings",{headers:{"x-ah":"1"}});
+ if(!response.ok)throw new Error("HTTP "+response.status);
+ var current=new DOMParser().parseFromString(await response.text(),"text/html"),sidebar=current.querySelector(".sidebar-content"),existing=document.querySelector(".sidebar-content");
+ if(!sidebar||!existing)throw new Error("Sidebar markup is unavailable");
+ existing.replaceChildren.apply(existing,Array.from(sidebar.childNodes));
+}
+async function loadSettings(){
+ $("settings-editor").disabled=true;$("settings-retry").hidden=true;$("settings-load-status").textContent="Loading current settings...";
+ var response=await api("/api/settings");loadedResponse=response;savedSettings=clone(response.settings);settingsRevision=response.revision;
+ settingsState.sidebarTabs=clone(savedSettings.sidebarTabs);settingsState.viewPreferences=clone(savedSettings.viewPreferences);
+ $("briefingTime").value=savedSettings.briefingTime;$("briefingTopics").value=savedSettings.briefingTopics.join("\\n");
+ settingsCanManage=!(response.meta&&response.meta.canManage===false);
+ $("settings-manage-hint").hidden=settingsCanManage;$("settings-manage-hint").textContent=ownerViewOnlyHint(response.meta)||"View-only. Sign in with permission to manage shared settings.";
+ renderTabsEditor();bindPreferences();renderSummary(response);$("settings-editor").disabled=false;
+ Object.keys(settingsSections).forEach(updateSectionActions);
+ $("settings-load-status").textContent="Current settings loaded. Shared changes take effect after saving.";
+}
+async function saveSection(id){
+ var section=settingsSections[id];if(section.pending||!settingsCanManage||!sectionDirty(id)||settingsConflict)return;
+ var patch=sectionPatch(id),status=$("saved-"+id);
+ if(id==="topics"&&(patch.briefingTopics.length>10||patch.briefingTopics.some(function(t){return t.length>120;}))){status.textContent="Use up to 10 topics, no more than 120 characters each.";updateSectionActions(id);return;}
+ section.pending=true;status.textContent="Saving...";updateSectionActions(id);
+ try{
+  var response=await api("/api/settings","PUT",Object.assign({},patch,{expectedRevision:settingsRevision}));
+  settingsRevision=response.revision;savedSettings=clone(response.settings);
+  document.documentElement.classList.toggle("compact",savedSettings.viewPreferences.density==="compact");
+  if(patch.viewPreferences)Object.keys(patch.viewPreferences).forEach(function(key){settingsState.viewPreferences[key]=clone(savedSettings.viewPreferences[key]);});
+  if(id==="topics")$("briefingTopics").value=savedSettings.briefingTopics.join("\\n");
+  if(id==="schedule")$("briefingTime").value=savedSettings.briefingTime;
+  if(id==="tabs"){settingsState.sidebarTabs=clone(savedSettings.sidebarTabs);renderTabsEditor();}
+  bindPreferences();renderSummary(loadedResponse);status.textContent="Saved.";
+  if(id==="tabs"){try{await refreshSettingsNavigation();}catch(navError){status.textContent="Saved. Sidebar could not refresh: "+navError.message+". Open another page to load the updated navigation.";}}
+ }catch(error){
+  status.textContent=error.message||"Could not save. Your draft is unchanged.";
+  if(String(error.message).includes("changed elsewhere")){
+   try{var current=await api("/api/settings");settingsConflict=current;$("settings-conflict-current").textContent=JSON.stringify(current.settings,null,2);$("settings-conflict").hidden=false;}catch(reviewError){status.textContent+=" Current settings could not load: "+reviewError.message;}
   }
-  el.querySelectorAll(".tab-up").forEach(function(b){b.onclick=function(){swap(b.dataset.id,-1)}});
-  el.querySelectorAll(".tab-down").forEach(function(b){b.onclick=function(){swap(b.dataset.id,1)}});
+ }finally{section.pending=false;Object.keys(settingsSections).forEach(updateSectionActions);}
 }
-function featureBadge(on){
-  return on
-    ?'<span class="ui-badge ui-badge-soft ui-badge-ok">On</span>'
-    :'<span class="ui-badge ui-badge-soft ui-badge-neutral">Off</span>';
-}
-function addFeatureRow(list,label,on,offHint,onHint){
-  var row=document.createElement("div");
-  row.className="settings-feature-row";
-  var top=document.createElement("div");
-  top.className="settings-feature-top";
-  top.innerHTML='<span class="settings-feature-label">'+esc(label)+'</span><span class="settings-feature-status">'+featureBadge(on)+'</span>';
-  row.appendChild(top);
-  var hint=on?onHint:offHint;
-  if(hint){var p=document.createElement("p");p.className="settings-feature-hint dim";p.textContent=hint;row.appendChild(p);}
-  list.appendChild(row);
-}
-function renderDeploymentFeatures(meta){
-  var list=document.getElementById("settings-features-list");
-  if(!list)return;
-  list.replaceChildren();
-  var features=(meta&&meta.features)||{};
-  var ownerOn=!!(meta&&meta.ownerEmailsConfigured);
-  addFeatureRow(list,"Whiteboard",!!features.whiteboardEnabled,"Set WHITEBOARD_ENABLED=true to enable the Whiteboard page and API.",null);
-  addFeatureRow(list,"Share links",!!features.shareLinksEnabled,"Set SHARE_LINKS_ENABLED=true to enable note share links. Public share URLs also need the Cloudflare Access bypass in docs/share-links.md.",null);
-  addFeatureRow(list,"Encrypted API key storage",!!(meta&&meta.connectionsStorage),"Set CONNECTIONS_MASTER_KEY (64 hex chars, openssl rand -hex 32) and restart to save API keys in Service connections. Back it up: saved keys can't be decrypted without it.",null);
-  addFeatureRow(list,"Owner-only shared settings",ownerOn,"OWNER_EMAILS is not set; any signed-in session including ADMIN_TOKEN can edit shared settings on this server.","OWNER_EMAILS is set; shared settings, dashboard layout writes, and capture tokens require an owner login or ADMIN_TOKEN.");
-}
-function renderNtfy(ntfy){
-  var status=document.getElementById("ntfy-status");
-  var btn=document.getElementById("ntfy-test");
-  var ownerHint=document.getElementById("ntfy-owner-hint");
-  if(!status||!btn)return;
-  if(ntfy&&ntfy.enabled){
-    status.textContent="On · topic "+(ntfy.topicMasked||"••••");
-  }else{
-    status.textContent="Off · set NTFY_TOPIC (or ntfy connection) and restart the server.";
-  }
-  var canTest=!!(ntfy&&ntfy.enabled&&ntfy.canTest);
-  btn.disabled=!canTest;
-  if(ownerHint){
-    ownerHint.hidden=!(ntfy&&ntfy.enabled&&!ntfy.canTest);
-  }
-}
-function setSettingsReadOnly(meta){
-  var readOnly=!(meta&&meta.canManage!==false);
-  var hint=document.getElementById("settings-manage-hint");
-  ["views-save","tabs-save"].forEach(function(id){var el=document.getElementById(id);if(el)el.disabled=readOnly;});
-  var schedule=document.getElementById("f-schedule");if(schedule)schedule.querySelectorAll("input,button").forEach(function(node){node.disabled=readOnly;});
-  var topics=document.getElementById("f-topics");if(topics)topics.querySelectorAll("textarea,button").forEach(function(node){node.disabled=readOnly;});
-  document.querySelectorAll("#tab-views [data-pref]").forEach(function(el){el.disabled=readOnly;});
-  document.querySelectorAll("#tabs-editor .tab-vis,#tabs-editor .tab-label:not([disabled]),#tabs-editor .tab-up:not([disabled]),#tabs-editor .tab-down:not([disabled])").forEach(function(el){el.disabled=readOnly;});
-  if(readOnly){hint.hidden=false;hint.textContent=ownerViewOnlyHint(meta)||"View-only: set OWNER_EMAILS and sign in as an owner to change schedules, topics, tabs, and view preferences on this server.";}
-  else hint.hidden=true;
-}
-function loadSettings(){
-  document.getElementById("settings-editor").disabled=true;
-  document.getElementById("settings-retry").hidden=true;
-  document.getElementById("settings-load-status").textContent="Loading current settings...";
-  return api("/api/settings").then(function(r){
-    var s=r.settings;
-    settingsState.sidebarTabs=s.sidebarTabs||[];
-    settingsState.viewPreferences=s.viewPreferences||{};
-    document.getElementById("briefingTime").value=s.briefingTime;
-    document.getElementById("briefingTopics").value=(s.briefingTopics||[]).join("\\n");
-    var providers=r.briefingProviders||{};
-    document.getElementById("topics-providers").textContent=providers.search&&providers.summarizer
-      ?"Brave Search and AI summarizer are configured. Check service connections to verify access."
-      :"Connection setup needed: "+[!providers.search?"Brave Search (BRAVE_SEARCH_API_KEY)":"",!providers.summarizer?"AI summarizer (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL)":""].filter(Boolean).join("; ")+". Open service connections to configure keys, or use deployment environment variables.";
-    renderDeploymentFeatures(r.meta||{});
-    var meta=r.meta||{};
-    renderNtfy(r.ntfy);
-    settingsState.renderOverview=function(s){
-    var runtime=r.runtime;
-    document.getElementById("schedule-timezone").textContent=runtime?"Server timezone: "+runtime.timezone+". This is not necessarily your browser's timezone.":"Server timezone unavailable. Reload to check before changing the schedule.";
-    var rows=[
-      ["Daily briefing",s.briefingTime+(runtime?" in "+runtime.timezone:" (timezone unavailable)")],
-      ["Followed topics",s.briefingTopics.length?s.briefingTopics.join(", "):"None - keyword searches are off"],
-      ["Keyword digest",!s.briefingTopics.length?"Off - no topics":providers.search&&providers.summarizer?"Configured - access not verified":"Blocked - configure Brave Search and AI summarizer"],
-      ["Page density",s.viewPreferences.density],
-      ["Briefing sections",Object.keys(s.viewPreferences.briefing).filter(function(key){return s.viewPreferences.briefing[key];}).join(", ")||"None"],
-      ["Calendar week starts",s.viewPreferences.calendar.weekStartsOn],
-      ["Agent queue / activity",s.viewPreferences.hobie.status+" / "+s.viewPreferences.activity.limit+" entries"],
-      ["Notes text size",s.viewPreferences.notes.fontSize],
-      ["Visible sidebar tabs",s.sidebarTabs.filter(function(tab){return tab.visible;}).sort(function(a,b){return a.order-b.order;}).map(function(tab){return tab.label;}).join(", ")]
-    ];
-    rows.push(["AI features",providers.summarizer?"Configured - Service connections can check access, but cannot guarantee model support":"Unavailable - configure the AI summarizer"],
-      ["Briefing web search",providers.search?"Configured - provider access must be tested in Service connections":"Unavailable - configure Brave Search"]);
-    if(runtime){
-      var access=runtime.access,agents=runtime.agents,calendar=runtime.calendar;
-      rows.push(["Server version",runtime.version],["Weather (deployment)",runtime.weather.provider+" at "+runtime.weather.latitude+", "+runtime.weather.longitude+"; no API key required"],
-        ["GitHub author (deployment)",runtime.githubUsername+(runtime.integrations&&runtime.integrations.github?"; hourly merged PR import configured":"; merged PR import unavailable without a token")],
-        ["Calendars",calendar.native+" enabled native / "+calendar.subscriptions+" enabled subscriptions / "+calendar.environmentFeeds+" deployment feeds; subscription access is checked when calendars load"],
-        ["Authentication (deployment)",[access.cloudflare?"Cloudflare Access":null,access.adminToken?"Admin token":null,access.insecureNoAuth?"WARNING: unauthenticated access is allowed":null].filter(Boolean).join("; ")||"No authentication configured"],
-        ["Connection management",access.canManageConnections?"Verified owner - provider settings are available":"Read-only deployment summary - sign in as a configured owner through Cloudflare Access to manage provider settings"],
-        ["Encrypted credential storage",access.encryptedStorage?"Enabled":"Disabled - set CONNECTIONS_MASTER_KEY to save provider secrets"],
-        ["Agent access (deployment)",agents.mcpClients+" bearer clients / "+agents.cloudflareClients+" Cloudflare mappings; Hobie polling "+(agents.hobiePoll?"configured":"not configured")+"; webhook "+(agents.webhook?"configured":"not configured")],
-        ["Agent queue limit (deployment)",agents.maxPendingTasks+" pending tasks across all clients"]
-      );
-      if(runtime.integrations)rows.push(
-        ["Todoist task creation",runtime.integrations.todoist?"Token configured - used by agents/MCP and webhook, not a board sync":"Unavailable - no token configured"],
-        ["Recallio memory search",runtime.integrations.recallio?"Endpoint configured - check required credentials and access in Service connections":"Unavailable - no endpoint configured"],
-        ["Docker panel (deployment)",runtime.integrations.docker?"Socket configured - access is checked when the panel loads":"Disabled - no socket configured"]
-      );
-    }
-    document.getElementById("settings-overview").innerHTML='<dl>'+rows.map(function(row){return '<dt style="font-weight:600;margin-top:1rem">'+esc(row[0])+'</dt><dd style="margin:.25rem 0">'+esc(String(row[1]))+'</dd>';}).join("")+'</dl>';
-    };
-    settingsState.renderOverview(s);
-    document.getElementById("settings-editor").disabled=false;
-    document.getElementById("settings-load-status").textContent=r.runtime?"Current settings loaded from this server. Unsaved edits do not change this summary.":"Preferences loaded; deployment summary is unavailable.";
-    renderTabsEditor();bindViewPreferences();
-    setSettingsReadOnly(meta);
-  });
-}
-document.getElementById("f-topics").onsubmit=function(e){
-  e.preventDefault();
-  var status=document.getElementById("saved-topics"),button=document.getElementById("topics-save");
-  var topics=document.getElementById("briefingTopics").value.split(/\\r?\\n/).map(function(s){return s.trim()}).filter(Boolean);
-  if(topics.length>10||topics.some(function(s){return s.length>120})){status.textContent="Use up to 10 topics, with no more than 120 characters each.";return}
-  button.disabled=true;status.textContent="Saving...";
-  api("/api/settings","PUT",{briefingTopics:topics}).then(function(r){
-    document.getElementById("briefingTopics").value=r.settings.briefingTopics.join("\\n");settingsState.renderOverview(r.settings);status.textContent="Topics saved.";
-  }).catch(function(err){status.textContent=err.message||"Could not save topics."}).finally(function(){button.disabled=false});
+["views","tabs","schedule","topics","briefing","calendar"].forEach(function(id){
+ var form=$("f-"+id);settingsSections[id]={pending:false};
+ registerSettingsDraft(id,{dirty:function(){return sectionDirty(id);},get pending(){return settingsSections[id].pending;},reset:function(){restoreSection(id);}});
+ form.addEventListener("input",function(){if(savedSettings){$("saved-"+id).textContent="";updateSectionActions(id);}});
+ form.addEventListener("change",function(){if(savedSettings)updateSectionActions(id);});
+ form.onsubmit=function(event){event.preventDefault();saveSection(id);};
+ form.querySelector("[data-cancel]").onclick=function(){restoreSection(id);};
+});
+$("settings-conflict-reload").onclick=function(){if(!settingsConflict)return;settingsConflict=null;$("settings-conflict").hidden=true;reloadSettings();};
+$("settings-conflict-keep").onclick=function(){if(!settingsConflict)return;savedSettings=clone(settingsConflict.settings);settingsRevision=settingsConflict.revision;loadedResponse=settingsConflict;settingsConflict=null;$("settings-conflict").hidden=true;Object.keys(settingsSections).forEach(updateSectionActions);message("Current version reviewed. Your draft is retained; save the section when ready.");};
+var notificationPending=false;
+$("ntfy-test").onclick=async function(){
+ if(notificationPending)return;notificationPending=true;this.disabled=true;$("ntfy-test-status").textContent="Sending...";
+ try{var result=await api("/api/notify/test","POST",{});$("ntfy-test-status").textContent=result.ok?"Sent. Check your phone.":"Server could not reach ntfy.";}
+ catch(error){$("ntfy-test-status").textContent=error.message||"Could not send test.";}
+ finally{notificationPending=false;this.disabled=!(loadedResponse&&loadedResponse.ntfy&&loadedResponse.ntfy.enabled&&loadedResponse.ntfy.canTest);}
 };
-document.getElementById("f-schedule").onsubmit=function(e){e.preventDefault();
-  saveSettingsSection("saved-schedule",{briefingTime:document.getElementById("briefingTime").value});
-};
-document.getElementById("views-save").onclick=function(){
-  saveSettingsSection("saved-views",{viewPreferences:settingsState.viewPreferences});
-};
-document.getElementById("tabs-save").onclick=function(){
-  saveSettingsSection("saved-tabs",{sidebarTabs:settingsState.sidebarTabs});
-};
-var ntfyBtn=document.getElementById("ntfy-test");
-if(ntfyBtn)ntfyBtn.onclick=function(){
-  var status=document.getElementById("ntfy-test-status");
-  if(status)status.textContent="Sending…";
-  api("/api/notify/test","POST",{}).then(function(r){
-    if(status)status.textContent=r.ok?"Sent. Check your phone.":"Server could not reach ntfy.";
-  }).catch(function(err){if(status)status.textContent=err.message||"Could not send test."});
-};
-function saveSettingsSection(statusId,patch){
-  var status=document.getElementById(statusId),editor=document.getElementById("settings-editor");
-  status.textContent="Saving...";editor.disabled=true;
-  api("/api/settings","PUT",patch).then(function(){status.textContent="Saved";location.reload();})
-    .catch(function(err){status.textContent=err.message||"Could not save settings. Your draft is unchanged.";editor.disabled=false;});
-}
-function reloadSettings(){loadSettings().catch(function(err){
-  document.getElementById("settings-editor").disabled=true;
-  document.getElementById("settings-load-status").textContent=err.message||"Could not load Settings. Editing is disabled to avoid overwriting current preferences.";
-  document.getElementById("settings-retry").hidden=false;
-});}
-document.getElementById("settings-retry").onclick=reloadSettings;reloadSettings();
+function reloadSettings(){loadSettings().catch(function(error){$("settings-editor").disabled=true;$("settings-load-status").textContent=error.message||"Could not load Settings. Editing is disabled.";$("settings-retry").hidden=false;});}
+$("settings-retry").onclick=reloadSettings;reloadSettings();
 `,
   });
 }
