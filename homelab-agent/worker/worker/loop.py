@@ -2,9 +2,9 @@ import json
 import logging
 from typing import Any, Protocol
 
-import httpx
-
 from openai import OpenAI
+
+from .http_clients import outbound_httpx_client
 
 from .redact import redact_log_line
 from .tools import build_tool_dispatch, validate_tool_args
@@ -119,5 +119,5 @@ def make_openai_client(base_url: str, api_key: str) -> OpenAI:
     return OpenAI(
         base_url=base_url,
         api_key=api_key,
-        http_client=httpx.Client(timeout=30.0, trust_env=True),
+        http_client=outbound_httpx_client(),
     )

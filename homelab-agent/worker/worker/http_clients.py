@@ -1,11 +1,32 @@
+import os
 from typing import Any
 
 import httpx
 
 
+class OutboundProxyRequiredError(RuntimeError):
+    """Outbound queue/LLM HTTP(S) must use egress; agent_int has no external DNS."""
+
+
+def require_egress_proxy_url() -> str:
+    proxy = (os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or "").strip()
+    if not proxy:
+        raise OutboundProxyRequiredError(
+            "HTTPS_PROXY or HTTP_PROXY must be set so outbound requests use egress "
+            "(local DNS on agent_int cannot resolve external queue/LLM hosts)"
+        )
+    return proxy
+
+
 def outbound_httpx_client(**kwargs: Any) -> httpx.Client:
-    """HTTPS (and HTTP) to external hosts via HTTPS_PROXY/HTTP_PROXY from the environment."""
-    return httpx.Client(timeout=30.0, trust_env=True, **kwargs)
+    # Explicit proxy so HTTP(S) uses egress even when NO_PROXY would bypass trust_env routing.
+    opts: dict[str, Any] = {
+        "timeout": 30.0,
+        "trust_env": False,
+        "proxy": require_egress_proxy_url(),
+    }
+    opts.update(kwargs)
+    return httpx.Client(**opts)
 
 
 def ha_httpx_client(base_url: str) -> httpx.Client:

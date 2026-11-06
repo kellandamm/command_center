@@ -18,6 +18,7 @@ services:
     image: ${WORKER_IMAGE:?Set WORKER_IMAGE to ghcr.io/kellandamm/homelab-agent-worker@sha256:...}
     env_file: ./env/worker.env
     environment:
+      HTTP_PROXY: http://egress:3128
       HTTPS_PROXY: http://egress:3128
       NO_PROXY: ha-proxy,localhost,127.0.0.1
       HA_URL: http://ha-proxy:8080
