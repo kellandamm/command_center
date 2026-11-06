@@ -1,0 +1,134 @@
+name: Homelab agent publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "homelab-agent/**"
+      - ".github/workflows/homelab-agent-publish.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: homelab-agent-publish-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  WORKER_IMAGE: ghcr.io/kellandamm/homelab-agent-worker
+  HA_PROXY_IMAGE: ghcr.io/kellandamm/homelab-agent-ha-proxy
+  EGRESS_IMAGE: ghcr.io/kellandamm/homelab-agent-egress
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest httpx==0.28.1
+          pip install -r homelab-agent/worker/requirements.txt
+
+      - name: Homelab agent tests
+        run: |
+          python -m pytest -q homelab-agent/ha-proxy/tests homelab-agent/worker/tests
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata (worker)
+        id: meta-worker
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.WORKER_IMAGE }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-,format=short
+
+      - name: Docker metadata (ha-proxy)
+        id: meta-ha-proxy
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.HA_PROXY_IMAGE }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-,format=short
+
+      - name: Docker metadata (egress)
+        id: meta-egress
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.EGRESS_IMAGE }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-,format=short
+
+      - name: Build and push worker
+        id: build-worker
+        uses: docker/build-push-action@v6
+        with:
+          context: ./homelab-agent/worker
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta-worker.outputs.tags }}
+          labels: ${{ steps.meta-worker.outputs.labels }}
+
+      - name: Build and push ha-proxy
+        id: build-ha-proxy
+        uses: docker/build-push-action@v6
+        with:
+          context: ./homelab-agent/ha-proxy
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta-ha-proxy.outputs.tags }}
+          labels: ${{ steps.meta-ha-proxy.outputs.labels }}
+
+      - name: Build and push egress
+        id: build-egress
+        uses: docker/build-push-action@v6
+        with:
+          context: ./homelab-agent/egress
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta-egress.outputs.tags }}
+          labels: ${{ steps.meta-egress.outputs.labels }}
+
+      - name: Image digests
+        run: |
+          {
+            echo "### Homelab agent image digests"
+            echo ""
+            echo "Pin these in \`homelab-agent/.env\` on the host (name@sha256:...)."
+            echo ""
+            echo "| Image | Digest |"
+            echo "|---|---|"
+            echo "| \`${{ env.WORKER_IMAGE }}\` | \`${{ steps.build-worker.outputs.digest }}\` |"
+            echo "| \`${{ env.HA_PROXY_IMAGE }}\` | \`${{ steps.build-ha-proxy.outputs.digest }}\` |"
+            echo "| \`${{ env.EGRESS_IMAGE }}\` | \`${{ steps.build-egress.outputs.digest }}\` |"
+            echo ""
+            echo "Example:"
+            echo "\`\`\`"
+            echo "WORKER_IMAGE=${{ env.WORKER_IMAGE }}@${{ steps.build-worker.outputs.digest }}"
+            echo "HA_PROXY_IMAGE=${{ env.HA_PROXY_IMAGE }}@${{ steps.build-ha-proxy.outputs.digest }}"
+            echo "EGRESS_IMAGE=${{ env.EGRESS_IMAGE }}@${{ steps.build-egress.outputs.digest }}"
+            echo "\`\`\`"
+            echo ""
+            echo "Visibility: confirm each package stays **private** in GitHub Packages (repo is public; do not flip images public)."
+          } >> "$GITHUB_STEP_SUMMARY"

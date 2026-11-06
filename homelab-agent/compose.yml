@@ -16,7 +16,7 @@ x-hard: &hard
 services:
   worker:
     <<: *hard
-    build: ./worker
+    image: ${WORKER_IMAGE:?Set WORKER_IMAGE to ghcr.io/kellandamm/homelab-agent-worker@sha256:...}
     env_file: ./env/worker.env
     environment:
       HTTPS_PROXY: http://egress:3128
@@ -33,7 +33,7 @@ services:
 
   ha-proxy:
     <<: *hard
-    build: ./ha-proxy
+    image: ${HA_PROXY_IMAGE:?Set HA_PROXY_IMAGE to ghcr.io/kellandamm/homelab-agent-ha-proxy@sha256:...}
     env_file: ./env/ha-proxy.env
     networks: [agent_int, egress_net]
     deploy:
@@ -44,7 +44,7 @@ services:
 
   egress:
     <<: *hard
-    image: ubuntu/squid:latest@sha256:6a097f68bae708cedbabd6188d68c7e2e7a38cedd05a176e1cc0ba29e3bbe029
+    image: ${EGRESS_IMAGE:?Set EGRESS_IMAGE to ghcr.io/kellandamm/homelab-agent-egress@sha256:...}
     volumes:
       - ./egress/squid.conf:/etc/squid/squid.conf:ro
     networks: [agent_int, egress_net]
