@@ -157,3 +157,52 @@ def test_live_proxy_allows_states_and_notify(live_proxy, proxy_env):
     assert token not in str(headers)
 
     assert proxy.forward_path("/api/states/foo?filter=1") == "/api/states/foo?filter=1"
+
+
+def test_deny_device_garage_lock_vacuum_and_side_effect_apis(proxy_env):
+    """ha-proxy allowlist: reads + notify_kellan only; no worker flag can widen this."""
+    proxy = proxy_env
+    assert proxy.allowed("POST", "/api/services/script/notify_kellan") is True
+    denied = [
+        ("POST", "/api/services/cover/open_cover"),
+        ("POST", "/api/services/cover/close_cover"),
+        ("POST", "/api/services/garage_door/open"),
+        ("POST", "/api/services/lock/unlock"),
+        ("POST", "/api/services/lock/open"),
+        ("POST", "/api/services/vacuum/start"),
+        ("POST", "/api/services/vacuum/return_to_base"),
+        ("POST", "/api/services/roomba/start"),
+        ("POST", "/api/services/device_tracker/see"),
+        ("POST", "/api/services/homeassistant/turn_on"),
+        ("POST", "/api/services/script/other_script"),
+        ("POST", "/api/template"),
+        ("POST", "/api/events/test_event"),
+        ("POST", "/api/services/notify/notify"),
+        ("GET", "/api/services/script/notify_kellan"),
+        ("GET", "/api/websocket"),
+        ("POST", "/api/websocket"),
+        ("GET", "/api/template"),
+    ]
+    for method, path in denied:
+        assert proxy.allowed(method, path) is False, (method, path)
+
+
+def test_live_proxy_blocks_dangerous_services_without_upstream_hits(live_proxy):
+    """Live path: dangerous services and side-effect APIs never reach upstream."""
+    port, _proxy = live_proxy
+    blocked = [
+        ("POST", "/api/services/cover/open_cover", b"{}"),
+        ("POST", "/api/services/lock/unlock", b"{}"),
+        ("POST", "/api/services/vacuum/start", b"{}"),
+        ("POST", "/api/services/device_tracker/see", b"{}"),
+        ("POST", "/api/template", b'{"template":"{{ states }}"}'),
+        ("POST", "/api/events/state_changed", b"{}"),
+        ("GET", "/api/websocket", None),
+        ("POST", "/api/services/script/notify_kellan_extra", b"{}"),
+    ]
+    for method, path, body in blocked:
+        before = len(Upstream.hits)
+        status, _body, _hdrs = request_proxy(port, method, path, body)
+        assert status in (403, 501), (method, path, status)
+        assert len(Upstream.hits) == before, (method, path, Upstream.hits)
+
