@@ -207,4 +207,18 @@ export class XBookmarksStore {
       item.status = item.attempts >= 2 ? "failed" : "pending";
     });
   }
+
+  async requeueFailed(): Promise<number> {
+    return this.mutate((data) => {
+      let requeued = 0;
+      for (const item of data.items) {
+        if (item.status !== "failed") continue;
+        item.status = "pending";
+        item.attempts = 0;
+        item.failureReason = null;
+        requeued += 1;
+      }
+      return requeued;
+    });
+  }
 }

@@ -58,6 +58,7 @@ export async function handleXBookmarkImport(
 
 export async function handleXBookmarkApiRoutes(
   store: XBookmarksStore,
+  service: XBookmarksService,
   req: IncomingMessage,
   res: ServerResponse,
   path: string,
@@ -84,6 +85,12 @@ export async function handleXBookmarkApiRoutes(
     const ids = Array.isArray(body?.post_ids) ? body.post_ids.map(String) : [];
     for (const postId of ids) await store.markRead(postId);
     json(200, { ok: true });
+    return true;
+  }
+  if (path === "/api/x-bookmarks/requeue-failed" && req.method === "POST") {
+    const requeued = await store.requeueFailed();
+    if (requeued) service.enqueue();
+    json(200, { requeued });
     return true;
   }
   return false;
