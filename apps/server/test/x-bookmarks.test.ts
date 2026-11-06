@@ -17,6 +17,7 @@ import { extractArticleText } from "../src/read-later/article-text";
 import { XBookmarksService } from "../src/read-later/x-bookmarks-service";
 import { XBookmarksStore } from "../src/read-later/x-bookmarks-store";
 import { BlockedUrlError, assertPublicUrl } from "../src/ssrf";
+import { chatCompletion } from "../src/llm/provider";
 
 const TOKEN = "t".repeat(32);
 const IMPORT_SECRET = "s".repeat(32);
@@ -277,4 +278,106 @@ test("x bookmarks: ssrf guard blocks private and non-http targets", async () => 
   }
   await assert.rejects(assertPublicUrl("https://evil.example/", { resolve: async () => ["10.0.0.1"] }), BlockedUrlError);
   await assert.rejects(assertPublicUrl("https://example.com/", { resolve: async () => ["::ffff:127.0.0.1"] }), BlockedUrlError);
+});
+
+test("llm: chatCompletion sends Bearer apiKey and model verbatim", async () => {
+  let seenAuth: string | undefined;
+  let seenModel: string | undefined;
+  await chatCompletion(
+    { baseUrl: "https://api.example/v1", apiKey: "sk-test-key", model: "glm-5.3" },
+    [{ role: "user", content: "hi" }],
+    async (_url, init) => {
+      const headers = init?.headers as Record<string, string> | undefined;
+      seenAuth = headers?.authorization;
+      seenModel = (JSON.parse(String(init?.body)) as { model?: string }).model;
+      return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 });
+    },
+  );
+  assert.equal(seenAuth, "Bearer sk-test-key");
+  assert.equal(seenModel, "glm-5.3");
+});
+
+test("x bookmarks store: requeueFailed only touches failed rows", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cc-xb-requeue-"));
+  try {
+    const store = await XBookmarksStore.open(dir);
+    await store.importItems([
+      { ...sampleItem, post_id: "failed-one" },
+      { ...sampleItem, post_id: "done-one" },
+      { ...sampleItem, post_id: "pending-one" },
+    ]);
+    await store.recordAttempt("failed-one");
+    await store.recordAttempt("failed-one");
+    await store.markFailed("failed-one", "old failure");
+    await store.markDone("done-one", ["a", "b", "c"], "Done summary");
+    await store.recordAttempt("pending-one");
+    const doneSummary = store.getByPostId("done-one")!.whyItMatters;
+    const pendingAttempts = store.getByPostId("pending-one")!.attempts;
+
+    assert.equal(await store.requeueFailed(), 1);
+    assert.equal(store.getByPostId("failed-one")?.status, "pending");
+    assert.equal(store.getByPostId("failed-one")?.attempts, 0);
+    assert.equal(store.getByPostId("failed-one")?.failureReason, null);
+    assert.equal(store.getByPostId("done-one")?.status, "done");
+    assert.equal(store.getByPostId("done-one")?.whyItMatters, doneSummary);
+    assert.equal(store.getByPostId("pending-one")?.status, "pending");
+    assert.equal(store.getByPostId("pending-one")?.attempts, pendingAttempts);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("x bookmarks: requeue-failed API retries failed summarizer jobs", async () => {
+  let llmCalls = 0;
+  const h = await harness({}, {
+    fetchArticle: async () => ({ status: 200, contentType: "text/plain", body: "article body" }),
+    llmFetch: async () => {
+      llmCalls += 1;
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ bullets: ["a", "b", "c"], why_it_matters: "Retry worked" }) } }] }), { status: 200 });
+    },
+  });
+  try {
+    await h.xBookmarks.importItems([
+      { ...sampleItem, post_id: "failed-one" },
+      { ...sampleItem, post_id: "done-one" },
+    ]);
+    await h.xBookmarks.recordAttempt("failed-one");
+    await h.xBookmarks.recordAttempt("failed-one");
+    await h.xBookmarks.markFailed("failed-one", "upstream error");
+    await h.xBookmarks.markDone("done-one", ["one", "two", "three"], "Already summarized");
+    const doneSummary = h.xBookmarks.getByPostId("done-one")!.whyItMatters;
+
+    const requeue = await fetch(`${h.base}/api/x-bookmarks/requeue-failed`, { method: "POST", headers: authz });
+    assert.equal(requeue.status, 200);
+    assert.deepEqual(await requeue.json(), { requeued: 1 });
+
+    await h.xBookmarksService.drain();
+    assert.equal(h.xBookmarks.getByPostId("failed-one")?.status, "done");
+    assert.equal(h.xBookmarks.getByPostId("done-one")?.status, "done");
+    assert.equal(h.xBookmarks.getByPostId("done-one")?.whyItMatters, doneSummary);
+    assert.equal(llmCalls, 1);
+  } finally {
+    await h.close();
+  }
+});
+
+test("x bookmarks: requeue-failed requires session auth like sibling routes", async () => {
+  const h = await harness();
+  try {
+    const unauth = await fetch(`${h.base}/api/x-bookmarks/requeue-failed`, { method: "POST" });
+    assert.equal(unauth.status, 401);
+
+    const noCsrf = await fetch(`${h.base}/api/x-bookmarks/requeue-failed`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
+    });
+    assert.equal(noCsrf.status, 403);
+    assert.match((await noCsrf.json()).error, /cross-site/i);
+
+    const ok = await fetch(`${h.base}/api/x-bookmarks/requeue-failed`, { method: "POST", headers: authz });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(await ok.json(), { requeued: 0 });
+  } finally {
+    await h.close();
+  }
 });

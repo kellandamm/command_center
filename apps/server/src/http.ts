@@ -678,7 +678,7 @@ export function createApp(app: App): Server {
         if (await handleReadLaterRoutes(app.notes, readLater, captureAccess, req, res, path, readBody)) return;
       }
       if (path.startsWith("/api/x-bookmarks")) {
-        if (await handleXBookmarkApiRoutes(app.xBookmarks, req, res, path, readBody)) return;
+        if (await handleXBookmarkApiRoutes(app.xBookmarks, app.xBookmarksService, req, res, path, readBody)) return;
       }
       if (await handleDailyBriefingRoutes(app, app.dailyBriefing, req, res, path, {
         owner: who.owner === true,
