@@ -3,9 +3,8 @@ import time
 import uuid
 from typing import Any
 
-import httpx
-
 from .hmac import queue_hmac_sign
+from .http_clients import outbound_httpx_client
 
 
 class QueueClient:
@@ -29,7 +28,7 @@ class QueueClient:
         }
 
     def claim_next(self) -> dict[str, Any] | None:
-        with httpx.Client(timeout=30.0) as client:
+        with outbound_httpx_client() as client:
             r = client.get(f"{self.base_url}/api/queue/next", headers=self._signed_headers(""))
             r.raise_for_status()
             task = r.json().get("task")
@@ -39,7 +38,7 @@ class QueueClient:
         import json
 
         raw = json.dumps(payload, separators=(",", ":"))
-        with httpx.Client(timeout=30.0) as client:
+        with outbound_httpx_client() as client:
             r = client.post(
                 f"{self.base_url}/api/queue/{task_id}/result",
                 content=raw,
@@ -51,7 +50,7 @@ class QueueClient:
         import json
 
         raw = json.dumps(payload, separators=(",", ":"))
-        with httpx.Client(timeout=30.0) as client:
+        with outbound_httpx_client() as client:
             r = client.post(
                 f"{self.base_url}/api/queue/{task_id}/proposals",
                 content=raw,
