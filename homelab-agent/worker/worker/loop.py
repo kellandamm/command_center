@@ -4,6 +4,8 @@ from typing import Any, Protocol
 
 from openai import OpenAI
 
+from .http_clients import outbound_httpx_client
+
 from .redact import redact_log_line
 from .tools import build_tool_dispatch, validate_tool_args
 
@@ -114,4 +116,8 @@ def run_tool_loop(
 
 
 def make_openai_client(base_url: str, api_key: str) -> OpenAI:
-    return OpenAI(base_url=base_url, api_key=api_key)
+    return OpenAI(
+        base_url=base_url,
+        api_key=api_key,
+        http_client=outbound_httpx_client(),
+    )

@@ -5,12 +5,13 @@ from typing import Any, Callable
 
 import httpx
 
+from .http_clients import ha_httpx_client
 from .queue_client import QueueClient
 
 
 def _ha_client() -> httpx.Client:
     base = os.environ.get("HA_URL", "http://ha-proxy:8080").rstrip("/")
-    return httpx.Client(base_url=base, timeout=30.0)
+    return ha_httpx_client(base)
 
 
 def ha_states(filter_text: str = "") -> dict[str, Any]:

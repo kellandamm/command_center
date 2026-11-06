@@ -5,7 +5,6 @@ x-hard: &hard
   security_opt: ["no-new-privileges:true"]
   tmpfs:
     - /tmp:size=16m
-  pids_limit: 128
   restart: unless-stopped
   logging:
     driver: json-file
@@ -19,7 +18,9 @@ services:
     image: ${WORKER_IMAGE:?Set WORKER_IMAGE to ghcr.io/kellandamm/homelab-agent-worker@sha256:...}
     env_file: ./env/worker.env
     environment:
+      HTTP_PROXY: http://egress:3128
       HTTPS_PROXY: http://egress:3128
+      NO_PROXY: ha-proxy,localhost,127.0.0.1
       HA_URL: http://ha-proxy:8080
       CONTAINER_STATUS_FILE: /var/lib/agent/containers.json
     volumes:
@@ -30,6 +31,7 @@ services:
         limits:
           cpus: "0.5"
           memory: 256M
+          pids: 128
 
   ha-proxy:
     <<: *hard
@@ -41,10 +43,16 @@ services:
         limits:
           cpus: "0.25"
           memory: 64M
+          pids: 128
 
   egress:
     <<: *hard
     image: ${EGRESS_IMAGE:?Set EGRESS_IMAGE to ghcr.io/kellandamm/homelab-agent-egress@sha256:...}
+    tmpfs:
+      - /tmp:size=16m,uid=10001,gid=10001,mode=1777
+      - /run:size=8m,uid=10001,gid=10001,mode=0755
+      - /var/spool/squid:size=32m,uid=10001,gid=10001,mode=0755
+      - /var/log/squid:size=16m,uid=10001,gid=10001,mode=0755
     volumes:
       - ./egress/squid.conf:/etc/squid/squid.conf:ro
     networks: [agent_int, egress_net]
@@ -53,6 +61,7 @@ services:
         limits:
           cpus: "0.25"
           memory: 128M
+          pids: 128
 
 networks:
   agent_int:
